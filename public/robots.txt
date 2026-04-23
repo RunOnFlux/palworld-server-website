@@ -1,0 +1,16 @@
+# robots.txt for Palworld on Flux
+# This file will be auto-generated during build by vite-plugin-sitemap
+# Manual fallback for development
+
+User-agent: *
+Allow: /
+
+# Disallow admin/auth pages
+Disallow: /dashboard/
+Disallow: /admin/
+
+# Crawl-delay for respect
+Crawl-delay: 1
+
+# Sitemap location (update hostname in vite.config.js for production)
+Sitemap: http://localhost:4000/sitemap.xml
