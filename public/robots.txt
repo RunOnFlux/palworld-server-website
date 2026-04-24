@@ -1,16 +1,38 @@
 # robots.txt for Palworld on Flux
-# This file will be auto-generated during build by vite-plugin-sitemap
-# Manual fallback for development
+# Overwritten by vite-plugin-sitemap at build time when VITE_APP_URL is set.
 
 User-agent: *
 Allow: /
-
-# Disallow admin/auth pages
 Disallow: /dashboard/
 Disallow: /admin/
-
-# Crawl-delay for respect
+Disallow: /success
+Disallow: /cancel
 Crawl-delay: 1
 
-# Sitemap location (update hostname in vite.config.js for production)
-Sitemap: http://localhost:4000/sitemap.xml
+# Allow the major AI crawlers so the site can surface in generative answers
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-Web
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Perplexity-User
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: CCBot
+Allow: /
+User-agent: Bytespider
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+
+Sitemap: https://palworld.runonflux.com/sitemap.xml

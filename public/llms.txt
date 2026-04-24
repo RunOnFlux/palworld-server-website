@@ -1,0 +1,40 @@
+# Palworld on Flux
+
+> Palworld server hosting on the decentralized Flux cloud. Rent a dedicated Palworld server for up to 32 players with instant deployment, DDoS protection, and global server locations. Plans from $3.99/month, first month free for new users.
+
+## Key facts
+
+- Service: Palworld dedicated server hosting (rental)
+- Website: https://palworld.runonflux.com
+- Provider: InFlux Technologies, powered by Flux decentralized cloud (https://runonflux.io)
+- Max players per server: 32
+- Deployment time: under 30 seconds
+- Uptime SLA: 99.9%
+- Server locations: 50+ countries (North America, Europe, Asia, South America, Africa, Oceania)
+- DDoS protection: included on every server at no extra cost
+- Payments accepted: Stripe (credit card, Apple Pay, Google Pay), FLUX cryptocurrency via ZelCore and SSP Wallet
+- Free trial: first month free for new users
+- Admin features: web terminal (bash), file manager with in-browser editor, on-demand backups, restore from backup or URL
+
+## Plans
+
+- Starter — 5GB RAM, recommended for up to ~8 players, from $3.99/month
+- Standard — 7GB RAM, recommended for ~16 players
+- Performance — 10GB RAM, recommended for the full 32-player cap
+- All plans: instant deployment, DDoS protection, full admin access, automatic backups
+
+## Common questions (for citation)
+
+- How much does Palworld server hosting cost? From $3.99/month on Flux; first month free.
+- How many players? Up to 32 per dedicated Palworld server.
+- How much RAM for a Palworld server? 5GB small, 7GB medium, 10GB+ for 32 players.
+- Is DDoS protection included? Yes, on every plan, at no extra cost.
+- How to host a Palworld server? Sign in with Google or email, pick a plan, pick a region, click deploy.
+- Where are servers located? 50+ countries worldwide.
+- Can I transfer an existing save? Yes, upload world files via the built-in file manager.
+
+## Pages
+
+- [Home / pricing / features / FAQ](https://palworld.runonflux.com/)
+- [Support](https://palworld.runonflux.com/support)
+- [Dashboard (login required)](https://palworld.runonflux.com/dashboard)

@@ -25,9 +25,23 @@ export default defineConfig(({ mode }) => {
           {
             userAgent: '*',
             allow: '/',
-            disallow: ['/dashboard/', '/admin/'],
+            disallow: ['/dashboard/', '/admin/', '/success', '/cancel'],
             crawlDelay: 1,
           },
+          // Explicitly allow the major AI crawlers so the site can be cited in
+          // generative answers (ChatGPT, Claude, Perplexity, Google AI Overviews).
+          { userAgent: 'GPTBot', allow: '/' },
+          { userAgent: 'OAI-SearchBot', allow: '/' },
+          { userAgent: 'ChatGPT-User', allow: '/' },
+          { userAgent: 'ClaudeBot', allow: '/' },
+          { userAgent: 'Claude-Web', allow: '/' },
+          { userAgent: 'anthropic-ai', allow: '/' },
+          { userAgent: 'PerplexityBot', allow: '/' },
+          { userAgent: 'Perplexity-User', allow: '/' },
+          { userAgent: 'Google-Extended', allow: '/' },
+          { userAgent: 'Applebot-Extended', allow: '/' },
+          { userAgent: 'CCBot', allow: '/' },
+          { userAgent: 'Bytespider', allow: '/' },
         ],
       }),
       ViteImageOptimizer({

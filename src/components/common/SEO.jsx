@@ -22,10 +22,29 @@ const SEO = ({
 }) => {
   const siteUrl = import.meta.env.VITE_APP_URL || 'http://localhost:5173';
   const siteName = gameConfig.serverName;
-  const defaultKeywords = `${gameConfig.gameName} server hosting, game server hosting, decentralized hosting, Flux cloud, ${gameConfig.gameName} hosting, web3 hosting`;
+  const game = gameConfig.gameName;
+  const defaultKeywords = [
+    `${game} server hosting`,
+    `${game} dedicated server`,
+    `rent ${game} server`,
+    `${game} server rental`,
+    `host ${game} server`,
+    `cheap ${game} server hosting`,
+    `${game} multiplayer hosting`,
+    `${game} dedicated server hosting`,
+    `${game} private server`,
+    `${game} hosting`,
+    `best ${game} server hosting`,
+    `${game} server provider`,
+    `DDoS protected ${game} server`,
+    `${game} 32 player server`,
+    'decentralized game server hosting',
+    'Flux cloud hosting',
+  ].join(', ');
 
-  // Build SEO values
-  const seoTitle = title ? `${title} | ${siteName}` : `${siteName} - ${gameConfig.tagline}`;
+  // Build SEO values — lead with the highest-intent keyword on the homepage
+  const defaultHomeTitle = `${game} Server Hosting — Rent a Dedicated ${game} Server from $3.99/mo | ${siteName}`;
+  const seoTitle = title ? `${title} | ${siteName}` : defaultHomeTitle;
   const seoDescription = description || gameConfig.description;
   const seoImage = image ? `${siteUrl}${image}` : `${siteUrl}${gameConfig.assets.banner}`;
   const seoUrl = url ? `${siteUrl}${url}` : siteUrl;
@@ -128,7 +147,9 @@ const SEO = ({
     }),
   } : null;
 
-  const faqSchema = (type === 'faq' && gameConfig.faq) ? {
+  // Always emit FAQPage schema when gameConfig.faq exists — FAQ rich results drive CTR
+  // on queries like "how much RAM Palworld server", "how many players Palworld", etc.
+  const faqSchema = (gameConfig.faq && gameConfig.faq.length > 0) ? {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
     mainEntity: gameConfig.faq.map(item => ({
@@ -140,6 +161,26 @@ const SEO = ({
       },
     })),
   } : null;
+
+  // Service schema — helps with "Palworld server hosting" / "rent Palworld server" queries
+  const serviceSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    serviceType: `${game} Dedicated Server Hosting`,
+    provider: {
+      '@type': 'Organization',
+      name: 'InFlux Technologies',
+      url: 'https://runonflux.io',
+    },
+    areaServed: 'Worldwide',
+    url: siteUrl,
+    description: seoDescription,
+    offers: {
+      '@type': 'Offer',
+      price: '3.99',
+      priceCurrency: 'USD',
+    },
+  };
 
   return (
     <Helmet>
@@ -209,6 +250,9 @@ const SEO = ({
       </script>
       <script type="application/ld+json">
         {JSON.stringify(breadcrumbSchema)}
+      </script>
+      <script type="application/ld+json">
+        {JSON.stringify(serviceSchema)}
       </script>
       {productSchema && (
         <script type="application/ld+json">
