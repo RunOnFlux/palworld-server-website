@@ -37,16 +37,26 @@
     <meta name="twitter:image" content="https://palworld.runonflux.com/games/palworld/banner.webp" />
     <meta name="twitter:site" content="@RunOnFlux" />
 
-    <!-- Static JSON-LD so non-JS crawlers and AI engines see structured data immediately -->
+    <!-- Static JSON-LD so non-JS crawlers and AI engines see structured data immediately.
+         Note: No Product schema is emitted because Google requires real review / rating
+         data on Product rich results. Service is the correct type for a rental-style
+         hosting offering and does not require ratings to be eligible. -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "Product",
+      "@type": "Service",
       "name": "Palworld Server Hosting",
-      "description": "Dedicated Palworld server hosting on the Flux decentralized cloud. Up to 32 players, instant deployment, DDoS protection, 99.9% uptime, global server locations.",
-      "brand": { "@type": "Brand", "name": "Palworld on Flux" },
-      "image": "https://palworld.runonflux.com/games/palworld/banner.webp",
+      "serviceType": "Palworld Dedicated Server Hosting",
+      "description": "Rent a Palworld dedicated server on the Flux decentralized cloud. Up to 32 players, instant deployment in under 30 seconds, DDoS protection, 99.9% uptime, and nodes in 50+ countries. Plans from $3.99/month.",
       "url": "https://palworld.runonflux.com/",
+      "image": "https://palworld.runonflux.com/games/palworld/banner.webp",
+      "brand": { "@type": "Brand", "name": "Palworld on Flux" },
+      "provider": {
+        "@type": "Organization",
+        "name": "InFlux Technologies",
+        "url": "https://runonflux.io"
+      },
+      "areaServed": "Worldwide",
       "offers": {
         "@type": "AggregateOffer",
         "priceCurrency": "USD",
@@ -55,26 +65,6 @@
         "offerCount": "3",
         "availability": "https://schema.org/InStock",
         "url": "https://palworld.runonflux.com/#pricing"
-      }
-    }
-    </script>
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Service",
-      "serviceType": "Palworld Dedicated Server Hosting",
-      "provider": {
-        "@type": "Organization",
-        "name": "InFlux Technologies",
-        "url": "https://runonflux.io"
-      },
-      "areaServed": "Worldwide",
-      "url": "https://palworld.runonflux.com/",
-      "description": "Rent a Palworld dedicated server with 32-player support, instant deployment, DDoS protection, and global nodes across 50+ countries on the Flux decentralized cloud.",
-      "offers": {
-        "@type": "Offer",
-        "price": "3.99",
-        "priceCurrency": "USD"
       }
     }
     </script>

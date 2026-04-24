@@ -71,41 +71,13 @@ const SEO = ({
     }
   }, [seoTitle, url, isDevelopment]);
 
-  // Build structured data schemas
-  const organizationSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: siteName,
-    url: siteUrl,
-    logo: {
-      '@type': 'ImageObject',
-      url: `${siteUrl}${gameConfig.assets.logo}`,
-    },
-    description: seoDescription,
-    sameAs: Object.values(gameConfig.social).filter(Boolean),
-    contactPoint: {
-      '@type': 'ContactPoint',
-      contactType: 'Customer Support',
-      availableLanguage: 'en',
-    },
-  };
-
-  const websiteSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: siteName,
-    url: siteUrl,
-    description: seoDescription,
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: {
-        '@type': 'EntryPoint',
-        urlTemplate: `${siteUrl}/search?q={search_term_string}`,
-      },
-      'query-input': 'required name=search_term_string',
-    },
-  };
-
+  // Build structured data schemas.
+  //
+  // Organization, WebSite, Service, and FAQPage are emitted statically in
+  // index.html so non-JS crawlers and AI engines see them immediately. Emitting
+  // them again here would create duplicate entities in Google's rich results
+  // report. Only breadcrumbs (which vary per page) and an optional Product
+  // schema (per-page use case) are injected from React.
   const breadcrumbSchema = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -146,41 +118,6 @@ const SEO = ({
       },
     }),
   } : null;
-
-  // Always emit FAQPage schema when gameConfig.faq exists — FAQ rich results drive CTR
-  // on queries like "how much RAM Palworld server", "how many players Palworld", etc.
-  const faqSchema = (gameConfig.faq && gameConfig.faq.length > 0) ? {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: gameConfig.faq.map(item => ({
-      '@type': 'Question',
-      name: item.question,
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: item.answer,
-      },
-    })),
-  } : null;
-
-  // Service schema — helps with "Palworld server hosting" / "rent Palworld server" queries
-  const serviceSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'Service',
-    serviceType: `${game} Dedicated Server Hosting`,
-    provider: {
-      '@type': 'Organization',
-      name: 'InFlux Technologies',
-      url: 'https://runonflux.io',
-    },
-    areaServed: 'Worldwide',
-    url: siteUrl,
-    description: seoDescription,
-    offers: {
-      '@type': 'Offer',
-      price: '3.99',
-      priceCurrency: 'USD',
-    },
-  };
 
   return (
     <Helmet>
@@ -241,27 +178,16 @@ const SEO = ({
       <link rel="dns-prefetch" href="https://api.runonflux.io" />
       <link rel="dns-prefetch" href="https://jetpackbridge.runonflux.io" />
 
-      {/* Structured Data (JSON-LD) */}
-      <script type="application/ld+json">
-        {JSON.stringify(organizationSchema)}
-      </script>
-      <script type="application/ld+json">
-        {JSON.stringify(websiteSchema)}
-      </script>
+      {/* Structured Data (JSON-LD).
+          Organization, WebSite, Service, and FAQPage live in index.html so
+          non-JS crawlers see them. Only breadcrumbs and an optional Product
+          schema are injected from React to avoid duplicate entities. */}
       <script type="application/ld+json">
         {JSON.stringify(breadcrumbSchema)}
-      </script>
-      <script type="application/ld+json">
-        {JSON.stringify(serviceSchema)}
       </script>
       {productSchema && (
         <script type="application/ld+json">
           {JSON.stringify(productSchema)}
-        </script>
-      )}
-      {faqSchema && (
-        <script type="application/ld+json">
-          {JSON.stringify(faqSchema)}
         </script>
       )}
     </Helmet>
