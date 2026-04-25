@@ -68,49 +68,10 @@
       }
     }
     </script>
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "How much does Palworld server hosting cost?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Palworld server hosting on Flux starts at $3.99/month for a 5GB RAM plan suitable for small groups. 7GB and 10GB plans are available for medium and large groups of up to 32 players. New users get the first month free." }
-        },
-        {
-          "@type": "Question",
-          "name": "How many players can a Palworld dedicated server host?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A Palworld dedicated server supports up to 32 players simultaneously. Choose 5GB RAM for small groups, 7GB for medium groups, or 10GB for full 32-player sessions." }
-        },
-        {
-          "@type": "Question",
-          "name": "How much RAM do I need for a Palworld server?",
-          "acceptedAnswer": { "@type": "Answer", "text": "A Palworld server needs at least 5GB RAM for small groups (under 8 players), 7GB for medium groups, and 10GB or more for the full 32-player cap. Base building and captured Pals increase memory usage over time." }
-        },
-        {
-          "@type": "Question",
-          "name": "How do I host my own Palworld dedicated server?",
-          "acceptedAnswer": { "@type": "Answer", "text": "The fastest way is to rent a pre-configured Palworld dedicated server. On Flux, deployment takes under 30 seconds — choose a plan, pick a server location, and the server starts automatically. No manual installation, port forwarding, or Linux setup is required." }
-        },
-        {
-          "@type": "Question",
-          "name": "Is DDoS protection included with Palworld server hosting?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Every Palworld server hosted on Flux includes enterprise-grade DDoS protection at no extra cost, keeping your server online and your players connected during attacks." }
-        },
-        {
-          "@type": "Question",
-          "name": "Where are the Palworld servers located?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Flux operates decentralized nodes in 50+ countries across North America, Europe, Asia, South America, Africa, and Oceania. You can choose the closest region at deploy time to minimize latency for your players." }
-        },
-        {
-          "@type": "Question",
-          "name": "Can I transfer my existing Palworld save to the hosted server?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Upload your existing Palworld world files through the built-in file manager and the dedicated server will continue from your saved world." }
-        }
-      ]
-    }
-    </script>
+    <!-- FAQPage schema is emitted from React on the home page (FAQ component)
+         instead of statically here, because index.html is served on every SPA
+         route — duplicating the FAQPage entity across /dashboard, /support, etc.
+         Google flags that as a "duplicate field FAQPage" warning. -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",

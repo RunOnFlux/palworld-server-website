@@ -152,7 +152,13 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
     );
   }
 
-  // Generate structured data for search engines
+  // Generate structured data for search engines.
+  // Each Product needs an absolute `image` URL — Google flags it as a critical
+  // missing field for merchant listing rich results otherwise.
+  const siteUrl = import.meta.env.VITE_APP_URL || 'https://palworld.runonflux.com';
+  const productImage = `${siteUrl}${gameConfig.assets.banner}`;
+  const offerUrl = `${siteUrl}/#pricing`;
+
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
@@ -163,11 +169,15 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
         '@type': 'Product',
         name: plan.name,
         description: plan.description,
+        image: productImage,
+        sku: plan.id || `palworld-plan-${index + 1}`,
+        brand: { '@type': 'Brand', name: gameConfig.serverName },
         offers: plan.price ? {
           '@type': 'Offer',
           price: (plan.price.monthly / 100).toFixed(2),
           priceCurrency: 'USD',
           availability: 'https://schema.org/InStock',
+          url: offerUrl,
           description: 'First month free for new users',
           priceSpecification: {
             '@type': 'UnitPriceSpecification',
