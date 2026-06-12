@@ -866,7 +866,7 @@ Powered by [Flux](https://runonflux.io)
 
 - **Documentation:** This README
 - **Issues:** [GitHub Issues](https://github.com/your-repo/issues)
-- **Flux Discord:** [Join Community](https://discord.gg/flux)
+- **Flux Discord:** [Join Community](https://discord.com/invite/runonflux)
 
 ---
 

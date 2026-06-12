@@ -108,7 +108,7 @@ export const gameConfig = {
 
   // Social Links
   social: {
-    discord: "https://discord.gg/flux",
+    discord: "https://discord.com/invite/runonflux",
     twitter: "@RunOnFlux",
     twitterUrl: "https://twitter.com/RunOnFlux",
     github: "https://github.com/RunOnFlux",

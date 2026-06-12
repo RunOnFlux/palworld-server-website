@@ -495,7 +495,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         compose: compose,
         instances,
         expire: 88000, // 1 month
-        contacts: ['https://discord.gg/flux'],
+        contacts: ['https://discord.com/invite/runonflux'],
         geolocation: [],
         nodes: [],
         staticip: false,
