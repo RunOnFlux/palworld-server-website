@@ -11,11 +11,14 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pagesContent, renderPageBodyHtml, buildPageSchemas, buildFaqSchema } from '../src/config/pagesContent.js';
+import { gameConfig } from '../src/config/gameConfig.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = join(__dirname, '..', 'dist');
 const indexPath = join(distDir, 'index.html');
 const SITE_URL = 'https://palworld.runonflux.com';
+const INDEXABLE_ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
 
 if (!existsSync(indexPath)) {
   console.error('[prerender] dist/index.html not found - did `vite build` run?');
@@ -26,7 +29,7 @@ const baseHtml = await readFile(indexPath, 'utf8');
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-function buildHtml({ title, description, canonical, robots, noscriptBody }) {
+function buildHtml({ title, description, canonical, robots, noscriptBody, mainBody, schemas }) {
   let html = baseHtml;
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`);
   html = html.replace(/<meta name="title"[^>]*>/i, `<meta name="title" content="${esc(title)}" />`);
@@ -42,7 +45,28 @@ function buildHtml({ title, description, canonical, robots, noscriptBody }) {
   if (noscriptBody) {
     html = html.replace(/<noscript>[\s\S]*?<\/noscript>/i, `<noscript>${noscriptBody}</noscript>`);
   }
+  // Replace the #root static fallback with page-specific content so non-JS
+  // crawlers see this route's real content (React still hydrates over it).
+  if (mainBody) {
+    html = html.replace(
+      /<div id="root">[\s\S]*?<\/div>\s*<noscript>/i,
+      `<div id="root">${mainBody}</div>\n    <noscript>`
+    );
+  }
+  // Inject per-page JSON-LD (BreadcrumbList, HowTo, FAQPage, Product) so
+  // structured data is present without JS.
+  if (schemas && schemas.length) {
+    const scripts = schemas
+      .map((s) => `<script type="application/ld+json">\n    ${JSON.stringify(s)}\n    </script>`)
+      .join('\n    ');
+    html = html.replace(/<\/head>/i, `    ${scripts}\n  </head>`);
+  }
   return html;
+}
+
+// Wrap page HTML in the shared fallback styling so the static content is legible.
+function fallbackMain(bodyHtml) {
+  return `<style>${fallbackStyle}</style><main class="seo-fallback">${bodyHtml}</main>`;
 }
 
 const fallbackStyle = `
@@ -88,11 +112,41 @@ const routes = [
   },
 ];
 
-for (const route of routes) {
+// Content/guide pages — real long-form content sourced from pagesContent.js so
+// the static HTML and the React render never drift apart. These are indexable.
+const contentRoutes = Object.entries(pagesContent).map(([key, page]) => ({
+  slug: `${key}/index.html`,
+  title: page.metaTitle || page.title,
+  description: page.description,
+  canonical: `${SITE_URL}${page.slug}`,
+  robots: INDEXABLE_ROBOTS,
+  mainBody: fallbackMain(renderPageBodyHtml(page)),
+  schemas: buildPageSchemas(page),
+}));
+
+const allRoutes = [...routes, ...contentRoutes];
+
+for (const route of allRoutes) {
   const outPath = join(distDir, route.slug);
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, buildHtml(route), 'utf8');
   console.log(`[prerender] wrote ${route.slug}`);
 }
 
-console.log(`[prerender] done - ${routes.length} route shells generated`);
+// =====================================================================
+// Homepage: inject a STATIC FAQPage JSON-LD from gameConfig.faq so it is
+// present for non-JS crawlers and appears exactly once. FAQ.jsx no longer
+// emits this schema. Built from baseHtml so the utility/noindex shells above
+// (which were also built from baseHtml) never receive the homepage FAQPage.
+// =====================================================================
+{
+  const homeFaqSchema = buildFaqSchema({ faq: gameConfig.faq });
+  const homeHtml = baseHtml.replace(
+    /<\/head>/i,
+    `    <script type="application/ld+json">${JSON.stringify(homeFaqSchema)}</script>\n  </head>`,
+  );
+  await writeFile(indexPath, homeHtml, 'utf8');
+  console.log(`[prerender] injected static FAQPage (${gameConfig.faq.length} questions) into index.html`);
+}
+
+console.log(`[prerender] done - ${allRoutes.length} route shells generated`);

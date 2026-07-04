@@ -19,6 +19,8 @@ const SEO = ({
   noIndex = false,
   article = null,
   product = null,
+  breadcrumbs = null,
+  schemas = null,
 }) => {
   const siteUrl = import.meta.env.VITE_APP_URL || 'http://localhost:5173';
   const siteName = gameConfig.serverName;
@@ -81,20 +83,27 @@ const SEO = ({
   const breadcrumbSchema = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Home',
-        item: siteUrl,
-      },
-      ...(url && url !== '/' ? [{
-        '@type': 'ListItem',
-        position: 2,
-        name: title,
-        item: seoUrl,
-      }] : []),
-    ],
+    itemListElement: breadcrumbs && breadcrumbs.length
+      ? breadcrumbs.map((b, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          name: b.name,
+          item: `${siteUrl}${b.url === '/' ? '' : b.url}`,
+        }))
+      : [
+          {
+            '@type': 'ListItem',
+            position: 1,
+            name: 'Home',
+            item: siteUrl,
+          },
+          ...(url && url !== '/' ? [{
+            '@type': 'ListItem',
+            position: 2,
+            name: title,
+            item: seoUrl,
+          }] : []),
+        ],
   };
 
   const productSchema = product ? {
@@ -190,6 +199,12 @@ const SEO = ({
           {JSON.stringify(productSchema)}
         </script>
       )}
+      {/* Extra per-page schemas (HowTo, FAQPage, Product/AggregateOffer) */}
+      {schemas && schemas.map((schema, i) => (
+        <script type="application/ld+json" key={i}>
+          {JSON.stringify(schema)}
+        </script>
+      ))}
     </Helmet>
   );
 };
@@ -215,6 +230,11 @@ SEO.propTypes = {
     rating: PropTypes.number,
     reviewCount: PropTypes.number,
   }),
+  breadcrumbs: PropTypes.arrayOf(PropTypes.shape({
+    name: PropTypes.string,
+    url: PropTypes.string,
+  })),
+  schemas: PropTypes.arrayOf(PropTypes.object),
 };
 
 export default SEO;

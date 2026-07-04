@@ -169,6 +169,34 @@ export const gameConfig = {
     {
       question: "Do you offer automatic backups for Palworld servers?",
       answer: "Yes. Full server backups can be created on demand and restored with one click from the dashboard, including uploading a backup archive or restoring from a remote URL."
+    },
+    {
+      question: "What are the system requirements for a Palworld dedicated server?",
+      answer: "A Palworld dedicated server needs at least 5GB of RAM for small groups, 7GB for medium groups, and 10GB or more for a full 32-player server, plus a modern CPU with good single-core performance. It also needs UDP port 8211 open for game traffic. On Flux the resources and ports are provisioned for you at deploy time."
+    },
+    {
+      question: "Does Palworld support crossplay on a dedicated server?",
+      answer: "Palworld is available on Steam and Xbox/Game Pass, and a dedicated server can be configured to allow crossplay between them. The server owner must enable the appropriate crossplay settings, and the connection experience differs by platform — Steam players typically join by IP and port while Xbox/Game Pass players use the in-game browser and invites. If crossplay is not enabled, players on different stores may not see the same server."
+    },
+    {
+      question: "Why is my Palworld dedicated server not showing up or not connectable?",
+      answer: "The most common cause is the game port. Palworld uses UDP port 8211, and it must be open and reachable for players to see and join the server. Also confirm the server is online, that everyone is on the same game version, and that crossplay is enabled if players are on different platforms. Flux-hosted servers have the port open by default and stay online 24/7."
+    },
+    {
+      question: "Do I need a dedicated server to play Palworld co-op with friends?",
+      answer: "For up to 4 players you can host co-op directly from the game, but it only runs while the host is in the game. For up to 32 players, a persistent world, or a server that stays online when you are offline, you need a dedicated server."
+    },
+    {
+      question: "How do I join my friend's Palworld server?",
+      answer: "Choose Join Multiplayer Game (Dedicated Server), enter your friend's server address in the IP:Port field (for example 203.0.113.10:8211, where 8211 is the default game port), and click Connect. Enter the password if one is set. Public servers can also be found by name in the community server browser."
+    },
+    {
+      question: "Can I run mods on a Palworld dedicated server?",
+      answer: "Palworld's dedicated server supports configuration changes through PalWorldSettings.ini out of the box, and because you have full file access on Flux you can add server-side modifications where the game and community tooling allow. All players generally need matching files for client-side mods to work."
+    },
+    {
+      question: "Which ports does a Palworld dedicated server use?",
+      answer: "A Palworld dedicated server uses UDP port 8211 for game traffic (required for players to connect) and TCP port 8212 for the optional REST admin API used to manage the server."
     }
   ]
 };

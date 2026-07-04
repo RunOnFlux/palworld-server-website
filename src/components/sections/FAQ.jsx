@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
-import { Helmet } from 'react-helmet-async';
 import { gameConfig } from '../../config/gameConfig';
 
 /**
  * FAQ Section with Accordion
  * Accessible with keyboard navigation
+ *
+ * The FAQPage JSON-LD is emitted STATICALLY into the built homepage HTML by
+ * scripts/prerender.mjs (from gameConfig.faq), so it is present for non-JS
+ * crawlers and appears exactly once. This component therefore renders only the
+ * visible accordion and does not emit schema itself.
  */
 const FAQ = () => {
   const [openIndex, setOpenIndex] = useState(null);
@@ -15,25 +19,8 @@ const FAQ = () => {
     setOpenIndex(openIndex === index ? null : index);
   };
 
-  // Emit FAQPage JSON-LD only on the page that actually renders the FAQ.
-  // Keeping it in index.html duplicated the schema across every SPA route.
-  const faqSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: gameConfig.faq.map((item) => ({
-      '@type': 'Question',
-      name: item.question,
-      acceptedAnswer: { '@type': 'Answer', text: item.answer },
-    })),
-  };
-
   return (
     <section id="faq" className="relative py-6 bg-background-alt border-t border-border/20 overflow-hidden">
-      <Helmet>
-        <script type="application/ld+json">
-          {JSON.stringify(faqSchema)}
-        </script>
-      </Helmet>
       {/* Decorative background */}
       <div
         className="absolute inset-0 opacity-5 pointer-events-none"

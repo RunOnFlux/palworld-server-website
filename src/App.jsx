@@ -12,6 +12,11 @@ const Success = lazy(() => import('./pages/Success'));
 const Cancel = lazy(() => import('./pages/Cancel'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const Support = lazy(() => import('./pages/Support'));
+const SetupGuide = lazy(() => import('./pages/SetupGuide'));
+const ServerRequirements = lazy(() => import('./pages/ServerRequirements'));
+const Pricing = lazy(() => import('./pages/Pricing'));
+const GuideJoinServer = lazy(() => import('./pages/GuideJoinServer'));
+const GuideServerSettings = lazy(() => import('./pages/GuideServerSettings'));
 
 // Loading component
 const PageLoader = () => (
@@ -95,6 +100,11 @@ function App() {
                   <Route path="/success" element={<Success />} />
                   <Route path="/cancel" element={<Cancel />} />
                   <Route path="/support" element={<Support />} />
+                  <Route path="/setup-guide" element={<SetupGuide />} />
+                  <Route path="/server-requirements" element={<ServerRequirements />} />
+                  <Route path="/pricing" element={<Pricing />} />
+                  <Route path="/guides/join-server" element={<GuideJoinServer />} />
+                  <Route path="/guides/server-settings" element={<GuideServerSettings />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>

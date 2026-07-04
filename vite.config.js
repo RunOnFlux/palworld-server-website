@@ -12,6 +12,16 @@ export default defineConfig(() => {
         // Hardcoded so the sitemap <loc> (and the plugin-generated robots.txt
         // Sitemap URL) is never the localhost dev proxy target from .env.
         hostname: 'https://palworld.runonflux.com',
+        // SPA routes the plugin can't discover from the single index.html entry.
+        // These are the indexable content/guide pages plus /support.
+        dynamicRoutes: [
+          '/pricing',
+          '/setup-guide',
+          '/server-requirements',
+          '/guides/join-server',
+          '/guides/server-settings',
+          '/support',
+        ],
         exclude: [
           '/dashboard',
           '/success',

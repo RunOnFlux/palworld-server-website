@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LoginModal } from '../components/auth';
 import { SEO } from '../components/common';
-import { Hero, Features, PricingPlans, ServerLocations, FAQ } from '../components/sections';
+import { Hero, Features, PricingPlans, ServerLocations, HomeContent, FAQ } from '../components/sections';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import DeploymentDialog from '../components/dashboard/DeploymentDialog';
@@ -72,6 +72,9 @@ const Home = () => {
 
       {/* Server Locations Section */}
       <ServerLocations />
+
+      {/* Long-form content + internal links */}
+      <HomeContent />
 
       {/* FAQ Section */}
       <FAQ />

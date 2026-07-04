@@ -272,6 +272,11 @@ if (process.env.NODE_ENV === 'production') {
     '/support': 'support/index.html',
     '/success': 'success/index.html',
     '/cancel': 'cancel/index.html',
+    '/setup-guide': 'setup-guide/index.html',
+    '/server-requirements': 'server-requirements/index.html',
+    '/pricing': 'pricing/index.html',
+    '/guides/join-server': 'guides/join-server/index.html',
+    '/guides/server-settings': 'guides/server-settings/index.html',
   };
 
   app.get('*path', (req, res) => {
