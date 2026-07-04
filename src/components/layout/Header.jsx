@@ -124,8 +124,10 @@ const Header = ({ onLoginClick }) => {
   const goToSupport = useCallback(() => {
     setUserMenuOpen(false);
     setMobileMenuOpen(false);
-    navigate('/support');
-  }, [navigate]);
+    // External Flux support-ticket portal (replaces the in-app /support page
+    // for public navigation); open in a new tab.
+    window.open('https://support.runonflux.com', '_blank', 'noopener,noreferrer');
+  }, []);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border/20">

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { BookOpen, Server, Users, Settings, Tag, GitCompare, ArrowRight } from 'lucide-react';
+import { BookOpen, Server, Users, Settings, Tag, GitCompare, LifeBuoy, ArrowRight } from 'lucide-react';
 
 const guides = [
   { to: '/setup-guide', icon: BookOpen, label: 'How to make a Palworld dedicated server', desc: 'Full 2026 setup walkthrough — SteamCMD vs one-click deploy.' },
@@ -9,6 +9,14 @@ const guides = [
   { to: '/guides/server-settings', icon: Settings, label: 'Best Palworld server settings', desc: 'Tune XP, gather, damage and PvP in PalWorldSettings.ini.' },
   { to: '/pricing', icon: Tag, label: 'Palworld server hosting pricing', desc: 'Compare 5GB, 7GB and 10GB plans by player count.' },
   { to: '/decentralized-palworld-hosting', icon: GitCompare, label: 'Why host on the Flux decentralized cloud →', desc: 'No single point of failure, no lock-in, dedicated resources, DDoS, 99.9% uptime and 32 players.' },
+  {
+    // External: the Flux support-ticket portal (the in-app /support page
+    // requires login and bounces anonymous visitors to the homepage).
+    href: 'https://support.runonflux.com',
+    icon: LifeBuoy,
+    label: 'Support & help center',
+    desc: 'Open a support ticket — our team will get back to you by email.',
+  },
 ];
 
 /**
@@ -36,16 +44,27 @@ const GuideLinks = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {guides.map((guide, i) => (
+          {guides.map((guide, i) => {
+            // External entries (href) render a plain anchor in a new tab;
+            // internal ones use the router Link.
+            const CardTag = guide.href ? 'a' : Link;
+            const cardProps = guide.href
+              ? { href: guide.href, target: '_blank', rel: 'noopener noreferrer' }
+              : { to: guide.to };
+
+            return (
             <motion.div
-              key={guide.to}
+              key={guide.href || guide.to}
+              // With an odd number of cards, stretch the last one across both
+              // columns so the grid has no orphan cell.
+              className={guides.length % 2 === 1 && i === guides.length - 1 ? 'sm:col-span-2' : undefined}
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.06 }}
             >
-              <Link
-                to={guide.to}
+              <CardTag
+                {...cardProps}
                 className="group flex items-start gap-4 h-full px-5 py-4 rounded-xl border border-border/40 bg-surface/30 hover:bg-surface/60 hover:border-primary/40 transition-colors"
               >
                 <span className="flex items-center justify-center w-11 h-11 rounded-lg bg-primary/15 border border-primary/30 flex-shrink-0">
@@ -58,9 +77,10 @@ const GuideLinks = () => {
                   </span>
                   <span className="block text-sm text-text-secondary mt-1">{guide.desc}</span>
                 </span>
-              </Link>
+              </CardTag>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

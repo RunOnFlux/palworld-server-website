@@ -106,7 +106,7 @@ const routes = [
     description: 'Get help with your Palworld server on Flux. Submit a support ticket for billing, deployment, or server issues and our team will respond by email.',
     canonical: `${SITE_URL}/support`,
     robots: 'noindex, follow',
-    noscriptBody: `<style>${fallbackStyle}</style><div class="seo-fallback"><h1>Palworld on Flux - Support</h1><p>Need help with your Palworld server? Submit a ticket via the support form (requires JavaScript). For community help, join the <a href="https://discord.com/invite/runonflux">Flux Discord</a>.</p></div>`,
+    noscriptBody: `<style>${fallbackStyle}</style><div class="seo-fallback"><h1>Palworld on Flux - Support</h1><p>Need help with your Palworld server? Open a ticket at the <a href="https://support.runonflux.com" target="_blank" rel="noopener noreferrer">Flux support center</a> and our team will respond by email. For community help, join the <a href="https://discord.com/invite/runonflux">Flux Discord</a>.</p></div>`,
   },
   {
     slug: 'success/index.html',
