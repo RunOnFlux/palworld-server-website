@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Menu, X, User, LogOut, LayoutDashboard, ChevronDown, CircleDollarSign, HelpCircle, CreditCard, Globe, TicketCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -132,7 +132,7 @@ const Header = ({ onLoginClick }) => {
       <nav className="w-full px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <div className="flex items-center gap-1 cursor-pointer ml-1 sm:ml-2" onClick={scrollToTop}>
+          <Link to="/" className="flex items-center gap-1 cursor-pointer ml-1 sm:ml-2" onClick={scrollToTop}>
             <img
               src={gameConfig.assets.logo}
               alt={gameConfig.serverName}
@@ -144,7 +144,7 @@ const Header = ({ onLoginClick }) => {
             >
               {gameConfig.serverName}
             </span>
-          </div>
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center gap-3 mr-1 sm:mr-2">
