@@ -64,9 +64,23 @@ function buildHtml({ title, description, canonical, robots, noscriptBody, mainBo
   return html;
 }
 
+// Cross-links to sibling Flux hosting products (the footer "Explore other Flux
+// hosting" block) rendered as static HTML so non-JS crawlers see the same
+// followed, keyword-anchor links the React Footer renders. Single source of
+// truth is gameConfig.ecosystemLinks.
+function ecosystemFooterHtml() {
+  const items = gameConfig.ecosystemLinks
+    .map(
+      (l) =>
+        `<li><a href="${esc(l.href)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}</a></li>`,
+    )
+    .join('');
+  return `<footer class="seo-fallback" aria-label="Explore other Flux hosting"><h2>Explore other Flux hosting</h2><ul>${items}</ul></footer>`;
+}
+
 // Wrap page HTML in the shared fallback styling so the static content is legible.
 function fallbackMain(bodyHtml) {
-  return `<style>${fallbackStyle}</style><main class="seo-fallback">${bodyHtml}</main>`;
+  return `<style>${fallbackStyle}</style><main class="seo-fallback">${bodyHtml}</main>${ecosystemFooterHtml()}`;
 }
 
 const fallbackStyle = `
@@ -141,12 +155,19 @@ for (const route of allRoutes) {
 // =====================================================================
 {
   const homeFaqSchema = buildFaqSchema({ faq: gameConfig.faq });
-  const homeHtml = baseHtml.replace(
+  let homeHtml = baseHtml.replace(
     /<\/head>/i,
     `    <script type="application/ld+json">${JSON.stringify(homeFaqSchema)}</script>\n  </head>`,
   );
+  // Inject the "Explore other Flux hosting" cross-links into the homepage's
+  // static #root fallback so the followed sibling/cloud links ship for non-JS
+  // crawlers too (React hydrates over #root for JS clients).
+  homeHtml = homeHtml.replace(
+    /<\/main>\s*<\/div>\s*<noscript>/i,
+    `</main>${ecosystemFooterHtml()}\n    </div>\n    <noscript>`,
+  );
   await writeFile(indexPath, homeHtml, 'utf8');
-  console.log(`[prerender] injected static FAQPage (${gameConfig.faq.length} questions) into index.html`);
+  console.log(`[prerender] injected static FAQPage (${gameConfig.faq.length} questions) + ecosystem footer into index.html`);
 }
 
 console.log(`[prerender] done - ${allRoutes.length} route shells generated`);

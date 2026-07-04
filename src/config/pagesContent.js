@@ -189,7 +189,7 @@ export const pagesContent = {
       highPrice: '19.99',
       offerCount: '3',
     },
-    related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server'],
+    related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server', 'palworld-server-hosting-comparison'],
   },
 
   'guides/join-server': {
@@ -302,7 +302,169 @@ export const pagesContent = {
     ],
     related: ['setup-guide', 'join-server', 'server-requirements', 'pricing'],
   },
+
+  'palworld-server-hosting-comparison': {
+    slug: '/palworld-server-hosting-comparison',
+    title: 'Palworld Server Hosting Comparison: Flux vs GPORTAL, Shockbyte & Nitrado',
+    metaTitle: 'Palworld Server Hosting Comparison — Flux vs GPORTAL, Shockbyte & Nitrado (2026)',
+    description:
+      'An honest Palworld server hosting comparison: Flux vs GPORTAL, Shockbyte and Nitrado. Compare 32-player support, crossplay, mods and config access, price, DDoS protection and lock-in before you rent a Palworld server.',
+    h1: 'Palworld Server Hosting Comparison: Flux vs GPORTAL, Shockbyte & Nitrado',
+    lead:
+      'Choosing where to rent a Palworld server means weighing price against player caps, crossplay, mod and config access, DDoS protection and how locked-in you are. This is an honest, side-by-side comparison of Palworld hosting on the Flux decentralized cloud versus three of the biggest names in the space — GPORTAL, Shockbyte and Nitrado — so you can pick the right host for your group.',
+    breadcrumbs: [
+      { name: 'Home', url: '/' },
+      { name: 'Palworld Hosting Comparison', url: '/palworld-server-hosting-comparison' },
+    ],
+    body: [
+      { type: 'h2', text: 'The short version' },
+      { type: 'p', text: 'GPORTAL, Shockbyte and Nitrado are established, feature-rich control-panel hosts that support dozens of games and have years of brand trust behind them. Flux takes a different approach: a purpose-built Palworld deployment on a decentralized cloud, with the ports and DDoS protection pre-configured, a one-click 30-second deploy, full file and config access, and month-to-month billing with no lock-in — often at a lower entry price. If you want a dedicated Palworld host with no long-term commitment and full control, Flux is a strong fit. If you want a single account to hop between many different games with a heavily productized panel, the traditional hosts have the edge in breadth.' },
+
+      { type: 'h2', text: 'Palworld hosting comparison table' },
+      { type: 'p', text: 'Every provider here can run a Palworld dedicated server. The differences are in the details — player caps, how much control you get over configuration and mods, pricing model, and whether you are tied into a contract. Prices below are indicative entry points and change over time; always confirm current pricing on each provider before you buy.' },
+      { type: 'table', head: ['Feature', 'Flux', 'GPORTAL', 'Shockbyte', 'Nitrado'], rows: [
+        ['Max players (32)', 'Yes — full 32 on the top tier', 'Yes', 'Yes', 'Yes'],
+        ['Crossplay (Steam + Xbox/Game Pass)', 'Yes — configurable in PalWorldSettings.ini', 'Yes', 'Yes', 'Yes'],
+        ['Mods & full config access', 'Full file manager + PalWorldSettings.ini editing', 'Config panel + file access', 'Config panel + file access', 'Config panel (more curated)'],
+        ['Starting price', 'from $3.99/mo (first month free)', 'Slot / RAM based, mid-range', 'Low entry, plan tiers', 'Slot based, premium tiers'],
+        ['DDoS protection', 'Included on every plan', 'Included', 'Included', 'Included'],
+        ['Decentralized / no lock-in', 'Yes — distributed network, month-to-month', 'No — contract / prepaid terms', 'No — monthly plans', 'No — prepaid/hourly credits'],
+        ['Deploy time', '~30 seconds', 'Minutes', 'Minutes', 'Minutes'],
+        ['Payments', 'Card, Apple/Google Pay, crypto (FLUX)', 'Card / PayPal', 'Card / PayPal', 'Card / PayPal / prepaid credit'],
+      ] },
+      { type: 'p', text: 'The headline features are similar across the board — that is expected, because every serious host has to support Palworld\'s 32-player cap, crossplay and the same UDP 8211 game port. Where the hosts genuinely diverge is pricing model, degree of control, and lock-in.' },
+
+      { type: 'h2', text: 'Flux — decentralized, no lock-in, full control' },
+      { type: 'p', text: 'Flux hosts your Palworld server on a distributed network of independent nodes rather than a single data center. The Palworld image ships pre-built with the correct SteamCMD server, ports already exposed, and DDoS protection on by default, so a server is live in about 30 seconds. You get a full web file manager, direct PalWorldSettings.ini editing, a console, and on-demand backups.' },
+      { type: 'h3', text: 'Pros' },
+      { type: 'ul', items: [
+        'Low entry price (from $3.99/mo) with the first month free for new users.',
+        'Month-to-month billing with no contract and no lock-in — cancel any time.',
+        'Full control: file manager, config editing, console and backups on every plan.',
+        'Decentralized network with no single point of failure and DDoS protection included.',
+        'Crypto payment (FLUX) alongside card, Apple Pay and Google Pay.',
+      ] },
+      { type: 'h3', text: 'Cons' },
+      { type: 'ul', items: [
+        'Focused on a curated set of games rather than the hundreds some panels list.',
+        'A newer brand in game hosting than GPORTAL, Shockbyte or Nitrado.',
+      ] },
+
+      { type: 'h2', text: 'GPORTAL' },
+      { type: 'p', text: 'GPORTAL is a large, well-known host with a polished control panel and strong global coverage. It supports a wide catalogue of games and has a reputation for solid hardware and an easy-to-use interface for Palworld, including a dedicated config editor.' },
+      { type: 'h3', text: 'Pros' },
+      { type: 'ul', items: [
+        'Mature, feature-rich control panel with a Palworld-specific settings UI.',
+        'Broad global data-center presence and strong brand trust.',
+        'Good documentation and a large existing user base.',
+      ] },
+      { type: 'h3', text: 'Cons' },
+      { type: 'ul', items: [
+        'Pricing skews mid-to-premium and is typically term-based rather than truly month-to-month.',
+        'Slot/RAM-based pricing can make a full 32-player server pricier than a flat RAM tier.',
+        'Centralized data centers — a single-region outage affects that region\'s servers.',
+      ] },
+
+      { type: 'h2', text: 'Shockbyte' },
+      { type: 'p', text: 'Shockbyte is popular for its low entry pricing and is best known in the Minecraft world, with Palworld among its supported games. It targets budget-conscious players with straightforward monthly plans.' },
+      { type: 'h3', text: 'Pros' },
+      { type: 'ul', items: [
+        'Competitive low starting price and simple plan tiers.',
+        'Established brand with a large support knowledge base.',
+        'Straightforward multi-game account if you also run other servers.',
+      ] },
+      { type: 'h3', text: 'Cons' },
+      { type: 'ul', items: [
+        'The cheapest tiers can be under-resourced for a busy 32-player Palworld world — you often need to size up.',
+        'Support wait times can grow at peak, a common complaint for high-volume budget hosts.',
+        'Centralized hosting with the usual single-data-center failure profile.',
+      ] },
+
+      { type: 'h2', text: 'Nitrado' },
+      { type: 'p', text: 'Nitrado is a premium, widely trusted host with a very large game catalogue and a highly productized panel. It is a common default for console-adjacent communities and offers a polished managed experience for Palworld.' },
+      { type: 'h3', text: 'Pros' },
+      { type: 'ul', items: [
+        'Very mature platform with an enormous supported-game list and strong brand trust.',
+        'Prepaid/credit model lets you pause and switch games easily.',
+        'Polished managed experience with lots of guardrails for less technical users.',
+      ] },
+      { type: 'h3', text: 'Cons' },
+      { type: 'ul', items: [
+        'Premium pricing — typically the most expensive of the four for equivalent resources.',
+        'The curated panel can mean less low-level file/config freedom than a raw file manager.',
+        'Prepaid credit model is less predictable than a flat monthly price for a persistent server.',
+      ] },
+
+      { type: 'h2', text: 'Which Palworld host should you choose?' },
+      { type: 'p', text: 'If your priority is the lowest commitment and full control — a persistent 32-player world, direct config and file access, month-to-month billing and DDoS protection without a contract — Flux is the most flexible option, and the first month is free so you can test it risk-free. If you want the broadest game catalogue and a heavily managed panel and do not mind paying a premium, Nitrado is the safe pick. GPORTAL sits in the middle with a strong Palworld-specific UI, and Shockbyte is worth a look purely on entry price if you are comfortable sizing up for a full server.' },
+      { type: 'p', text: 'Whichever you choose, the mechanics of running the server are the same: open UDP 8211, tune PalWorldSettings.ini for your group, and confirm crossplay if you mix Steam and Xbox/Game Pass players. Our guides on how to make a Palworld dedicated server and the best Palworld server settings apply no matter where you host.' },
+      { type: 'cta', text: 'Rent a Palworld server on Flux — first month free →', href: '/#pricing' },
+    ],
+    faq: [
+      { question: 'Which is the best Palworld server hosting?', answer: 'It depends on your priority. Flux is best for low commitment, full control and month-to-month billing with the first month free. Nitrado suits players who want a premium managed panel and the widest game catalogue. GPORTAL offers a strong Palworld-specific config UI, and Shockbyte competes on entry price. All four support the full 32-player cap and crossplay.' },
+      { question: 'Is Flux cheaper than GPORTAL, Shockbyte or Nitrado for Palworld?', answer: 'Flux starts at $3.99/month with the first month free and flat RAM-based tiers, which is typically at or below the entry price of GPORTAL and Nitrado. Shockbyte also competes on low entry pricing, but its cheapest tiers often need sizing up for a full 32-player server. Always confirm current pricing with each provider.' },
+      { question: 'Do all Palworld hosts support 32 players and crossplay?', answer: 'Yes. Flux, GPORTAL, Shockbyte and Nitrado all support the 32-player dedicated-server cap and can be configured for Steam and Xbox/Game Pass crossplay. The server owner must enable crossplay in the configuration for it to work across platforms.' },
+      { question: 'What makes Flux Palworld hosting different?', answer: 'Flux runs on a decentralized network of independent nodes rather than a single data center, includes DDoS protection on every plan, deploys in about 30 seconds, gives you full file and config access, bills month-to-month with no lock-in, and accepts crypto (FLUX) alongside card payments.' },
+    ],
+    related: ['pricing', 'setup-guide', 'server-requirements', 'server-settings'],
+  },
 };
+
+// -------------------------------------------------------------------------
+// Reviews / ratings (AggregateRating + Review schema)
+// -------------------------------------------------------------------------
+//
+// Real reviews ONLY. This array is EMPTY by design and MUST stay empty until
+// you have genuine, verifiable customer reviews to show. Google's structured-
+// data policy prohibits fabricated or self-serving ratings, and emitting an
+// AggregateRating with no real reviews behind it risks a manual action.
+//
+// While this array is empty, NO AggregateRating and NO Review JSON-LD is
+// emitted anywhere (see buildProductSchema below). Nothing extra ships.
+//
+// TO POPULATE (only with real reviews you can substantiate):
+//   export const reviews = [
+//     {
+//       author: 'Jane D.',            // real reviewer name/handle
+//       rating: 5,                    // integer or decimal 1–5
+//       body: 'Deployed in seconds and the config editor is great.',
+//       datePublished: '2026-07-01',  // ISO date
+//     },
+//     // ...more real reviews
+//   ];
+// The AggregateRating (average + count) and individual Review nodes are then
+// attached automatically to the Product schema on the /pricing page.
+
+export const reviews = [];
+
+export function computeAggregateRating(list = reviews) {
+  if (!Array.isArray(list) || list.length === 0) return null;
+  const total = list.reduce((sum, r) => sum + Number(r.rating), 0);
+  const ratingValue = (total / list.length).toFixed(1);
+  return {
+    '@type': 'AggregateRating',
+    ratingValue,
+    reviewCount: String(list.length),
+    bestRating: '5',
+    worstRating: '1',
+  };
+}
+
+export function buildReviewNodes(list = reviews) {
+  if (!Array.isArray(list) || list.length === 0) return null;
+  return list.map((r) => ({
+    '@type': 'Review',
+    author: { '@type': 'Person', name: r.author },
+    reviewRating: {
+      '@type': 'Rating',
+      ratingValue: String(r.rating),
+      bestRating: '5',
+      worstRating: '1',
+    },
+    reviewBody: r.body,
+    ...(r.datePublished ? { datePublished: r.datePublished } : {}),
+  }));
+}
 
 // Human-readable labels for related-link anchors (keyword-rich).
 export const pageAnchors = {
@@ -313,6 +475,7 @@ export const pageAnchors = {
   'guides/server-settings': 'Best Palworld server settings',
   'join-server': "How to join a friend's Palworld server",
   'server-settings': 'Best Palworld server settings',
+  'palworld-server-hosting-comparison': 'Palworld server hosting comparison',
 };
 
 // Map short related keys to full page keys.
@@ -378,7 +541,7 @@ export function buildFaqSchema(page) {
 export function buildProductSchema(page) {
   if (!page.product) return null;
   const p = page.product;
-  return {
+  const schema = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: p.name,
@@ -395,6 +558,17 @@ export function buildProductSchema(page) {
       url: `${SITE}${page.slug}`,
     },
   };
+
+  // AggregateRating + Review are emitted ONLY when real reviews exist (the
+  // `reviews` array is empty by default, so nothing is added here until it is
+  // populated with genuine, verifiable reviews). This keeps the structured
+  // data policy-compliant — no fabricated ratings ever ship.
+  const aggregateRating = computeAggregateRating();
+  if (aggregateRating) schema.aggregateRating = aggregateRating;
+  const review = buildReviewNodes();
+  if (review) schema.review = review;
+
+  return schema;
 }
 
 export function buildPageSchemas(page) {

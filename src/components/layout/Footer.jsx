@@ -91,6 +91,30 @@ const Footer = () => {
           </a>
         </div>
 
+        {/* Cross-links: explore the other Flux hosting products (SEO) */}
+        <nav
+          aria-label="Explore other Flux hosting"
+          className="mb-6 pt-6 border-t border-border/30"
+        >
+          <h4 className="text-sm font-semibold text-text mb-3 text-center md:text-left">
+            Explore other Flux hosting
+          </h4>
+          <ul className="flex flex-wrap justify-center md:justify-start gap-x-5 gap-y-2">
+            {gameConfig.ecosystemLinks.map((link) => (
+              <li key={link.href}>
+                <a
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-text-secondary hover:text-primary text-sm transition-colors"
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
         {/* Bottom: Copyright & Cookie Settings */}
         <div className="text-center pt-4 border-t border-border/30">
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4">

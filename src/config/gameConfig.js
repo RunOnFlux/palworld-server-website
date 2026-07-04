@@ -115,6 +115,24 @@ export const gameConfig = {
     website: "https://runonflux.io"
   },
 
+  // Cross-links to sibling Flux hosting products + Flux Cloud, rendered in the
+  // footer ("Explore other Flux hosting") for both the React app and the static
+  // prerendered HTML (see Footer.jsx and scripts/prerender.mjs). Keyword-rich
+  // anchors, all followed (no nofollow), opened in a new tab. This is the SINGLE
+  // SOURCE OF TRUTH — add/remove a sibling here and both renderers pick it up.
+  ecosystemLinks: [
+    { href: "https://minecraft.runonflux.com", label: "Minecraft Server Hosting" },
+    { href: "https://enshrouded.runonflux.com", label: "Enshrouded Server Hosting" },
+    { href: "https://rust.runonflux.com", label: "Rust Server Hosting" },
+    { href: "https://windrose.runonflux.com", label: "Windrose Server Hosting" },
+    { href: "https://wordpress.runonflux.com", label: "Web3 WordPress Hosting" },
+    { href: "https://n8n.runonflux.com", label: "n8n Hosting" },
+    { href: "https://openclaw.runonflux.com", label: "OpenClaw AI Assistant Hosting" },
+    { href: "https://hermes.runonflux.com", label: "Hermes AI Agent Hosting" },
+    { href: "https://orbit.runonflux.com", label: "Orbit — Deploy with Git" },
+    { href: "https://cloud.runonflux.com", label: "Flux Cloud" },
+  ],
+
   // How to Join (for existing servers)
   connection: {
     ip: "palworld.runonflux.io",
