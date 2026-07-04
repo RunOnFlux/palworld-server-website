@@ -20,7 +20,7 @@ export default defineConfig(() => {
           '/server-requirements',
           '/guides/join-server',
           '/guides/server-settings',
-          '/palworld-server-hosting-comparison',
+          '/decentralized-palworld-hosting',
           '/support',
         ],
         exclude: [

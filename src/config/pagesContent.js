@@ -189,7 +189,7 @@ export const pagesContent = {
       highPrice: '19.99',
       offerCount: '3',
     },
-    related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server', 'palworld-server-hosting-comparison'],
+    related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server', 'decentralized-palworld-hosting'],
   },
 
   'guides/join-server': {
@@ -303,110 +303,71 @@ export const pagesContent = {
     related: ['setup-guide', 'join-server', 'server-requirements', 'pricing'],
   },
 
-  'palworld-server-hosting-comparison': {
-    slug: '/palworld-server-hosting-comparison',
-    title: 'Palworld Server Hosting Comparison: Flux vs GPORTAL, Shockbyte & Nitrado',
-    metaTitle: 'Palworld Server Hosting Comparison — Flux vs GPORTAL, Shockbyte & Nitrado (2026)',
+  'decentralized-palworld-hosting': {
+    slug: '/decentralized-palworld-hosting',
+    title: 'Why Host Your Palworld Server on a Decentralized Cloud',
+    metaTitle: 'Why Host Your Palworld Server on a Decentralized Cloud (Flux, 2026)',
     description:
-      'An honest Palworld server hosting comparison: Flux vs GPORTAL, Shockbyte and Nitrado. Compare 32-player support, crossplay, mods and config access, price, DDoS protection and lock-in before you rent a Palworld server.',
-    h1: 'Palworld Server Hosting Comparison: Flux vs GPORTAL, Shockbyte & Nitrado',
+      'Why a decentralized cloud is a better way to host a Palworld dedicated server: no single point of failure, no vendor lock-in, dedicated resources, DDoS protection, 99.9% uptime, a 30-second deploy, up to 32 players, crossplay, and full mod and config control.',
+    h1: 'Why Host Your Palworld Server on a Decentralized Cloud',
     lead:
-      'Choosing where to rent a Palworld server means weighing price against player caps, crossplay, mod and config access, DDoS protection and how locked-in you are. This is an honest, side-by-side comparison of Palworld hosting on the Flux decentralized cloud versus three of the biggest names in the space — GPORTAL, Shockbyte and Nitrado — so you can pick the right host for your group.',
+      'Most game servers live in a single data center owned by one company. A decentralized cloud works differently: your Palworld dedicated server runs on a global network of independent nodes, so there is no single point of failure and no vendor holding your world hostage. This guide explains what decentralized hosting is, why it matters for Palworld, how it works, and who it is for.',
     breadcrumbs: [
       { name: 'Home', url: '/' },
-      { name: 'Palworld Hosting Comparison', url: '/palworld-server-hosting-comparison' },
+      { name: 'Decentralized Palworld Hosting', url: '/decentralized-palworld-hosting' },
     ],
     body: [
-      { type: 'h2', text: 'The short version' },
-      { type: 'p', text: 'GPORTAL, Shockbyte and Nitrado are established, feature-rich control-panel hosts that support dozens of games and have years of brand trust behind them. Flux takes a different approach: a purpose-built Palworld deployment on a decentralized cloud, with the ports and DDoS protection pre-configured, a one-click 30-second deploy, full file and config access, and month-to-month billing with no lock-in. If you want a dedicated Palworld host with no long-term commitment and full control, Flux is a strong fit. If you want a single account to hop between many different games with a heavily productized panel, the traditional hosts have the edge in breadth.' },
+      { type: 'h2', text: 'What is decentralized cloud hosting?' },
+      { type: 'p', text: 'Traditional game hosting runs your server on hardware inside one company\'s data center. If that data center has an outage, a network problem, or a billing dispute, your server goes with it. A decentralized cloud spreads compute across thousands of independent nodes run by many different operators around the world. Flux is one such network, with capacity in 50+ countries. When you deploy a Palworld dedicated server on Flux, it runs on this distributed infrastructure rather than a single machine in a single location — the same idea that makes blockchains resilient, applied to game servers.' },
+      { type: 'p', text: 'For a Palworld world that you want to keep alive for months, that structural difference is the whole point. Your server is not tied to the fate of one building, one provider, or one region.' },
 
-      { type: 'h2', text: 'Palworld hosting comparison table' },
-      { type: 'p', text: 'Every provider here can run a Palworld dedicated server. The differences are structural — how the network is built, how much control you get over configuration and mods, and whether you are tied into a contract. Pricing models differ too and change over time, so always confirm current pricing on each provider\'s official website before you buy.' },
-      { type: 'table', head: ['Feature', 'Flux', 'GPORTAL', 'Shockbyte', 'Nitrado'], rows: [
-        ['Decentralized network', 'Yes — thousands of independent nodes, no single point of failure', 'No — centralized data centers', 'No — centralized data centers', 'No — centralized data centers'],
-        ['No contract / month-to-month', 'Yes — cancel any time', 'Varies by plan', 'Varies by plan', 'Varies by plan'],
-        ['DDoS protection', 'Included on every plan', 'Included', 'Included', 'Included'],
-        ['Max players (32)', 'Yes — full 32 on the top tier', 'Yes', 'Yes', 'Yes'],
-        ['Crossplay (Steam + Xbox/Game Pass)', 'Yes — configurable in PalWorldSettings.ini', 'Yes', 'Yes', 'Yes'],
-        ['Full file & config access', 'Full file manager + PalWorldSettings.ini editing', 'Config panel + file access', 'Config panel + file access', 'Config panel (more curated)'],
-        ['Deploy time', '~30 seconds', 'Varies', 'Varies', 'Varies'],
-        ['Payments', 'Card, Apple/Google Pay, crypto (FLUX)', 'Card / PayPal', 'Card / PayPal', 'Card / PayPal / prepaid credit'],
-        ['Starting price', 'from $3.99/mo (first month free)', 'Varies — check provider', 'Varies — check provider', 'Varies — check provider'],
-      ] },
-      { type: 'p', text: 'Comparison accurate as of July 2026. Competitor prices and features change frequently — verify current details on each provider\'s official website. All product names, logos and brands are the property of their respective owners; this is an independent comparison and we are not affiliated with, endorsed by, or sponsored by any listed provider.' },
-      { type: 'p', text: 'The headline game features are similar across the board — that is expected, because every serious host has to support Palworld\'s 32-player cap, crossplay and the same UDP 8211 game port. Where the hosts genuinely diverge is the underlying network, the degree of control you get, and lock-in.' },
+      { type: 'h2', text: 'No single point of failure' },
+      { type: 'p', text: 'A centralized host is only as reliable as its weakest link — one data center, one upstream network, one power feed. When any of those fail, every server in that facility drops at once. Because a decentralized network is spread across many independent nodes and regions, there is no single component whose failure takes your server down. The network is designed to keep running even when individual nodes go offline, which is why Flux targets 99.9% uptime. For a persistent Palworld world that your friends or community rely on being able to join at any hour, that resilience is worth more than a slightly cheaper monthly bill on fragile infrastructure.' },
 
-      { type: 'h2', text: 'Flux — decentralized, no lock-in, full control' },
-      { type: 'p', text: 'Flux hosts your Palworld server on a distributed network of independent nodes rather than a single data center. The Palworld image ships pre-built with the correct SteamCMD server, ports already exposed, and DDoS protection on by default, so a server is live in about 30 seconds. You get a full web file manager, direct PalWorldSettings.ini editing, a console, and on-demand backups.' },
-      { type: 'h3', text: 'Pros' },
+      { type: 'h2', text: 'No vendor lock-in' },
+      { type: 'p', text: 'Lock-in is the quiet cost of most hosting. Long contracts, prepaid credit that only works with one provider, proprietary control panels, and save formats you cannot easily export all make it hard to leave. Decentralized hosting flips that. Your Palworld server on Flux is billed month-to-month with no contract — cancel any time. You get a full file manager and direct access to your world save and PalWorldSettings.ini, so your data is always yours to download, back up, or move elsewhere. You are renting capacity on an open network, not signing yourself into a walled garden.' },
+
+      { type: 'h2', text: 'Dedicated resources and performance' },
+      { type: 'p', text: 'Palworld is demanding. Its simulation — Pal AI, base automation, and world physics — leans on strong single-core CPU performance, and memory use climbs steadily as players build bases and capture Pals. A decentralized deployment gives your server dedicated RAM and vCPU sized to your plan rather than a slice of a heavily oversold box shared with noisy neighbours. That means your world stays smooth as your group grows, whether you run a small co-op server or a full 32-player community. Storage is fast SSD/NVMe, and you can take on-demand backups and restore them with one click.' },
+
+      { type: 'h2', text: 'DDoS protection and security' },
+      { type: 'p', text: 'Any public game server is a target. Self-hosting from a home connection exposes your personal IP address and offers no protection against attacks, and a single motivated griefer can knock an unprotected server offline. Every Palworld server on Flux includes enterprise-grade DDoS protection at no extra cost, and because the server runs on the network rather than your own line, your home IP is never exposed. The distributed nature of the network also means an attack aimed at one node does not take the platform down.' },
+
+      { type: 'h2', text: 'Everything a great Palworld server needs' },
+      { type: 'p', text: 'Decentralized does not mean stripped-down. A Palworld server on Flux gives you the full feature set players expect:' },
       { type: 'ul', items: [
-        'Low entry price (from $3.99/mo) with the first month free for new users.',
-        'Month-to-month billing with no contract and no lock-in — cancel any time.',
-        'Full control: file manager, config editing, console and backups on every plan.',
-        'Decentralized network with no single point of failure and DDoS protection included.',
-        'Crypto payment (FLUX) alongside card, Apple Pay and Google Pay.',
-      ] },
-      { type: 'h3', text: 'Cons' },
-      { type: 'ul', items: [
-        'Focused on a curated set of games rather than the hundreds some panels list.',
-        'A newer brand in game hosting than GPORTAL, Shockbyte or Nitrado.',
+        'Up to 32 players on a single persistent dedicated server that stays online 24/7.',
+        'Crossplay support — configure your server for Steam and Xbox/Game Pass players to play together.',
+        'Full mod and configuration control: edit every value in PalWorldSettings.ini (XP rate, gather and damage multipliers, day/night length, death penalty, PvP) straight from the web dashboard.',
+        'A web file manager, live console, and the REST admin API for kicking or banning players, saving the world, and broadcasting announcements.',
+        'On-demand backups and one-click restore, plus the ability to upload an existing Palworld world.',
+        'Enterprise DDoS protection and 99.9% uptime on every plan.',
       ] },
 
-      { type: 'h2', text: 'GPORTAL' },
-      { type: 'p', text: 'GPORTAL is a large, well-known host with a polished control panel and strong global coverage. It supports a wide catalogue of games and has a reputation for solid hardware and an easy-to-use interface for Palworld, including a dedicated config editor.' },
-      { type: 'h3', text: 'Pros' },
-      { type: 'ul', items: [
-        'Mature, feature-rich control panel with a Palworld-specific settings UI.',
-        'Broad global data-center presence and strong brand trust.',
-        'Good documentation and a large existing user base.',
-      ] },
-      { type: 'h3', text: 'Cons' },
-      { type: 'ul', items: [
-        'Configuration is through the provided panel rather than raw, unrestricted file access on every tier.',
-        'Plan sizing is slot/RAM-based, so confirm the tier you need for a full 32-player world.',
-        'Centralized data centers — a single-region outage affects that region\'s servers.',
+      { type: 'h2', text: 'How it works: deploy in 30 seconds' },
+      { type: 'p', text: 'The decentralized part is invisible in day-to-day use — deploying is faster and simpler than a manual SteamCMD install, not harder. The Palworld image ships pre-built with the correct server, the game port already exposed, and DDoS protection on by default, so there is no router or firewall configuration to do.' },
+      { type: 'ol', items: [
+        'Create a free account with Google or email.',
+        'Choose a plan sized to your group — 5GB RAM for small groups up to 8 players, 7GB for up to 16, or 10GB for a full 32-player server.',
+        'Pick a server region close to your players from 50+ countries to keep latency low.',
+        'Click deploy. Your server is provisioned on the network, the game port opens, and it is online in about 30 seconds.',
+        'Open the web dashboard to edit PalWorldSettings.ini, browse files, take backups, and use the console — no SSH or port forwarding required.',
       ] },
 
-      { type: 'h2', text: 'Shockbyte' },
-      { type: 'p', text: 'Shockbyte is best known in the Minecraft world, with Palworld among its supported games. It targets players who want straightforward monthly plans and a simple panel.' },
-      { type: 'h3', text: 'Pros' },
-      { type: 'ul', items: [
-        'Simple, straightforward plan tiers.',
-        'Established brand with a large support knowledge base.',
-        'Straightforward multi-game account if you also run other servers.',
-      ] },
-      { type: 'h3', text: 'Cons' },
-      { type: 'ul', items: [
-        'Confirm the tier\'s resources are sized for a full 32-player world before you buy.',
-        'The panel is oriented around simple plans rather than low-level infrastructure control.',
-        'Centralized hosting with the usual single-data-center failure profile.',
-      ] },
+      { type: 'h2', text: 'Pay-as-you-go pricing' },
+      { type: 'p', text: 'Billing matches the no-lock-in philosophy: month-to-month, no long-term contract, and no hidden setup fee. Plans start at $3.99/month for the 5GB Starter tier, $9.99/month for 7GB, and $19.99/month for the 10GB Performance tier that runs a full 32-player world. New users get their first month free, so you can build a world and test performance before you pay. You can pay however you prefer — card, Apple Pay, and Google Pay through Stripe, or in crypto with FLUX — which fits the open, permissionless nature of the network.' },
+      { type: 'cta', text: 'Deploy a Palworld server on Flux — first month free →', href: '/#pricing' },
 
-      { type: 'h2', text: 'Nitrado' },
-      { type: 'p', text: 'Nitrado is a widely trusted host with a very large game catalogue and a highly productized panel. It is a common default for console-adjacent communities and offers a polished managed experience for Palworld.' },
-      { type: 'h3', text: 'Pros' },
-      { type: 'ul', items: [
-        'Very mature platform with an enormous supported-game list and strong brand trust.',
-        'Prepaid/credit model lets you pause and switch games easily.',
-        'Polished managed experience with lots of guardrails for less technical users.',
-      ] },
-      { type: 'h3', text: 'Cons' },
-      { type: 'ul', items: [
-        'Centralized data centers rather than a distributed network.',
-        'The curated panel can mean less low-level file/config freedom than a raw file manager.',
-        'Prepaid credit model is less predictable than a flat monthly price for a persistent server.',
-      ] },
-
-      { type: 'h2', text: 'Which Palworld host should you choose?' },
-      { type: 'p', text: 'If your priority is the lowest commitment and full control — a persistent 32-player world, direct config and file access, month-to-month billing and DDoS protection without a contract — Flux is the most flexible option, and the first month is free so you can test it risk-free. If you want the broadest game catalogue and a heavily managed panel, Nitrado is the safe pick. GPORTAL sits in the middle with a strong Palworld-specific UI, and Shockbyte keeps its plans simple if you are comfortable sizing up for a full server.' },
-      { type: 'p', text: 'Whichever you choose, the mechanics of running the server are the same: open UDP 8211, tune PalWorldSettings.ini for your group, and confirm crossplay if you mix Steam and Xbox/Game Pass players. Our guides on how to make a Palworld dedicated server and the best Palworld server settings apply no matter where you host.' },
-      { type: 'cta', text: 'Rent a Palworld server on Flux — first month free →', href: '/#pricing' },
+      { type: 'h2', text: 'Who is decentralized hosting for?' },
+      { type: 'p', text: 'A decentralized Palworld server is the right fit if you want a persistent world that stays online without tying up your own machine, full control over configuration and your save data, resilience that does not depend on one company\'s data center, and month-to-month billing you can walk away from at any time. It suits friends groups who want a world that keeps running while they are offline, community owners running a public 32-player server, and anyone who values owning their data and paying only for what they use — including with crypto.' },
+      { type: 'p', text: 'Whichever route you take, the mechanics of running the server are the same: open UDP 8211, tune PalWorldSettings.ini for your group, and confirm crossplay if you mix Steam and Xbox/Game Pass players. Our guides on how to make a Palworld dedicated server and the best Palworld server settings apply no matter where you host.' },
     ],
     faq: [
-      { question: 'Which is the best Palworld server hosting?', answer: 'It depends on your priority. Flux is best for low commitment, full control and month-to-month billing with the first month free. Nitrado suits players who want a heavily managed panel and the widest game catalogue. GPORTAL offers a strong Palworld-specific config UI, and Shockbyte keeps its plans simple. All four support the full 32-player cap and crossplay.' },
-      { question: 'Is Flux good value for Palworld hosting compared with GPORTAL, Shockbyte or Nitrado?', answer: 'Flux focuses on structural value: a decentralized network with no single point of failure, DDoS protection on every plan, a roughly 30-second deploy, full file and config access, and month-to-month billing with no lock-in. Its own pricing starts at $3.99/month with the first month free. Competitor pricing and terms change often, so compare current details on each provider\'s official website.' },
-      { question: 'Do all Palworld hosts support 32 players and crossplay?', answer: 'Yes. Flux, GPORTAL, Shockbyte and Nitrado all support the 32-player dedicated-server cap and can be configured for Steam and Xbox/Game Pass crossplay. The server owner must enable crossplay in the configuration for it to work across platforms.' },
-      { question: 'What makes Flux Palworld hosting different?', answer: 'Flux runs on a decentralized network of independent nodes rather than a single data center, includes DDoS protection on every plan, deploys in about 30 seconds, gives you full file and config access, bills month-to-month with no lock-in, and accepts crypto (FLUX) alongside card payments.' },
+      { question: 'What is a decentralized cloud for game hosting?', answer: 'Instead of running your server in one company\'s data center, a decentralized cloud spreads compute across thousands of independent nodes worldwide. Flux is one such network, with capacity in 50+ countries, so your Palworld server has no single point of failure and is not tied to one provider or region.' },
+      { question: 'Is a decentralized Palworld server reliable?', answer: 'Yes. Because the network is spread across many independent nodes and regions, there is no single component whose failure takes your server down. Flux targets 99.9% uptime and includes DDoS protection on every plan, so a persistent world stays online 24/7.' },
+      { question: 'Does decentralized hosting support 32 players, crossplay and mods?', answer: 'Yes. A Palworld server on Flux supports the full 32-player cap, can be configured for Steam and Xbox/Game Pass crossplay, and gives you full access to PalWorldSettings.ini and a file manager to change any setting or mod your world.' },
+      { question: 'How do I pay for a decentralized Palworld server?', answer: 'Billing is month-to-month with no contract and the first month free. You can pay by card, Apple Pay, or Google Pay through Stripe, or in crypto with FLUX. Plans start at $3.99/month and scale to a full 32-player server.' },
+      { question: 'What does no vendor lock-in actually mean?', answer: 'No long-term contract, no prepaid credit tied to one provider, and full access to your world save and config files so you can back them up or move them at any time. You rent capacity on an open network rather than signing into a walled garden, and you can cancel whenever you like.' },
     ],
     related: ['pricing', 'setup-guide', 'server-requirements', 'server-settings'],
   },
@@ -477,7 +438,7 @@ export const pageAnchors = {
   'guides/server-settings': 'Best Palworld server settings',
   'join-server': "How to join a friend's Palworld server",
   'server-settings': 'Best Palworld server settings',
-  'palworld-server-hosting-comparison': 'Palworld server hosting comparison',
+  'decentralized-palworld-hosting': 'Why host on the Flux decentralized cloud',
 };
 
 // Map short related keys to full page keys.

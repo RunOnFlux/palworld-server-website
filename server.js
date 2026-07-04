@@ -277,7 +277,7 @@ if (process.env.NODE_ENV === 'production') {
     '/pricing': 'pricing/index.html',
     '/guides/join-server': 'guides/join-server/index.html',
     '/guides/server-settings': 'guides/server-settings/index.html',
-    '/palworld-server-hosting-comparison': 'palworld-server-hosting-comparison/index.html',
+    '/decentralized-palworld-hosting': 'decentralized-palworld-hosting/index.html',
   };
 
   app.get('*path', (req, res) => {

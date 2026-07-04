@@ -83,7 +83,7 @@ const Home = () => {
             transition={{ duration: 0.5 }}
           >
             <Link
-              to="/palworld-server-hosting-comparison"
+              to="/decentralized-palworld-hosting"
               className="group flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6 p-6 sm:p-8 rounded-2xl border border-primary/40 bg-gradient-to-r from-primary/10 via-blue-500/10 to-primary/10 hover:border-primary/70 hover:from-primary/20 hover:to-primary/20 transition-all duration-300 shadow-lg shadow-primary/5 hover:shadow-primary/20"
             >
               <div className="flex items-center gap-4 text-center sm:text-left">
@@ -92,15 +92,15 @@ const Home = () => {
                 </div>
                 <div>
                   <h3 className="text-lg sm:text-xl font-bold text-text">
-                    See how Flux compares to GPORTAL, Shockbyte &amp; Nitrado
+                    Why host on the Flux decentralized cloud
                   </h3>
                   <p className="text-sm text-text-secondary mt-1">
-                    Side-by-side on price, decentralization, no lock-in, DDoS protection, 32 players and full control.
+                    No single point of failure, no lock-in, dedicated resources, DDoS protection, 99.9% uptime and 32 players.
                   </p>
                 </div>
               </div>
               <span className="inline-flex flex-shrink-0 items-center gap-2 px-5 py-3 rounded-xl bg-primary text-white font-semibold whitespace-nowrap shadow-md group-hover:gap-3 transition-all duration-300">
-                Compare hosting
+                Learn why
                 <ArrowRight className="w-5 h-5" />
               </span>
             </Link>

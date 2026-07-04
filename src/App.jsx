@@ -108,7 +108,7 @@ function App() {
                   <Route path="/pricing" element={<Pricing />} />
                   <Route path="/guides/join-server" element={<GuideJoinServer />} />
                   <Route path="/guides/server-settings" element={<GuideServerSettings />} />
-                  <Route path="/palworld-server-hosting-comparison" element={<Comparison />} />
+                  <Route path="/decentralized-palworld-hosting" element={<Comparison />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
