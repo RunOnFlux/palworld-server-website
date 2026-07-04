@@ -21,7 +21,6 @@ export default defineConfig(() => {
           '/guides/join-server',
           '/guides/server-settings',
           '/decentralized-palworld-hosting',
-          '/support',
         ],
         exclude: [
           '/dashboard',
