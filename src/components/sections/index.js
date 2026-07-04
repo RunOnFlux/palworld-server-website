@@ -5,3 +5,4 @@ export { default as PricingPlans } from './PricingPlans';
 export { default as FAQ } from './FAQ';
 export { default as ServerLocations } from './ServerLocations';
 export { default as HomeContent } from './HomeContent';
+export { default as GuideLinks } from './GuideLinks';

@@ -5,7 +5,7 @@ import { BarChart3, ArrowRight } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LoginModal } from '../components/auth';
 import { SEO } from '../components/common';
-import { Hero, Features, PricingPlans, ServerLocations, HomeContent, FAQ } from '../components/sections';
+import { Hero, Features, PricingPlans, ServerLocations, HomeContent, FAQ, GuideLinks } from '../components/sections';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import DeploymentDialog from '../components/dashboard/DeploymentDialog';
@@ -116,6 +116,9 @@ const Home = () => {
 
       {/* FAQ Section */}
       <FAQ />
+
+      {/* Internal links to guides */}
+      <GuideLinks />
 
       {/* Footer */}
       <Footer />
