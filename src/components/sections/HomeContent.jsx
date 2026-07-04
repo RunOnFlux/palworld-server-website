@@ -28,6 +28,7 @@ const internalLinks = [
   { to: '/pricing', anchor: 'Palworld server hosting pricing', desc: 'Compare 5GB, 7GB and 10GB plans by player count.' },
   { to: '/guides/join-server', anchor: "How to join a friend's Palworld server", desc: 'Connect by IP, use the browser, and understand crossplay.' },
   { to: '/guides/server-settings', anchor: 'Best Palworld server settings', desc: 'Tune XP, gather, damage and PvP in PalWorldSettings.ini.' },
+  { to: '/palworld-server-hosting-comparison', anchor: 'Compare: Flux vs GPORTAL, Shockbyte & Nitrado →', desc: 'Side-by-side on decentralization, no lock-in, DDoS, 32 players, crossplay and control.' },
 ];
 
 const HomeContent = () => {

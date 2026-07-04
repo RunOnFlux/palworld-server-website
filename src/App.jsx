@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { CookieConsent, hasGAConsent, ErrorBoundary } from './components/common';
+import ScrollToTop from './components/ScrollToTop';
 
 // Lazy load pages for code splitting
 const Home = lazy(() => import('./pages/Home'));
@@ -93,6 +94,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <Router>
+            <ScrollToTop />
             <div className="min-h-screen bg-background text-text">
               <Suspense fallback={<PageLoader />}>
                 <Routes>
