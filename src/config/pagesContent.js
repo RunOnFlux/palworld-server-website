@@ -20,9 +20,9 @@ export const pagesContent = {
   'setup-guide': {
     slug: '/setup-guide',
     title: 'How to Make a Palworld Dedicated Server (2026 Guide)',
-    metaTitle: 'How to Make a Palworld Dedicated Server (2026 Step-by-Step Guide)',
+    metaTitle: 'How to Make a Palworld Dedicated Server (2026 Guide)',
     description:
-      'Step-by-step guide to making a Palworld dedicated server in 2026 — the SteamCMD self-host method vs a one-click 30-second Flux deploy. Ports, config, and requirements explained.',
+      'How to make a Palworld dedicated server in 2026: manual SteamCMD install vs a one-click Flux deploy in 30 seconds from $3.99/mo. Ports and config explained.',
     h1: 'How to Make a Palworld Dedicated Server (2026)',
     lead:
       'There are two ways to run a Palworld dedicated server: install and maintain it yourself with SteamCMD on your own hardware, or rent a pre-configured dedicated server and deploy it in about 30 seconds. This guide walks through both so you can pick the right path, then covers the ports, config, and admin tasks every Palworld server owner needs.',
@@ -89,9 +89,9 @@ export const pagesContent = {
   'server-requirements': {
     slug: '/server-requirements',
     title: 'Palworld Dedicated Server Requirements (CPU, RAM, Ports)',
-    metaTitle: 'Palworld Dedicated Server Requirements — CPU, RAM & Ports (2026)',
+    metaTitle: 'Palworld Dedicated Server Requirements (CPU, RAM, Ports)',
     description:
-      'Palworld dedicated server system requirements: how much RAM and CPU you need per player count, which ports to open (8211 UDP, 8212 REST), and disk space for saves.',
+      'Palworld dedicated server requirements: RAM and CPU by player count (up to 32), ports 8211 UDP and 8212 TCP, disk space. Skip setup — deploy from $3.99/mo.',
     h1: 'Palworld Dedicated Server Requirements',
     lead:
       'A Palworld dedicated server is CPU- and RAM-hungry, and its footprint grows as players build bases and capture Pals. This page covers exactly how much RAM and CPU you need for your player count, the ports you must open, and how much disk space to plan for.',
@@ -139,9 +139,9 @@ export const pagesContent = {
   pricing: {
     slug: '/pricing',
     title: 'Palworld Server Hosting Pricing & Plans',
-    metaTitle: 'Palworld Server Hosting Pricing — Plans from $3.99/mo (First Month Free)',
+    metaTitle: 'Palworld Server Hosting Pricing — Plans from $3.99/mo',
     description:
-      'Palworld dedicated server hosting plans from $3.99/month. Compare 5GB, 7GB, and 10GB RAM tiers by player count. First month free, DDoS protection included, pay with card or crypto.',
+      'Palworld server hosting plans from $3.99/mo: 5GB, 7GB & 10GB RAM tiers for up to 32 players. First month free, DDoS protection included. Deploy in 30 seconds.',
     h1: 'Palworld Server Hosting Pricing',
     lead:
       'Simple, transparent Palworld dedicated server pricing. Plans start at $3.99/month, every plan includes DDoS protection and full admin access, and new users get their first month free. Pick a tier by how many players you expect.',
@@ -195,9 +195,9 @@ export const pagesContent = {
   'guides/join-server': {
     slug: '/guides/join-server',
     title: "How to Join a Friend's Palworld Server (incl. Crossplay)",
-    metaTitle: "How to Join a Friend's Palworld Server (Steam, Xbox & Crossplay)",
+    metaTitle: "How to Join a Friend's Palworld Server (Crossplay Guide)",
     description:
-      "How to join a friend's Palworld dedicated server: connect by IP and port, use the community server list, and understand Steam vs Xbox/Game Pass crossplay limits.",
+      "Join a friend's Palworld server by IP and port or via the community list, plus Steam vs Xbox crossplay limits. Host your own 32-player server from $3.99/mo.",
     h1: "How to Join a Friend's Palworld Server",
     lead:
       "Joining a friend's Palworld dedicated server takes just the server address and, sometimes, a password. This guide covers every way to connect, how crossplay works between Steam and Xbox/Game Pass, and what to do when a server will not show up.",
@@ -249,9 +249,9 @@ export const pagesContent = {
   'guides/server-settings': {
     slug: '/guides/server-settings',
     title: 'Best Palworld Server Settings (PalWorldSettings.ini)',
-    metaTitle: 'Best Palworld Server Settings — PalWorldSettings.ini Guide (2026)',
+    metaTitle: 'Best Palworld Server Settings (PalWorldSettings.ini)',
     description:
-      'The best Palworld server settings explained: XP rate, gather and damage multipliers, day/night speed, death penalty, PvP and capture rate in PalWorldSettings.ini — with recommended values.',
+      'Best Palworld server settings: XP rate, gather and damage multipliers, day length, PvP in PalWorldSettings.ini — plus tuned 32-player hosting from $3.99/mo.',
     h1: 'Best Palworld Server Settings',
     lead:
       'Every Palworld dedicated server is tuned through a single file, PalWorldSettings.ini. This guide explains the settings that matter most, what each one does, and recommended values for casual, balanced, and hardcore playstyles.',
@@ -306,9 +306,9 @@ export const pagesContent = {
   'decentralized-palworld-hosting': {
     slug: '/decentralized-palworld-hosting',
     title: 'Why Host Your Palworld Server on a Decentralized Cloud',
-    metaTitle: 'Why Host Your Palworld Server on a Decentralized Cloud (Flux, 2026)',
+    metaTitle: 'Decentralized Palworld Server Hosting on Flux Cloud',
     description:
-      'Why a decentralized cloud is a better way to host a Palworld dedicated server: no single point of failure, no vendor lock-in, dedicated resources, DDoS protection, 99.9% uptime, a 30-second deploy, up to 32 players, crossplay, and full mod and config control.',
+      'Decentralized Palworld hosting on Flux: no single point of failure, DDoS protection, 99.9% uptime. Deploy a 32-player server in 30s from $3.99/mo.',
     h1: 'Why Host Your Palworld Server on a Decentralized Cloud',
     lead:
       'Most game servers live in a single data center owned by one company. A decentralized cloud works differently: your Palworld dedicated server runs on a global network of independent nodes, so there is no single point of failure and no vendor holding your world hostage. This guide explains what decentralized hosting is, why it matters for Palworld, how it works, and who it is for.',

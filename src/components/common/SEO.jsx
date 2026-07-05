@@ -44,10 +44,13 @@ const SEO = ({
     'Flux cloud hosting',
   ].join(', ');
 
-  // Build SEO values — lead with the highest-intent keyword on the homepage
-  const defaultHomeTitle = `${game} Server Hosting — Rent a Dedicated ${game} Server from $3.99/mo | ${siteName}`;
+  // Build SEO values — lead with the highest-intent keyword on the homepage.
+  // Kept ≤60 chars (title) / ≤160 chars (description) so Google never truncates
+  // the snippet. Must stay in sync with the static tags in index.html.
+  const defaultHomeTitle = `${game} Server Hosting — 32 Players from $3.99/mo | Flux`;
+  const defaultHomeDescription = `Rent a dedicated ${game} server on the decentralized Flux cloud. Up to 32 players, DDoS protection, 99.9% uptime — deploy in 30 seconds from $3.99/mo.`;
   const seoTitle = title ? `${title} | ${siteName}` : defaultHomeTitle;
-  const seoDescription = description || gameConfig.description;
+  const seoDescription = description || defaultHomeDescription;
   const seoImage = image ? `${siteUrl}${image}` : `${siteUrl}${gameConfig.assets.banner}`;
   const seoUrl = url ? `${siteUrl}${url}` : siteUrl;
   const seoKeywords = keywords || defaultKeywords;
