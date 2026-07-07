@@ -347,7 +347,7 @@ class ApiService {
   async checkFreeFirstMonthEligibility(ownerZelid, targetRepotags) {
     try {
       const response = await fetch(
-        `https://api.runonflux.io/apps/permanentmessages?appowner=${ownerZelid}`,
+        `https://api.runonflux.io/apps/permanentmessages?owner=${ownerZelid}`,
         { signal: AbortSignal.timeout(30000) }
       );
       const data = await response.json();
