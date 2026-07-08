@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { BookOpen, Server, Users, Settings, Tag, GitCompare, LifeBuoy, ArrowRight } from 'lucide-react';
 
 const guides = [
+  { to: '/nitrado-alternative', icon: GitCompare, label: 'Nitrado alternative', desc: 'Decentralized Nitrado alternative for Palworld — 32 players, dedicated resources, from $3.99/mo.' },
+  { to: '/gportal-alternative', icon: GitCompare, label: 'GPORTAL alternative', desc: 'Decentralized GPORTAL alternative for Palworld — no single point of failure, no egress fees.' },
   { to: '/setup-guide', icon: BookOpen, label: 'How to make a Palworld dedicated server', desc: 'Full 2026 setup walkthrough — SteamCMD vs one-click deploy.' },
   { to: '/server-requirements', icon: Server, label: 'Palworld dedicated server requirements', desc: 'How much RAM and CPU you need, plus ports 8211 and 8212.' },
   { to: '/guides/join-server', icon: Users, label: "How to join a friend's Palworld server", desc: 'Connect by IP, use the browser, and understand crossplay.' },
