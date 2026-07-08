@@ -21,6 +21,8 @@ export default defineConfig(() => {
           '/guides/join-server',
           '/guides/server-settings',
           '/decentralized-palworld-hosting',
+          '/nitrado-alternative',
+          '/gportal-alternative',
         ],
         exclude: [
           '/dashboard',

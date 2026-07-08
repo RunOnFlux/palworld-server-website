@@ -371,6 +371,108 @@ export const pagesContent = {
     ],
     related: ['pricing', 'setup-guide', 'server-requirements', 'server-settings'],
   },
+
+  'nitrado-alternative': {
+    slug: '/nitrado-alternative',
+    title: 'Nitrado Alternative for Palworld',
+    metaTitle: 'Nitrado Alternative for Palworld — Deploy from $3.99/mo',
+    description:
+      'Looking for a Nitrado alternative for Palworld? Host on the Flux decentralized cloud: dedicated resources, no single point of failure, DDoS included, up to 32 players, from $3.99/mo, first month free.',
+    h1: 'Looking for a Nitrado Alternative for Palworld?',
+    lead:
+      'Nitrado is one of the best-known Palworld hosts, and it is a capable provider. But like most traditional hosts it runs your server in a fixed set of company-owned data centers with a single point of failure, and its slot-based plans tie pricing to player count. Palworld on Flux takes a different approach — a decentralized cloud of independent nodes across 50+ countries, dedicated resources, and pay-as-you-go pricing.',
+    breadcrumbs: [
+      { name: 'Home', url: '/' },
+      { name: 'Nitrado Alternative', url: '/nitrado-alternative' },
+    ],
+    body: [
+      { type: 'h2', text: 'Why look for a Nitrado alternative' },
+      { type: 'p', text: 'Nitrado works well for many Palworld owners. The reasons players compare it against other hosts are usually structural rather than about any one feature:' },
+      { type: 'ul', items: [
+        'Single points of failure — a fixed set of data centers means an outage in one takes the servers there offline together.',
+        'Slot-based pricing — paying per player slot can be less flexible than paying for the resources you actually use.',
+        'Region distance — if the nearest region is far from your group, everyone feels the latency.',
+        'Control and payment — some owners want full config access, no contract, and the option to pay in crypto as well as by card.',
+      ] },
+      { type: 'h2', text: 'How Palworld on Flux is different' },
+      { type: 'p', text: 'Flux runs your Palworld dedicated server on a decentralized network of independent nodes with dedicated CPU, RAM and storage reserved for you, a 99.9% uptime target, and nodes in 50+ countries so you can host near your players. You get the full 32-player cap, Steam and Xbox/Game Pass crossplay, and complete access to PalWorldSettings.ini through a file manager. DDoS protection is included on every plan, there are no egress (bandwidth) fees, deployment takes about 30 seconds with UDP 8211 and the REST API (TCP 8212) already configured, and pricing is transparent pay-as-you-go from $3.99/mo with the first month free — pay by card, Apple Pay, Google Pay, or in crypto with FLUX, no contract.' },
+      { type: 'h2', text: 'Palworld on Flux vs Nitrado at a glance' },
+      { type: 'table', head: ['Feature', 'Traditional host', 'Palworld on Flux'], rows: [
+        ['Infrastructure', 'Single company data centers', 'Decentralized cloud, 50+ countries'],
+        ['Single point of failure', 'Yes', 'No — distributed nodes'],
+        ['Dedicated resources', 'Plan-dependent', 'Dedicated CPU/RAM/storage per server'],
+        ['Player cap', 'Up to 32', 'Up to 32'],
+        ['Crossplay (Steam + Xbox)', 'Supported', 'Supported'],
+        ['Config access', 'Panel', 'Full PalWorldSettings.ini + file manager'],
+        ['DDoS protection', 'Varies by plan', 'Included on every plan'],
+        ['Egress / bandwidth fees', 'Possible', 'None'],
+        ['Deploy time', 'Minutes', 'About 30 seconds'],
+        ['Payment', 'Card', 'Card, Apple/Google Pay, or crypto'],
+        ['Pricing', 'Slot-based tiers', 'Pay-as-you-go from $3.99/mo, first month free'],
+      ] },
+      { type: 'h2', text: 'Which should you choose?' },
+      { type: 'p', text: 'If you prefer a large legacy brand and slot-based plans in a single region, Nitrado is a fine option. If you want decentralized resilience with no single point of failure, multi-region hosting close to your players, no egress fees, full config control with no contract, and card-or-crypto payment, Palworld on Flux is designed for that. Your world is portable — download your save and PalWorldSettings.ini and move them across in minutes.' },
+      { type: 'cta', text: 'Deploy a Palworld dedicated server on Flux →', href: '/#pricing' },
+    ],
+    faq: [
+      { question: 'What is a good Nitrado alternative for Palworld?', answer: 'Palworld on Flux is a decentralized alternative: your server runs across 50+ countries with dedicated resources, the full 32-player cap, crossplay, included DDoS protection, and no egress fees — from $3.99/mo with the first month free.' },
+      { question: 'Is Palworld on Flux cheaper than Nitrado?', answer: 'Flux uses pay-as-you-go pricing from $3.99/mo with the first month free, so you pay for the RAM and region you pick rather than a fixed slot tier. The exact cost depends on your configuration.' },
+      { question: 'Can I move my Palworld server from Nitrado to Flux?', answer: 'Yes. Download your world save and PalWorldSettings.ini from your current host and upload them to Flux through the file manager. A Palworld world is not locked to any provider.' },
+      { question: 'Does Flux support 32 players and crossplay like Nitrado?', answer: 'Yes. A Palworld server on Flux supports the full 32-player cap and can be configured for Steam and Xbox/Game Pass crossplay, with full access to every setting.' },
+    ],
+    related: ['pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
+  },
+
+  'gportal-alternative': {
+    slug: '/gportal-alternative',
+    title: 'GPORTAL Alternative for Palworld',
+    metaTitle: 'GPORTAL Alternative for Palworld — Deploy from $3.99/mo',
+    description:
+      'Looking for a GPORTAL alternative for Palworld? Host on the Flux decentralized cloud: dedicated resources, no single point of failure, DDoS included, up to 32 players, from $3.99/mo, first month free.',
+    h1: 'Looking for a GPORTAL Alternative for Palworld?',
+    lead:
+      'GPORTAL is a popular game server host and a common pick for Palworld. It is a capable provider — but, like most traditional hosts, it runs your server inside a single company\'s data centers with a single point of failure. Palworld on Flux runs your dedicated server on a decentralized cloud of independent nodes across 50+ countries, with dedicated resources and transparent pay-as-you-go pricing.',
+    breadcrumbs: [
+      { name: 'Home', url: '/' },
+      { name: 'GPORTAL Alternative', url: '/gportal-alternative' },
+    ],
+    body: [
+      { type: 'h2', text: 'Why look for a GPORTAL alternative' },
+      { type: 'p', text: 'GPORTAL is a solid host for many owners. The reasons players still shop around usually come down to the structure of traditional hosting:' },
+      { type: 'ul', items: [
+        'Single points of failure — centralized hosts run in a fixed set of data centers, so an outage in one takes the servers there down together.',
+        'Region reach — if the nearest region is far from your community, everyone feels the latency.',
+        'Fixed tiers — slot-based plans can mean paying for headroom you do not use.',
+        'Control and payment — some owners want full config access, no contract, and crypto payment as an option.',
+      ] },
+      { type: 'h2', text: 'How Palworld on Flux is different' },
+      { type: 'p', text: 'Flux runs your Palworld dedicated server on a decentralized network of independent nodes with dedicated CPU, RAM and storage reserved for you, a 99.9% uptime target, and nodes in 50+ countries so you can host near your players. You get the full 32-player cap, Steam and Xbox/Game Pass crossplay, and complete access to PalWorldSettings.ini through a file manager. DDoS protection is included on every plan, there are no egress (bandwidth) fees, deployment takes about 30 seconds with UDP 8211 and the REST API (TCP 8212) already configured, and pricing is transparent pay-as-you-go from $3.99/mo with the first month free — pay by card, Apple Pay, Google Pay, or in crypto with FLUX, no contract.' },
+      { type: 'h2', text: 'Palworld on Flux vs GPORTAL at a glance' },
+      { type: 'table', head: ['Feature', 'Traditional host', 'Palworld on Flux'], rows: [
+        ['Infrastructure', 'Single company data centers', 'Decentralized cloud, 50+ countries'],
+        ['Single point of failure', 'Yes', 'No — distributed nodes'],
+        ['Dedicated resources', 'Plan-dependent', 'Dedicated CPU/RAM/storage per server'],
+        ['Player cap', 'Up to 32', 'Up to 32'],
+        ['Crossplay (Steam + Xbox)', 'Supported', 'Supported'],
+        ['Config access', 'Panel', 'Full PalWorldSettings.ini + file manager'],
+        ['DDoS protection', 'Varies by plan', 'Included on every plan'],
+        ['Egress / bandwidth fees', 'Possible', 'None'],
+        ['Deploy time', 'Minutes', 'About 30 seconds'],
+        ['Payment', 'Card', 'Card, Apple/Google Pay, or crypto'],
+        ['Pricing', 'Slot-based tiers', 'Pay-as-you-go from $3.99/mo, first month free'],
+      ] },
+      { type: 'h2', text: 'Which should you choose?' },
+      { type: 'p', text: 'If you want a long-established brand and a single familiar region works for your group, GPORTAL is a reasonable choice. If you care about resilience with no single point of failure, hosting close to players across many regions, no egress fees, full config control with no contract, and card-or-crypto payment, Palworld on Flux is built for that. Your world moves with you — download your save and PalWorldSettings.ini and upload them in minutes.' },
+      { type: 'cta', text: 'Deploy a Palworld dedicated server on Flux →', href: '/#pricing' },
+    ],
+    faq: [
+      { question: 'What is a good GPORTAL alternative for Palworld?', answer: 'Palworld on Flux is a decentralized alternative: your server runs across 50+ countries with dedicated resources, the full 32-player cap, crossplay, included DDoS protection, and no egress fees — from $3.99/mo with the first month free.' },
+      { question: 'Is Palworld on Flux cheaper than GPORTAL?', answer: 'Flux uses pay-as-you-go pricing from $3.99/mo with the first month free, so you pay for the RAM and region you choose rather than a fixed slot tier. The exact monthly cost depends on your configuration.' },
+      { question: 'Can I move my Palworld server from GPORTAL to Flux?', answer: 'Yes. Download your world save and PalWorldSettings.ini from your current host and upload them to Flux through the file manager. A Palworld world is not locked to any provider.' },
+      { question: 'Does Flux support 32 players and crossplay like GPORTAL?', answer: 'Yes. A Palworld server on Flux supports the full 32-player cap and can be configured for Steam and Xbox/Game Pass crossplay, with full access to every setting.' },
+    ],
+    related: ['pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
+  },
 };
 
 // -------------------------------------------------------------------------

@@ -19,6 +19,8 @@ const Pricing = lazy(() => import('./pages/Pricing'));
 const GuideJoinServer = lazy(() => import('./pages/GuideJoinServer'));
 const GuideServerSettings = lazy(() => import('./pages/GuideServerSettings'));
 const Comparison = lazy(() => import('./pages/Comparison'));
+const NitradoAlternative = lazy(() => import('./pages/NitradoAlternative'));
+const GportalAlternative = lazy(() => import('./pages/GportalAlternative'));
 
 // Loading component
 const PageLoader = () => (
@@ -109,6 +111,8 @@ function App() {
                   <Route path="/guides/join-server" element={<GuideJoinServer />} />
                   <Route path="/guides/server-settings" element={<GuideServerSettings />} />
                   <Route path="/decentralized-palworld-hosting" element={<Comparison />} />
+                  <Route path="/nitrado-alternative" element={<NitradoAlternative />} />
+                  <Route path="/gportal-alternative" element={<GportalAlternative />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
