@@ -21,7 +21,9 @@ export const AuthProvider = ({ children }) => {
 
   // Auto-logout state - simple 1.5h timer from login time
   const [loginTime, setLoginTime] = useState(() => {
-    // Restore loginTime from localStorage on mount
+    // Restore loginTime from localStorage on mount. This initializer runs during
+    // render, so it must not touch localStorage during the SSR prerender.
+    if (typeof window === 'undefined') return null;
     const stored = localStorage.getItem('loginTime');
     return stored ? parseInt(stored, 10) : null;
   });

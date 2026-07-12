@@ -78,36 +78,44 @@ const SEO = ({
 
   // Build structured data schemas.
   //
-  // Organization, WebSite, Service, and FAQPage are emitted statically in
-  // index.html so non-JS crawlers and AI engines see them immediately. Emitting
-  // them again here would create duplicate entities in Google's rich results
-  // report. Only breadcrumbs (which vary per page) and an optional Product
-  // schema (per-page use case) are injected from React.
-  const breadcrumbSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: breadcrumbs && breadcrumbs.length
-      ? breadcrumbs.map((b, i) => ({
+  // Organization, WebSite, Service and the homepage FAQPage are emitted statically
+  // in index.html / by the prerender, so non-JS crawlers and AI engines see them
+  // immediately. Emitting them again here would create duplicate entities in
+  // Google's rich results report. React owns only the per-page schemas: the
+  // BreadcrumbList below, an optional Product schema, and whatever the page passes
+  // in `schemas` (HowTo, FAQPage, Product/AggregateOffer). Since the prerender now
+  // server-renders this component, all of it ships in the static HTML too.
+  const breadcrumbItems = breadcrumbs && breadcrumbs.length
+    ? breadcrumbs.map((b, i) => ({
+        '@type': 'ListItem',
+        position: i + 1,
+        name: b.name,
+        item: `${siteUrl}${b.url === '/' ? '' : b.url}`,
+      }))
+    : [
+        {
           '@type': 'ListItem',
-          position: i + 1,
-          name: b.name,
-          item: `${siteUrl}${b.url === '/' ? '' : b.url}`,
-        }))
-      : [
-          {
-            '@type': 'ListItem',
-            position: 1,
-            name: 'Home',
-            item: siteUrl,
-          },
-          ...(url && url !== '/' ? [{
-            '@type': 'ListItem',
-            position: 2,
-            name: title,
-            item: seoUrl,
-          }] : []),
-        ],
-  };
+          position: 1,
+          name: 'Home',
+          item: siteUrl,
+        },
+        ...(url && url !== '/' ? [{
+          '@type': 'ListItem',
+          position: 2,
+          name: title,
+          item: seoUrl,
+        }] : []),
+      ];
+
+  // A one-item "Home" trail (i.e. the homepage) is not a breadcrumb — emitting it
+  // would only add a meaningless BreadcrumbList entity to the front page.
+  const breadcrumbSchema = breadcrumbItems.length > 1
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: breadcrumbItems,
+      }
+    : null;
 
   const productSchema = product ? {
     '@context': 'https://schema.org',
@@ -191,12 +199,14 @@ const SEO = ({
       <link rel="dns-prefetch" href="https://jetpackbridge.runonflux.io" />
 
       {/* Structured Data (JSON-LD).
-          Organization, WebSite, Service, and FAQPage live in index.html so
-          non-JS crawlers see them. Only breadcrumbs and an optional Product
-          schema are injected from React to avoid duplicate entities. */}
-      <script type="application/ld+json">
-        {JSON.stringify(breadcrumbSchema)}
-      </script>
+          Organization, WebSite, Service and the homepage FAQPage live in the
+          <head> (index.html + the prerender) so non-JS crawlers see them. Only
+          the per-page entities are emitted here, to avoid duplicates. */}
+      {breadcrumbSchema && (
+        <script type="application/ld+json">
+          {JSON.stringify(breadcrumbSchema)}
+        </script>
+      )}
       {productSchema && (
         <script type="application/ld+json">
           {JSON.stringify(productSchema)}

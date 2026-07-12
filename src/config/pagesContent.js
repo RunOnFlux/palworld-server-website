@@ -1,14 +1,14 @@
 // Long-form content for the SEO landing/guide pages.
 //
-// This is the SINGLE SOURCE OF TRUTH for the new content pages. It is consumed
-// by two very different renderers:
-//   1. The React `ArticlePage` component (styled, interactive) — client render.
-//   2. `scripts/prerender.mjs` (plain-HTML) — the static crawler fallback that
-//      ships in dist/<route>/index.html so non-JS crawlers and AI engines see
-//      real content immediately (same idea as the homepage static fallback).
-// Keeping the copy here means both renderers stay in sync automatically.
+// This is the SINGLE SOURCE OF TRUTH for the content pages. `src/pages/ArticlePage`
+// renders a page from here, and that same React tree is what scripts/prerender.mjs
+// server-renders into dist/<route>/index.html — so non-JS crawlers see exactly what
+// a user sees, and the two can no longer drift apart (they used to: this file also
+// carried a hand-written HTML renderer for the crawler fallback, now deleted).
 //
-// A page `body` is an array of typed blocks. Renderers switch on `block.type`.
+// A page `body` is an array of typed blocks. ArticlePage switches on `block.type`.
+// The prerender still reads the metadata here (title/description/slug) to stamp
+// each shell's <head>.
 
 const SITE = 'https://palworld.runonflux.com';
 
@@ -560,20 +560,6 @@ export function resolveRelated(key) {
 // Schema builders (shared by React SEO and the prerender script)
 // -------------------------------------------------------------------------
 
-export function buildBreadcrumbSchema(page) {
-  if (!page.breadcrumbs || page.breadcrumbs.length === 0) return null;
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: page.breadcrumbs.map((b, i) => ({
-      '@type': 'ListItem',
-      position: i + 1,
-      name: b.name,
-      item: `${SITE}${b.url === '/' ? '/' : b.url}`,
-    })),
-  };
-}
-
 export function buildHowToSchema(page) {
   if (!page.howTo) return null;
   return {
@@ -636,82 +622,14 @@ export function buildProductSchema(page) {
   return schema;
 }
 
+// Page-specific JSON-LD, rendered by <SEO schemas={...}> inside the React tree and
+// therefore present in the server-rendered body. BreadcrumbList is deliberately NOT
+// here: <SEO> already builds it from the `breadcrumbs` prop, and emitting it twice
+// would give every content page two BreadcrumbList entities.
 export function buildPageSchemas(page) {
   return [
-    buildBreadcrumbSchema(page),
     buildHowToSchema(page),
     buildFaqSchema(page),
     buildProductSchema(page),
   ].filter(Boolean);
-}
-
-// -------------------------------------------------------------------------
-// Plain-HTML renderer for the static prerender fallback (no JSX).
-// -------------------------------------------------------------------------
-
-const escHtml = (s) =>
-  String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
-export function renderPageBodyHtml(page) {
-  const parts = [];
-  parts.push(`<h1>${escHtml(page.h1)}</h1>`);
-  if (page.lead) parts.push(`<p>${escHtml(page.lead)}</p>`);
-
-  for (const block of page.body) {
-    switch (block.type) {
-      case 'h2':
-        parts.push(`<h2>${escHtml(block.text)}</h2>`);
-        break;
-      case 'h3':
-        parts.push(`<h3>${escHtml(block.text)}</h3>`);
-        break;
-      case 'p':
-        parts.push(`<p>${escHtml(block.text)}</p>`);
-        break;
-      case 'ul':
-        parts.push(`<ul>${block.items.map((i) => `<li>${escHtml(i)}</li>`).join('')}</ul>`);
-        break;
-      case 'ol':
-        parts.push(`<ol>${block.items.map((i) => `<li>${escHtml(i)}</li>`).join('')}</ol>`);
-        break;
-      case 'table':
-        parts.push(
-          `<table><thead><tr>${block.head
-            .map((h) => `<th>${escHtml(h)}</th>`)
-            .join('')}</tr></thead><tbody>${block.rows
-            .map((r) => `<tr>${r.map((c) => `<td>${escHtml(c)}</td>`).join('')}</tr>`)
-            .join('')}</tbody></table>`
-        );
-        break;
-      case 'cta':
-        parts.push(`<p><a href="${escHtml(block.href)}">${escHtml(block.text)}</a></p>`);
-        break;
-      default:
-        break;
-    }
-  }
-
-  // FAQ section (also feeds FAQPage schema)
-  if (page.faq && page.faq.length) {
-    parts.push('<h2>Frequently asked questions</h2>');
-    for (const f of page.faq) {
-      parts.push(`<h3>${escHtml(f.question)}</h3><p>${escHtml(f.answer)}</p>`);
-    }
-  }
-
-  // Related links
-  if (page.related && page.related.length) {
-    const links = page.related
-      .map((k) => resolveRelated(k))
-      .filter(Boolean)
-      .map((r) => `<li><a href="${escHtml(SITE + r.slug)}">${escHtml(r.anchor)}</a></li>`)
-      .join('');
-    if (links) parts.push(`<h2>Related guides</h2><ul>${links}</ul>`);
-  }
-
-  return parts.join('\n');
 }

@@ -9,6 +9,15 @@ class SecureStorage {
     this.dbName = '_secure_storage';
     this.keyStoreName = 'keys';
     this.keyName = 'encryption_key';
+    // This module is instantiated at import time, and the SSR prerender imports it
+    // (via AuthContext). IndexedDB and Web Crypto do not exist in Node, and opening
+    // the DB there would reject an unhandled promise and kill the render. Nothing on
+    // the server ever stores or reads a credential, so we simply do not open it.
+    if (typeof window === 'undefined') {
+      this.dbPromise = null;
+      this.keyPromise = null;
+      return;
+    }
     this.dbPromise = this.initDB();
     this.keyPromise = this.getOrGenerateKey();
   }

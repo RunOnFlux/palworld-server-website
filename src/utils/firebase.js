@@ -23,14 +23,21 @@ const firebaseConfig = {
   measurementId: 'G-SEGT3X2737',
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// Initialize Firebase.
+// During the SSR prerender there is no browser: getAuth() needs window. Nothing on
+// the server ever reads `auth` (AuthProvider only touches it from effects, which do
+// not run during renderToString), so a null stand-in keeps the module importable in
+// Node.
+const app = import.meta.env.SSR ? null : initializeApp(firebaseConfig);
+const auth = import.meta.env.SSR ? null : getAuth(app);
 
-// Set persistence immediately on initialization
-setPersistence(auth, browserLocalPersistence).catch((error) => {
-  console.error('Failed to set auth persistence:', error);
-});
+// Set persistence immediately on initialization (browser only — `auth` is null
+// during the SSR prerender, and persistence is a browser concern anyway).
+if (!import.meta.env.SSR) {
+  setPersistence(auth, browserLocalPersistence).catch((error) => {
+    console.error('Failed to set auth persistence:', error);
+  });
+}
 
 /**
  * Get current user

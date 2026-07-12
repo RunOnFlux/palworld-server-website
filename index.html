@@ -111,65 +111,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="root">
-      <!-- Static fallback content for crawlers and AI engines that do not execute JavaScript.
-           React replaces this entirely once the app boots. -->
-      <main style="max-width:960px;margin:0 auto;padding:48px 24px;font-family:system-ui,-apple-system,sans-serif;color:#e6e6e6;background:#0f0f1a;">
-        <h1 style="font-size:2.25rem;line-height:1.2;margin:0 0 16px;">Palworld Server Hosting — Rent a Dedicated Palworld Server</h1>
-        <p style="font-size:1.125rem;line-height:1.6;margin:0 0 24px;">
-          Host your own Palworld dedicated server on the decentralized Flux cloud. Support up to
-          <strong>32 players</strong>, deploy in under <strong>30 seconds</strong>, and get enterprise-grade
-          <strong>DDoS protection</strong> with <strong>99.9% uptime</strong> across 50+ countries. Plans start at
-          <strong>$3.99/month</strong>, and new users get the first month free.
-        </p>
-        <h2>Why rent a Palworld server on Flux?</h2>
-        <ul>
-          <li><strong>Cheap Palworld server hosting</strong> from $3.99/month — 5GB, 7GB, and 10GB RAM plans.</li>
-          <li><strong>32-player Palworld dedicated server</strong> support out of the box.</li>
-          <li><strong>Instant deployment</strong> — your Palworld server is live in under 30 seconds.</li>
-          <li><strong>Global network</strong> — pick from 50+ countries to minimize latency.</li>
-          <li><strong>DDoS protection</strong> on every server at no extra cost.</li>
-          <li><strong>Full admin access</strong> — web terminal, file manager, backups, and restore.</li>
-          <li><strong>Fiat and crypto payments</strong> — Stripe, Apple Pay, Google Pay, or FLUX.</li>
-        </ul>
-        <h2>Palworld Server Hosting Plans</h2>
-        <ul>
-          <li><strong>Starter (5GB RAM)</strong> — small groups of up to 8 players. From $3.99/month.</li>
-          <li><strong>Standard (7GB RAM)</strong> — medium groups of up to 16 players.</li>
-          <li><strong>Performance (10GB RAM)</strong> — full 32-player Palworld dedicated server.</li>
-        </ul>
-        <p style="margin:24px 0;padding:16px 20px;background:#12233a;border:1px solid #3aa0d6;border-radius:12px;font-size:1.0625rem;">
-          <a href="https://palworld.runonflux.com/decentralized-palworld-hosting" style="color:#3aa0d6;font-weight:700;text-decoration:none;">Why host on the Flux decentralized cloud →</a><br />
-          No single point of failure, no lock-in, dedicated resources, DDoS protection, 99.9% uptime and 32 players.
-        </p>
-        <h2>How to host a Palworld server</h2>
-        <ol>
-          <li>Create a free account with Google or email.</li>
-          <li>Pick a Palworld hosting plan that matches your group size.</li>
-          <li>Choose a server region close to your players.</li>
-          <li>Click deploy — your Palworld dedicated server is ready in 30 seconds.</li>
-        </ol>
-        <h2>Frequently asked questions</h2>
-        <h3>How much does Palworld server hosting cost?</h3>
-        <p>Plans start at $3.99/month (5GB RAM) and scale up to full 32-player performance plans. The first month is free for new users.</p>
-        <h3>How many players can a Palworld dedicated server support?</h3>
-        <p>Up to 32 players on a single Palworld dedicated server.</p>
-        <h3>How much RAM do I need for a Palworld server?</h3>
-        <p>5GB for small groups, 7GB for medium groups, 10GB+ for a full 32-player server.</p>
-        <h3>Is DDoS protection included?</h3>
-        <p>Yes, every Palworld server on Flux includes DDoS protection at no extra cost.</p>
-        <h2>Palworld hosting guides</h2>
-        <ul>
-          <li><a href="https://palworld.runonflux.com/setup-guide">How to make a Palworld dedicated server</a> — full 2026 setup walkthrough.</li>
-          <li><a href="https://palworld.runonflux.com/server-requirements">Palworld dedicated server requirements</a> — RAM, CPU, and ports 8211/8212.</li>
-          <li><a href="https://palworld.runonflux.com/pricing">Palworld server hosting pricing</a> — compare 5GB, 7GB, and 10GB plans.</li>
-          <li><a href="https://palworld.runonflux.com/guides/join-server">How to join a friend's Palworld server</a> — including crossplay.</li>
-          <li><a href="https://palworld.runonflux.com/guides/server-settings">Best Palworld server settings</a> — PalWorldSettings.ini explained.</li>
-          <li><a href="https://palworld.runonflux.com/decentralized-palworld-hosting">Why host on the Flux decentralized cloud →</a> — no single point of failure, no lock-in, dedicated resources and full control.</li>
-        </ul>
-        <p><a href="https://palworld.runonflux.com/">Rent your Palworld dedicated server on Flux →</a></p>
-      </main>
-    </div>
+    <!-- Empty by design. scripts/prerender.mjs replaces this with the route's
+         server-rendered React markup at build time, and the client hydrates it.
+         In dev there is nothing to hydrate, so main.jsx falls back to createRoot. -->
+    <div id="root"></div>
     <noscript>
       <div style="max-width:720px;margin:24px auto;padding:16px;background:#1f1f1f;color:#fff;border:1px solid #333;border-radius:8px;font-family:system-ui,-apple-system,sans-serif;">
         This site requires JavaScript to deploy and manage your Palworld dedicated server. Enable JavaScript to continue.

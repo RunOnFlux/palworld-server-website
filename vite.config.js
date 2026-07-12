@@ -4,11 +4,17 @@ import sitemap from 'vite-plugin-sitemap'
 import { ViteImageOptimizer } from 'vite-plugin-image-optimizer'
 
 // https://vite.dev/config/
-export default defineConfig(() => {
+//
+// `isSsrBuild` is true for `vite build --ssr src/entry-server.jsx` (see the
+// build:ssr script), which produces the bundle scripts/prerender.mjs renders with.
+// The sitemap, image optimizer and manualChunks all belong to the client bundle
+// only — applying them to the SSR build emits duplicate assets and makes Rollup
+// fail, since react is external there.
+export default defineConfig(({ isSsrBuild }) => {
   return {
     plugins: [
       react(),
-      sitemap({
+      !isSsrBuild && sitemap({
         // Hardcoded so the sitemap <loc> (and the plugin-generated robots.txt
         // Sitemap URL) is never the localhost dev proxy target from .env.
         hostname: 'https://palworld.runonflux.com',
@@ -55,13 +61,13 @@ export default defineConfig(() => {
           { userAgent: 'Bytespider', allow: '/' },
         ],
       }),
-      ViteImageOptimizer({
+      !isSsrBuild && ViteImageOptimizer({
         png: { quality: 80 },
         jpeg: { quality: 80 },
         jpg: { quality: 80 },
         webp: { quality: 80 },
       }),
-    ],
+    ].filter(Boolean),
     server: {
       port: 4000,
       open: true,
@@ -73,9 +79,10 @@ export default defineConfig(() => {
       }
     },
     build: {
-      // Code splitting optimization
+      // Code splitting optimization. Vendor chunking is client-only: in the SSR
+      // build react & friends are external, and Rollup refuses to chunk externals.
       rollupOptions: {
-        output: {
+        output: isSsrBuild ? {} : {
           manualChunks: {
             // Core vendor chunks
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],

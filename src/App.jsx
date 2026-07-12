@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
@@ -6,21 +7,62 @@ import { AuthProvider } from './context/AuthContext';
 import { CookieConsent, hasGAConsent, ErrorBoundary } from './components/common';
 import ScrollToTop from './components/ScrollToTop';
 
-// Lazy load pages for code splitting
-const Home = lazy(() => import('./pages/Home'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Success = lazy(() => import('./pages/Success'));
-const Cancel = lazy(() => import('./pages/Cancel'));
-const NotFound = lazy(() => import('./pages/NotFound'));
-const Support = lazy(() => import('./pages/Support'));
-const SetupGuide = lazy(() => import('./pages/SetupGuide'));
-const ServerRequirements = lazy(() => import('./pages/ServerRequirements'));
-const Pricing = lazy(() => import('./pages/Pricing'));
-const GuideJoinServer = lazy(() => import('./pages/GuideJoinServer'));
-const GuideServerSettings = lazy(() => import('./pages/GuideServerSettings'));
-const Comparison = lazy(() => import('./pages/Comparison'));
-const NitradoAlternative = lazy(() => import('./pages/NitradoAlternative'));
-const GportalAlternative = lazy(() => import('./pages/GportalAlternative'));
+// Lazy load pages for code splitting.
+//
+// `lazyPage` adds a preload() step on top of React.lazy. It matters because
+// renderToString() is synchronous: a plain React.lazy component would suspend and
+// the SSR prerender would emit the <Suspense> fallback instead of the page. Once
+// preload() has resolved, the wrapper renders the module synchronously — so the
+// server emits real markup, and the client (which preloads the same route before
+// hydrating) produces an identical first render. See src/entry-server.jsx.
+const lazyPage = (factory) => {
+  const Lazy = lazy(factory);
+  let Loaded = null;
+  const Page = (props) => (Loaded ? <Loaded {...props} /> : <Lazy {...props} />);
+  Page.preload = () => Promise.resolve(factory()).then((m) => { Loaded = m.default; });
+  Page.displayName = 'LazyPage';
+  return Page;
+};
+
+const Home = lazyPage(() => import('./pages/Home'));
+const Dashboard = lazyPage(() => import('./pages/Dashboard'));
+const Success = lazyPage(() => import('./pages/Success'));
+const Cancel = lazyPage(() => import('./pages/Cancel'));
+const NotFound = lazyPage(() => import('./pages/NotFound'));
+const Support = lazyPage(() => import('./pages/Support'));
+const SetupGuide = lazyPage(() => import('./pages/SetupGuide'));
+const ServerRequirements = lazyPage(() => import('./pages/ServerRequirements'));
+const Pricing = lazyPage(() => import('./pages/Pricing'));
+const GuideJoinServer = lazyPage(() => import('./pages/GuideJoinServer'));
+const GuideServerSettings = lazyPage(() => import('./pages/GuideServerSettings'));
+const Comparison = lazyPage(() => import('./pages/Comparison'));
+const NitradoAlternative = lazyPage(() => import('./pages/NitradoAlternative'));
+const GportalAlternative = lazyPage(() => import('./pages/GportalAlternative'));
+
+// Which page component serves each path. Used to preload exactly the one route
+// being rendered (server) or hydrated (client) — never the whole app.
+const ROUTE_PAGES = {
+  '/': Home,
+  '/dashboard': Dashboard,
+  '/success': Success,
+  '/cancel': Cancel,
+  '/support': Support,
+  '/setup-guide': SetupGuide,
+  '/server-requirements': ServerRequirements,
+  '/pricing': Pricing,
+  '/guides/join-server': GuideJoinServer,
+  '/guides/server-settings': GuideServerSettings,
+  '/decentralized-palworld-hosting': Comparison,
+  '/nitrado-alternative': NitradoAlternative,
+  '/gportal-alternative': GportalAlternative,
+};
+
+/** Load the chunk for `pathname` (falling back to NotFound) before render/hydrate. */
+export const preloadRoute = (pathname) => {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  const Page = ROUTE_PAGES[clean] || NotFound;
+  return Page.preload();
+};
 
 // Loading component
 const PageLoader = () => (
@@ -65,7 +107,51 @@ const toastOptions = {
   },
 };
 
-function App() {
+/**
+ * Everything that must live *inside* a Router. The server wraps this in
+ * StaticRouter and the client in BrowserRouter; both produce the same markup, so
+ * hydration matches.
+ */
+export function AppRoutes() {
+  return (
+    <>
+      <ScrollToTop />
+      <div className="min-h-screen bg-background text-text">
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/success" element={<Success />} />
+            <Route path="/cancel" element={<Cancel />} />
+            <Route path="/support" element={<Support />} />
+            <Route path="/setup-guide" element={<SetupGuide />} />
+            <Route path="/server-requirements" element={<ServerRequirements />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/guides/join-server" element={<GuideJoinServer />} />
+            <Route path="/guides/server-settings" element={<GuideServerSettings />} />
+            <Route path="/decentralized-palworld-hosting" element={<Comparison />} />
+            <Route path="/nitrado-alternative" element={<NitradoAlternative />} />
+            <Route path="/gportal-alternative" element={<GportalAlternative />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+
+        {/* Toast Notifications */}
+        <Toaster
+          position="top-center"
+          toastOptions={toastOptions}
+        />
+
+        {/* Cookie Consent Banner for GA. Renders null until its effect runs, so it
+            is absent from the SSR markup and from the client's first render. */}
+        <CookieConsent />
+      </div>
+    </>
+  );
+}
+
+/** Router-agnostic providers. Shared by the client and the SSR prerender. */
+export function AppProviders({ children }) {
   // Initialize Google Analytics once on app mount
   useEffect(() => {
     const isDevelopment = import.meta.env.DEV;
@@ -95,41 +181,25 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <Router>
-            <ScrollToTop />
-            <div className="min-h-screen bg-background text-text">
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/" element={<Home />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/success" element={<Success />} />
-                  <Route path="/cancel" element={<Cancel />} />
-                  <Route path="/support" element={<Support />} />
-                  <Route path="/setup-guide" element={<SetupGuide />} />
-                  <Route path="/server-requirements" element={<ServerRequirements />} />
-                  <Route path="/pricing" element={<Pricing />} />
-                  <Route path="/guides/join-server" element={<GuideJoinServer />} />
-                  <Route path="/guides/server-settings" element={<GuideServerSettings />} />
-                  <Route path="/decentralized-palworld-hosting" element={<Comparison />} />
-                  <Route path="/nitrado-alternative" element={<NitradoAlternative />} />
-                  <Route path="/gportal-alternative" element={<GportalAlternative />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-
-              {/* Toast Notifications */}
-              <Toaster
-                position="top-center"
-                toastOptions={toastOptions}
-              />
-
-              {/* Cookie Consent Banner for GA */}
-              <CookieConsent />
-            </div>
-          </Router>
+          {children}
         </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>
+  );
+}
+
+AppProviders.propTypes = {
+  children: PropTypes.node,
+};
+
+/** Client entry tree. The SSR equivalent lives in src/entry-server.jsx. */
+function App() {
+  return (
+    <AppProviders>
+      <Router>
+        <AppRoutes />
+      </Router>
+    </AppProviders>
   );
 }
 
