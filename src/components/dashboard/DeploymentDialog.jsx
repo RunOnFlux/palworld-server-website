@@ -64,6 +64,11 @@ const parseHddValue = (value) => {
   return value;
 };
 
+// Instance count is a property of the marketplace plan, NOT a fixed 3.
+// Deploying more instances than the plan is priced for silently loses money on Flux,
+// so the plan is the single source of truth. Fallback to 3 only if the plan omits it.
+const getPlanInstances = (plan) => plan?._app?.instances || 3;
+
 
 
 /**
@@ -82,7 +87,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const [serverConfig, setServerConfig] = useState({
     name: '',
     appName: '',
-    instances: 3, // Minimum 3 for FluxCloud redundancy
+    instances: 3, // Placeholder — replaced by the plan's instance count on selection
   });
   const [subscriptionMonths, setSubscriptionMonths] = useState(1);
   const [apiPricing, setApiPricing] = useState({ usd: 0, flux: 0, fluxDiscount: 0 });
@@ -163,6 +168,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     if (preSelectedPlan && isOpen) {
       skippedStep1Ref.current = true;
       setSelectedPlan(preSelectedPlan);
+      setServerConfig(prev => ({ ...prev, instances: getPlanInstances(preSelectedPlan) })); // plan's instance count
       setCurrentStep(2);
     } else if (isOpen) {
       skippedStep1Ref.current = false;
@@ -590,6 +596,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const handlePlanSelect = useCallback((plan) => {
     stepDirectionRef.current = 1;
     setSelectedPlan(plan);
+    setServerConfig(prev => ({ ...prev, instances: getPlanInstances(plan) })); // price + deploy the plan's instance count
     setPaymentHash(null); // Spec changed — invalidate old hash
     setCurrentStep(2);
   }, []);
@@ -794,7 +801,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         description: 'Palworld Server on Flux Decentralized Cloud',
         owner: zelidauth.zelid,
         compose: compose,
-        instances: serverConfig.instances || 3,
+        instances: getPlanInstances(selectedPlan),
         expire: 88000 * subscriptionMonths, // PON Fork support
         contacts: [contactsReference], // Flux Storage reference
         geolocation: geolocationCodes,
@@ -991,7 +998,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         description: 'Palworld Server on Flux Decentralized Cloud',
         owner: zelidauth.zelid,
         compose: compose,
-        instances: serverConfig.instances || 3,
+        instances: getPlanInstances(selectedPlan),
         expire: 88000 * subscriptionMonths,
         contacts: [contactsReference],
         geolocation: geolocationCodes,
@@ -1128,7 +1135,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         description: 'Palworld Server on Flux Decentralized Cloud',
         owner: zelidauth.zelid,
         compose,
-        instances: serverConfig.instances || 3,
+        instances: getPlanInstances(selectedPlan),
         expire: 88000, // Always 1 month for free first month
         contacts: [contactsReference],
         geolocation: geolocationCodes,
