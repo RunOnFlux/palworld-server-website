@@ -19,8 +19,8 @@
 ## Plans
 
 - Starter — 5GB RAM, recommended for up to ~8 players, from $3.99/month
-- Standard — 7GB RAM, recommended for ~16 players
-- Performance — 10GB RAM, recommended for the full 32-player cap
+- Standard — 7GB RAM, recommended for ~16 players, from $5.99/month
+- Performance — 10GB RAM, recommended for the full 32-player cap, from $8.99/month
 - All plans: instant deployment, DDoS protection, full admin access, automatic backups
 
 ## Common questions (for citation)
@@ -35,6 +35,13 @@
 
 ## Pages
 
-- [Home / pricing / features / FAQ](https://palworld.runonflux.com/)
+- [Home / features / FAQ](https://palworld.runonflux.com/)
+- [Pricing and plans](https://palworld.runonflux.com/pricing)
+- [How to set up a Palworld server](https://palworld.runonflux.com/setup-guide)
+- [Palworld server requirements](https://palworld.runonflux.com/server-requirements)
+- [Palworld server settings](https://palworld.runonflux.com/guides/server-settings)
+- [How to join a Palworld server](https://palworld.runonflux.com/guides/join-server)
+- [Decentralized Palworld hosting](https://palworld.runonflux.com/decentralized-palworld-hosting)
+- [Nitrado alternative](https://palworld.runonflux.com/nitrado-alternative)
+- [GPORTAL alternative](https://palworld.runonflux.com/gportal-alternative)
 - [Support](https://palworld.runonflux.com/support)
-- [Dashboard (login required)](https://palworld.runonflux.com/dashboard)

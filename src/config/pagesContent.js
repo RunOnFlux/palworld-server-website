@@ -154,8 +154,8 @@ export const pagesContent = {
       { type: 'p', text: 'Every plan is a full Palworld dedicated server with DDoS protection, a web dashboard, file manager, console access, and on-demand backups. The only difference between tiers is the RAM and CPU allocation, which determines how many players your server comfortably supports.' },
       { type: 'table', head: ['Plan', 'RAM', 'Players', 'Price'], rows: [
         ['Starter', '5GB', 'Up to 8', 'from $3.99/mo'],
-        ['Standard', '7GB', 'Up to 16', 'from $9.99/mo'],
-        ['Performance', '10GB', 'Up to 32', 'from $19.99/mo'],
+        ['Standard', '7GB', 'Up to 16', 'from $5.99/mo'],
+        ['Performance', '10GB', 'Up to 32', 'from $8.99/mo'],
       ] },
       { type: 'p', text: 'Prices shown are indicative starting points; the exact monthly price for each plan is calculated live at checkout based on the selected region and resources. There is no long-term contract and no hidden setup fee.' },
 
@@ -186,7 +186,7 @@ export const pagesContent = {
       description: 'Managed Palworld dedicated server hosting on the Flux decentralized cloud. Up to 32 players, DDoS protection, 99.9% uptime, plans from $3.99/month with the first month free.',
       image: '/games/palworld/banner.webp',
       lowPrice: '3.99',
-      highPrice: '19.99',
+      highPrice: '8.99',
       offerCount: '3',
     },
     related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server', 'decentralized-palworld-hosting'],
@@ -355,7 +355,7 @@ export const pagesContent = {
       ] },
 
       { type: 'h2', text: 'Pay-as-you-go pricing' },
-      { type: 'p', text: 'Billing matches the no-lock-in philosophy: month-to-month, no long-term contract, and no hidden setup fee. Plans start at $3.99/month for the 5GB Starter tier, $9.99/month for 7GB, and $19.99/month for the 10GB Performance tier that runs a full 32-player world. New users get their first month free, so you can build a world and test performance before you pay. You can pay however you prefer — card, Apple Pay, and Google Pay through Stripe, or in crypto with FLUX — which fits the open, permissionless nature of the network.' },
+      { type: 'p', text: 'Billing matches the no-lock-in philosophy: month-to-month, no long-term contract, and no hidden setup fee. Plans start at $3.99/month for the 5GB Starter tier, $5.99/month for 7GB, and $8.99/month for the 10GB Performance tier that runs a full 32-player world. New users get their first month free, so you can build a world and test performance before you pay. You can pay however you prefer — card, Apple Pay, and Google Pay through Stripe, or in crypto with FLUX — which fits the open, permissionless nature of the network.' },
       { type: 'cta', text: 'Deploy a Palworld server on Flux — first month free →', href: '/#pricing' },
 
       { type: 'h2', text: 'Who is decentralized hosting for?' },

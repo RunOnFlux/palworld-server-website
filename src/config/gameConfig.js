@@ -125,6 +125,7 @@ export const gameConfig = {
     { href: "https://enshrouded.runonflux.com", label: "Enshrouded Server Hosting" },
     { href: "https://rust.runonflux.com", label: "Rust Server Hosting" },
     { href: "https://windrose.runonflux.com", label: "Windrose Server Hosting" },
+    { href: "https://projectzomboid.runonflux.com", label: "Project Zomboid Server Hosting" },
     { href: "https://wordpress.runonflux.com", label: "Web3 WordPress Hosting" },
     { href: "https://n8n.runonflux.com", label: "n8n Hosting" },
     { href: "https://openclaw.runonflux.com", label: "OpenClaw AI Assistant Hosting" },
