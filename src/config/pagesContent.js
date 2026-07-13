@@ -589,16 +589,21 @@ export function buildFaqSchema(page) {
   };
 }
 
+// Typed as Service (not Product) so Google doesn't apply Product Snippet rating
+// requirements or Merchant Listings validation — neither applies to a hosted service.
 export function buildProductSchema(page) {
   if (!page.product) return null;
   const p = page.product;
   const schema = {
     '@context': 'https://schema.org',
-    '@type': 'Product',
+    '@type': 'Service',
     name: p.name,
     description: p.description,
+    serviceType: 'Palworld Server Hosting',
     image: `${SITE}${p.image}`,
     brand: { '@type': 'Brand', name: 'Palworld on Flux' },
+    provider: { '@type': 'Organization', name: 'Palworld on Flux', url: `${SITE}/` },
+    areaServed: 'Worldwide',
     offers: {
       '@type': 'AggregateOffer',
       priceCurrency: 'USD',

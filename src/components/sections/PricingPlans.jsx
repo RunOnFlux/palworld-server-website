@@ -158,6 +158,9 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
   const siteUrl = import.meta.env.VITE_APP_URL || 'https://palworld.runonflux.com';
   const productImage = `${siteUrl}${gameConfig.assets.banner}`;
   const offerUrl = `${siteUrl}/#pricing`;
+  // Hosting plans are typed as Service (not Product) so Google doesn't apply
+  // Merchant Listings validation (image/brand/shipping/returns) or Product Snippet
+  // rating requirements — neither applies to a hosted service.
 
   const structuredData = {
     '@context': 'https://schema.org',
@@ -166,7 +169,7 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
       '@type': 'ListItem',
       position: index + 1,
       item: {
-        '@type': 'Product',
+        '@type': 'Service',
         name: plan.name,
         description: plan.description,
         image: productImage,
