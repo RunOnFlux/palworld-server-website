@@ -243,7 +243,7 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
             transition={{ delay: 0.3 }}
           >
             <span className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/10 to-transparent animate-[shimmer_3s_infinite]" />
-            <span className="relative text-base sm:text-lg font-bold text-blue-300">🎁 First month free for new users</span>
+            <span className="relative text-base sm:text-lg font-bold text-blue-300">🎁 First month free for new users*</span>
           </motion.div>
 
         </motion.div>
@@ -496,11 +496,11 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
           <div className="flex flex-wrap justify-center gap-2 sm:gap-4">
             <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
               <Check className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
-              <span className="text-xs sm:text-sm text-blue-300 font-semibold whitespace-nowrap">First Month Free</span>
+              <span className="text-xs sm:text-sm text-blue-300 font-semibold whitespace-nowrap">First Month Free*</span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-3 bg-surface/30 border border-border/30 rounded-lg">
               <Check className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
-              <span className="text-xs sm:text-sm text-text-secondary font-medium whitespace-nowrap">7-day money-back</span>
+              <span className="text-xs sm:text-sm text-text-secondary font-medium whitespace-nowrap">30-day money-back*</span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-3 bg-surface/30 border border-border/30 rounded-lg">
               <Check className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
@@ -511,6 +511,11 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
               <span className="text-xs sm:text-sm text-text-secondary font-medium whitespace-nowrap">Cancel anytime</span>
             </div>
           </div>
+
+          {/* Free-month & money-back terms */}
+          <p className="mt-4 max-w-2xl mx-auto text-center text-[11px] sm:text-xs text-text-secondary/70 leading-relaxed px-4">
+            *The first month is free for customers new to Flux Cloud — one free month per account, not per app or per server. If you've deployed any app on Flux before, standard pricing applies. Our 30-day money-back guarantee covers your first paid month only and does not apply when the first month was free.
+          </p>
         </motion.div>
 
         {/* Other Games CTA */}

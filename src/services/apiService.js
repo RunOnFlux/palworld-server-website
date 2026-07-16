@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { apiConfig } from '../config/apiConfig';
 import secureStorage from '../utils/secureStorage';
+import storageService from './storageService';
+import { getUser } from '../utils/firebase';
 import qs from 'qs';
 
 /**
@@ -339,12 +341,12 @@ class ApiService {
 
   /**
    * Check if user is eligible for free first month deployment.
-   * Eligible if owner has never registered an app with the same repotags.
+   * Per-customer rule: eligible only for brand-new Flux customers — any app the
+   * owner has ever registered on Flux disqualifies them (not per app or repotag).
    * @param {string} ownerZelid - The app owner's zelid
-   * @param {Array} targetRepotags - Array of repotags from the selected plan
    * @returns {Promise<boolean>} true if eligible for free first month
    */
-  async checkFreeFirstMonthEligibility(ownerZelid, targetRepotags) {
+  async checkFreeFirstMonthEligibility(ownerZelid) {
     try {
       const response = await fetch(
         `https://api.runonflux.io/apps/permanentmessages?owner=${ownerZelid}`,
@@ -359,18 +361,11 @@ class ApiService {
 
       const registerMessages = data.data.filter(m => m.type === 'fluxappregister');
 
-      for (const message of registerMessages) {
-        const specs = message.appSpecifications;
-        if (!specs?.compose || !Array.isArray(specs.compose)) continue;
-        if (specs.compose.length !== targetRepotags.length) continue;
-
-        const existingRepotags = specs.compose.map(c => c.repotag).filter(Boolean);
-        const allMatch = targetRepotags.every((tag, i) => tag === existingRepotags[i]);
-
-        if (allMatch) {
-          console.log(`[FreeMonth] Owner already has app "${specs.name}" with same repotags`);
-          return false;
-        }
+      // Per-customer rule: any app the owner has ever registered on Flux disqualifies
+      // the free first month — the offer is one per Flux Cloud account, not per app.
+      if (registerMessages.length > 0) {
+        console.log(`[FreeMonth] Owner already has ${registerMessages.length} app(s) on Flux — not a new customer`);
+        return false;
       }
 
       return true;
@@ -594,6 +589,29 @@ class ApiService {
       delete updatedSpec.hash;
       delete updatedSpec.height;
       updatedSpec.expire = Math.floor(newExpireBlocks);
+
+      // Backfill contacts for legacy apps registered with an empty contacts array.
+      // The old "free first month" deploy path skipped the F_S_CONTACTS upload, so
+      // many apps went on-chain with contacts: [] or ['']. On any renewal/extension,
+      // if the current spec has no real contact, upload the logged-in user's email
+      // now so the renewed spec carries a proper F_S_CONTACTS reference.
+      const hasContact = Array.isArray(updatedSpec.contacts)
+        && updatedSpec.contacts.some((c) => typeof c === 'string' && c.trim() !== '');
+      if (!hasContact) {
+        const contactEmail = getUser()?.email;
+        if (contactEmail) {
+          try {
+            const contactsId = storageService.generateContactsId();
+            await storageService.uploadContacts({ contactsid: contactsId, contacts: [contactEmail] });
+            updatedSpec.contacts = [storageService.getContactsStorageReference(contactsId)];
+            console.log('📧 Backfilled missing contacts with logged-in email:', contactEmail);
+          } catch (err) {
+            console.warn('⚠️ Contacts backfill failed, renewing without contact:', err.message);
+          }
+        } else {
+          console.warn('⚠️ No logged-in email available to backfill contacts; renewing as-is');
+        }
+      }
 
       console.log('📝 Updated app spec with new expire:', updatedSpec.expire);
 

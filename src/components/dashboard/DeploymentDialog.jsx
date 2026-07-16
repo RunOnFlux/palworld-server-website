@@ -116,6 +116,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const [waitingForCrypto, setWaitingForCrypto] = useState(false); // Show waiting dialog during crypto payment
   const cryptoAbortRef = useRef(null); // AbortController for ZelCore WS cancel
   const [isFreeFirstMonth, setIsFreeFirstMonth] = useState(false); // Free first month eligibility
+  const [existingCustomer, setExistingCustomer] = useState(false); // Returning Flux customer — free month not applicable
   const [checkingEligibility, setCheckingEligibility] = useState(false);
   const saveServerToLocalStorageRef = useRef(null); // Ref to avoid stale closure in message listener
 
@@ -313,12 +314,14 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   useEffect(() => {
     if (!selectedPlan || subscriptionMonths !== 1) {
       setIsFreeFirstMonth(false);
+      setExistingCustomer(false);
       return;
     }
 
     let cancelled = false;
     const checkEligibility = async () => {
       setCheckingEligibility(true);
+      setExistingCustomer(false);
       try {
         const auth = await apiService.getStoredAuth();
         if (!auth || cancelled) return;
@@ -336,9 +339,10 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
           return;
         }
 
-        const eligible = await apiService.checkFreeFirstMonthEligibility(auth.zelid, repotags);
+        const eligible = await apiService.checkFreeFirstMonthEligibility(auth.zelid);
         if (!cancelled) {
           setIsFreeFirstMonth(eligible);
+          setExistingCustomer(!eligible);
           if (eligible) console.log('🎉 User eligible for free first month!');
         }
       } catch (error) {
@@ -1099,7 +1103,14 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
       // Build app spec (same as handleDeployImpl)
       const appName = serverConfig.appName || serverConfig.name;
-      const contactsReference = serverConfig.contactsReference || '';
+
+      // Upload contact email to Flux Storage (same as the fiat/crypto flows) so the
+      // registered app spec carries a real F_S_CONTACTS reference instead of an
+      // empty contacts array.
+      const email = user?.email || 'no-email@flux.local';
+      const contactsId = storageService.generateContactsId();
+      await storageService.uploadContacts({ contactsid: contactsId, contacts: [email] });
+      const contactsReference = storageService.getContactsStorageReference(contactsId);
       const geolocationCodes = allowedLocations.length > 0 ? allowedLocations : [];
 
       const selectedConfig = selectedPlan._config;
@@ -1456,6 +1467,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
                 onCryptoPay={handleCryptoDeploy}
                 isFreeFirstMonth={isFreeFirstMonth}
                 checkingEligibility={checkingEligibility}
+                existingCustomer={existingCustomer}
                 onFreeDeploy={handleFreeDeploy}
               />
             )}
