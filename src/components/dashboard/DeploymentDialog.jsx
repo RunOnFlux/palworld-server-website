@@ -92,6 +92,13 @@ const mergeEnvParams = (...envArrays) => {
  * DeploymentDialog Component
  * Multi-step wizard for deploying a new game server
  */
+// Resources reserved for the node's OS/FluxOS — the app can only use what's left.
+const OS_RESERVE = { cores: 1, ram: 2, ssd: 80 };
+const CONTINENT_NAMES = {
+  AF: 'Africa', AS: 'Asia', EU: 'Europe',
+  NA: 'North America', OC: 'Oceania', SA: 'South America',
+};
+
 const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const { user, isAuthenticated } = useAuth();
   const [currentStep, setCurrentStep] = useState(preSelectedPlan ? 2 : 1);
@@ -118,7 +125,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     region: '',
   });
   const [allowedLocations, setAllowedLocations] = useState([]);
-  const [availableLocations, setAvailableLocations] = useState([]);
+  const [availableLocations, setAvailableLocations] = useState({ nodes: [] });
   const [availableContinents, setAvailableContinents] = useState([]);
   const [availableCountries, setAvailableCountries] = useState([]);
 
@@ -238,58 +245,64 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     }
   }, [currentStep]);
 
-  // Fetch available locations from Flux stats API (FluxOS pattern)
+  // Enterprise apps (encrypted compose) can ONLY run on nodes that report an
+  // arcaneVersion. Non-enterprise apps run anywhere. This drives BOTH which stats
+  // projection we request and whether we filter nodes by arcaneVersion below.
+  const isEnterprise = !!selectedPlan?._app?.isAutoEnterprise;
+
+  // Per-node hardware the plan needs = sum of ALL its compose components
+  // (a node hosts every container of the app). ram is in MB → convert to GB.
+  const planHardware = useMemo(() => {
+    const comps = selectedPlan?._config?.components || [];
+    let cpu = 0, ramMb = 0, hdd = 0;
+    comps.forEach((c) => {
+      cpu += c.cpu || c.cpubasic || 0;
+      ramMb += c.ram || c.rambasic || 0;
+      hdd += c.hdd || c.hddbasic || 0;
+    });
+    return { cpu, ramGB: ramMb / 1000, hddGB: hdd };
+  }, [selectedPlan]);
+
+  // Fetch available nodes from Flux stats API. Enterprise apps need the `flux`
+  // object (for arcaneVersion); both need `benchmark` (hardware) + `geolocation`.
   useEffect(() => {
     const controller = new AbortController();
     const fetchLocations = async () => {
       try {
-        const response = await fetch('https://stats.runonflux.io/fluxinfo?projection=geo', { signal: controller.signal });
+        // NOTE: `flux` MUST come last — the stats API returns an "Internal error"
+        // when `flux` is the first projection field (e.g. `flux,geolocation,...`).
+        const projection = isEnterprise
+          ? 'geolocation,benchmark,flux'
+          : 'geolocation,benchmark';
+        const response = await fetch(`https://stats.runonflux.io/fluxinfo?projection=${projection}`, { signal: controller.signal });
         const result = await response.json();
 
         if (result.status === 'success' && result.data && result.data.length > 5000) {
-          const locations = [];
-          const continents = new Map();
-
-          // Count instances per location (FluxOS format)
-          result.data.forEach(flux => {
-            if (flux.geolocation?.continentCode && flux.geolocation?.countryCode) {
-              const cont = flux.geolocation.continentCode;
-              const count = flux.geolocation.countryCode;
-
-              const countryLoc = `${cont}_${count}`;
-
-              const updateCount = (val) => {
-                const exists = locations.find(l => l.value === val);
-                if (exists) {
-                  exists.instances++;
-                } else {
-                  locations.push({ value: val, instances: 1 });
-                }
-              };
-
-              // Only count at country level to avoid double counting
-              // Continent totals are derived by summing countries
-              updateCount(countryLoc);
-
-              // Track continent names
-              if (!continents.has(cont)) {
-                const continentNames = {
-                  'AF': 'Africa',
-                  'AS': 'Asia',
-                  'EU': 'Europe',
-                  'NA': 'North America',
-                  'OC': 'Oceania',
-                  'SA': 'South America',
-                };
-                if (continentNames[cont]) {
-                  continents.set(cont, continentNames[cont]);
-                }
-              }
-            }
+          // Keep a flat per-node list; hardware/arcane/IP filtering happens in
+          // computeAvailability once the plan + instance count are known.
+          const nodes = [];
+          result.data.forEach((n) => {
+            const g = n.geolocation;
+            if (!g?.continentCode || !g?.countryCode) return;
+            const b = n.benchmark?.bench || {};
+            if (!b.cores) return; // node has no valid benchmark → cannot place apps
+            // Multiple nodes can share one public IP (up to 8, on different ports).
+            // The IP lives in flux.ip as "ip:port" (enterprise projection) or in
+            // geolocation.ip (both). Strip the port to group by real machine/network.
+            const rawIp = n.flux?.ip || g.ip || '';
+            const ip = rawIp.split(':')[0];
+            nodes.push({
+              cont: g.continentCode,
+              country: g.countryCode,
+              ip,
+              cores: b.cores,
+              ram: b.ram || 0,
+              ssd: b.ssd || 0,
+              arcane: !!n.flux?.arcaneVersion,
+            });
           });
 
-          setAvailableLocations({ locations, continents });
-          filterLocationsByInstances({ locations, continents }, serverConfig.instances);
+          setAvailableLocations({ nodes });
         }
       } catch (error) {
         if (error.name === 'AbortError') return;
@@ -303,8 +316,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       fetchLocations();
     }
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, isEnterprise]);
 
   // Fetch pricing when plan or instances change (debounced)
   useEffect(() => {
@@ -414,65 +426,71 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     return () => window.removeEventListener('message', handleMessage);
   }, []); // Empty deps - mount/unmount only
 
-  const filterLocationsByInstances = useCallback((locationData, requiredInstances) => {
-    if (!locationData || !locationData.locations) return;
+  // Build the selectable continents/countries from the raw node list, filtered by:
+  //   1. hardware — node's usable resources (after OS reserve) must fit the plan
+  //   2. enterprise — node must report an arcaneVersion when the app is enterprise
+  //   3. availability gate — a location only qualifies if it has enough UNIQUE public
+  //      IPs (not nodes) to place every instance, since Flux spreads instances across
+  //      distinct IPs. We surface both counts so the user sees real redundancy.
+  const computeAvailability = useCallback((locationData, requiredInstances) => {
+    const nodes = locationData?.nodes;
+    if (!nodes) return;
 
-    const { locations, continents } = locationData;
-    const filteredContinents = [];
+    const { cpu, ramGB, hddGB } = planHardware;
+    const fits = (n) =>
+      (n.cores - OS_RESERVE.cores) >= cpu &&
+      (n.ram - OS_RESERVE.ram) >= ramGB &&
+      (n.ssd - OS_RESERVE.ssd) >= hddGB &&
+      (!isEnterprise || n.arcane);
 
-    continents.forEach((name, code) => {
-      // Calculate total instances for this continent by summing countries
-      const continentInstances = locations
-        .filter(loc => loc.value.startsWith(code + '_'))
-        .reduce((total, loc) => total + loc.instances, 0);
+    const contAgg = new Map(); // code -> { nodeCount, ips:Set }
+    const ctryAgg = new Map(); // `${cont}_${country}` -> { nodeCount, ips:Set }
+    nodes.forEach((n) => {
+      if (!fits(n)) return;
+      if (!contAgg.has(n.cont)) contAgg.set(n.cont, { nodeCount: 0, ips: new Set() });
+      const c = contAgg.get(n.cont);
+      c.nodeCount++; if (n.ip) c.ips.add(n.ip);
 
-      if (continentInstances >= requiredInstances) {
-        filteredContinents.push({ name, code, nodeCount: continentInstances });
-      }
+      const key = `${n.cont}_${n.country}`;
+      if (!ctryAgg.has(key)) ctryAgg.set(key, { nodeCount: 0, ips: new Set() });
+      const cc = ctryAgg.get(key);
+      cc.nodeCount++; if (n.ip) cc.ips.add(n.ip);
     });
 
-    // Sort by instance count (highest first)
-    filteredContinents.sort((a, b) => b.nodeCount - a.nodeCount);
-    setAvailableContinents(filteredContinents);
+    // Continents — gate on unique IPs >= instances
+    const continents = [];
+    contAgg.forEach((v, code) => {
+      const ipCount = v.ips.size;
+      if (ipCount >= requiredInstances && CONTINENT_NAMES[code]) {
+        continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount });
+      }
+    });
+    continents.sort((a, b) => b.ipCount - a.ipCount);
+    setAvailableContinents(continents);
 
-    // Update available countries for selected continent
+    // Countries for the selected continent — same IP gate
     if (geolocationForm.continent) {
       const countries = [];
-      const countryInstanceMap = new Map();
-
-      locations.forEach(loc => {
-        const parts = loc.value.split('_');
-        if (parts.length === 2 && parts[0] === geolocationForm.continent) {
-          const countryCode = parts[1];
-          if (!countryInstanceMap.has(countryCode)) {
-            countryInstanceMap.set(countryCode, 0);
-          }
-          countryInstanceMap.set(countryCode, countryInstanceMap.get(countryCode) + loc.instances);
+      ctryAgg.forEach((v, key) => {
+        const [cont, code] = key.split('_');
+        if (cont !== geolocationForm.continent) return;
+        const ipCount = v.ips.size;
+        if (ipCount >= requiredInstances) {
+          countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount });
         }
       });
-
-      countryInstanceMap.forEach((count, code) => {
-        // Filter: require at least 24 nodes
-        if (count >= Math.max(24, requiredInstances)) {
-          countries.push({
-            code,
-            name: getCountryName(code),
-            nodeCount: count,
-          });
-        }
-      });
-
-      countries.sort((a, b) => b.nodeCount - a.nodeCount);
+      countries.sort((a, b) => b.ipCount - a.ipCount);
       setAvailableCountries(countries);
     } else {
       setAvailableCountries([]);
     }
-  }, [geolocationForm.continent, getCountryName]);
+  }, [planHardware, isEnterprise, geolocationForm.continent, getCountryName]);
 
-  // Filter locations based on required instance count
+  // Recompute whenever the node list, instance count, plan hardware, enterprise flag
+  // or selected continent changes (all captured via computeAvailability's identity).
   useEffect(() => {
-    filterLocationsByInstances(availableLocations, serverConfig.instances);
-  }, [serverConfig.instances, availableLocations, filterLocationsByInstances]);
+    computeAvailability(availableLocations, serverConfig.instances);
+  }, [serverConfig.instances, availableLocations, computeAvailability]);
 
   // Build geolocation codes array for Flux app spec (FluxOS format)
   const getGeolocationCodes = () => {

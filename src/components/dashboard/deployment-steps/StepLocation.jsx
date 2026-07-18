@@ -32,7 +32,8 @@ const StepLocation = memo(({
     ...availableContinents.filter(cont => !allowedLocations.includes(`ac${cont.code}`)).map(cont => ({
       value: cont.code,
       label: cont.name,
-      nodeCount: cont.nodeCount
+      nodeCount: cont.nodeCount,
+      ipCount: cont.ipCount
     }))
   ], [availableContinents, allowedLocations]);
 
@@ -49,6 +50,7 @@ const StepLocation = memo(({
         value: country.code,
         label: country.name,
         nodeCount: country.nodeCount,
+        ipCount: country.ipCount,
         flag: getFlagIcon(country.code)
       }))
     ];
@@ -69,9 +71,19 @@ const StepLocation = memo(({
       <div className="space-y-3">
         <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border-2 border-gray-700/50 rounded-xl p-4 shadow-lg shadow-black/20">
           <h4 className="font-bold text-white mb-3 text-lg">Add Allowed Locations</h4>
-          <p className="text-sm text-gray-400 mb-5">
+          <p className="text-sm text-gray-400 mb-3">
             Select specific continents or countries where your server can be deployed. Leave empty for global deployment.
           </p>
+
+          <div className="flex items-start gap-2.5 px-3 py-2.5 mb-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <Icon icon="heroicons:light-bulb" className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-200/90 leading-relaxed">
+              <span className="font-semibold text-amber-300">Tip:</span> add several locations to give your
+              deployment more distinct hosts to land on. Each server instance needs its own public IP, so the
+              <span className="font-medium"> IP count</span> — not the node count — is what guarantees a successful
+              deploy, and more choices means a faster one.
+            </p>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
             <div>
