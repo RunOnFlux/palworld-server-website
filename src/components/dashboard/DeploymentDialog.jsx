@@ -66,8 +66,25 @@ const parseHddValue = (value) => {
 
 // Instance count is a property of the marketplace plan, NOT a fixed 3.
 // Deploying more instances than the plan is priced for silently loses money on Flux,
-// so the plan is the single source of truth. Fallback to 3 only if the plan omits it.
-const getPlanInstances = (plan) => plan?._app?.instances || 3;
+// so the plan is the single source of truth: the selected config first, then the
+// parent app. Fallback to 3 only if the plan omits it entirely.
+const getPlanInstances = (plan) => plan?._config?.instances || plan?._app?.instances || 3;
+
+// Merge "KEY=value" env arrays with later arrays overriding earlier ones by KEY.
+// This mirrors FluxCloud InstallDialog behavior: the parent app compose env is the
+// base and the selected config's env overrides/extends it.
+const mergeEnvParams = (...envArrays) => {
+  const byKey = new Map();
+  envArrays.forEach((envs) => {
+    if (!Array.isArray(envs)) return;
+    envs.forEach((entry) => {
+      if (typeof entry !== 'string' || !entry) return;
+      const eq = entry.indexOf('=');
+      byKey.set(eq === -1 ? entry : entry.slice(0, eq), entry);
+    });
+  });
+  return [...byKey.values()];
+};
 
 
 
@@ -761,13 +778,15 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       // Build compose array - use parent app compose as base, override CPU/RAM/HDD from config
       // This matches FluxCloud InstallDialog.vue behavior exactly
       const parentCompose = selectedPlan._app.compose || [];
-      const configComponent = selectedPlan._config?.components?.[0] || {};
-      const compose = parentCompose.map(component => {
-        // Build environmentParameters
-        const environmentParameters = [];
-        if (Array.isArray(component.environmentParameters)) {
-          environmentParameters.push(...component.environmentParameters);
-        }
+      const configComponents = selectedPlan._config?.components || [];
+      const compose = parentCompose.map((component, componentIndex) => {
+        const configComponent = configComponents[componentIndex] || configComponents[0] || {};
+
+        // Parent compose env is the base; the config's env overrides it by key
+        const environmentParameters = mergeEnvParams(
+          component.environmentParameters,
+          configComponent.environmentParameters
+        );
         if (envReference) {
           environmentParameters.push(envReference);
         }
@@ -964,12 +983,15 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       const appName = serverConfig.appName;
       const geolocationCodes = allowedLocations;
       const parentCompose = selectedPlan._app.compose || [];
-      const configComp = selectedPlan._config?.components?.[0] || {};
-      const compose = parentCompose.map(component => {
-        const environmentParameters = [];
-        if (Array.isArray(component.environmentParameters)) {
-          environmentParameters.push(...component.environmentParameters);
-        }
+      const configComponents = selectedPlan._config?.components || [];
+      const compose = parentCompose.map((component, componentIndex) => {
+        const configComp = configComponents[componentIndex] || configComponents[0] || {};
+
+        // Parent compose env is the base; the config's env overrides it by key
+        const environmentParameters = mergeEnvParams(
+          component.environmentParameters,
+          configComp.environmentParameters
+        );
         if (envReference) {
           environmentParameters.push(envReference);
         }
@@ -1114,11 +1136,17 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       const geolocationCodes = allowedLocations.length > 0 ? allowedLocations : [];
 
       const selectedConfig = selectedPlan._config;
-      const compose = (selectedConfig.components || [selectedConfig]).map((component) => {
+      const parentCompose = selectedPlan._app?.compose || [];
+      const compose = (selectedConfig.components || [selectedConfig]).map((component, componentIndex) => {
         const cpuValue = component.cpu || component.cpubasic || 0;
         const ramValue = component.ram || component.rambasic || 0;
         const hddValue = component.hdd || component.hddbasic || 0;
-        const environmentParameters = Object.entries(environmentParams).map(([key, value]) => `${key}=${value}`);
+        // Parent compose env is the base, config env overrides it, wizard params win last
+        const environmentParameters = mergeEnvParams(
+          parentCompose[componentIndex]?.environmentParameters,
+          component.environmentParameters,
+          Object.entries(environmentParams).map(([key, value]) => `${key}=${value}`)
+        );
 
         return {
           name: component.name || 'component',

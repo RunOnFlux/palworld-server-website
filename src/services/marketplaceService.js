@@ -125,9 +125,9 @@ class MarketplaceService {
 
       console.log(`[MarketplaceService] Found "${appName}" with ${palworldApp.configs.length} configs`);
 
-      // Palworld player tiers by RAM (MB) - max 16 players co-op
+      // Palworld player tiers by RAM (MB) - sized for Palworld 1.0 (max 32 players)
       const palworldPlayerTiers = [
-        [8000, 16], [6000, 8], [4000, 4], [2000, 2],
+        [16000, 32], [12000, 16], [8000, 8], [5000, 4],
       ];
 
       function getPlayerCount(ramMb) {

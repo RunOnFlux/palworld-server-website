@@ -10,9 +10,10 @@
  * Keys: RAM in GB, Values: Recommended max players (max 32)
  */
 const PALWORLD_PLAYER_MAPPINGS = {
-  5: 8,     // Small group
-  7: 16,    // Medium group
-  10: 32,   // Full server (max players)
+  5: 4,     // Starter — small co-op
+  8: 8,     // Small group
+  12: 16,   // Medium group
+  16: 32,   // Full server (max players)
 };
 
 /**
