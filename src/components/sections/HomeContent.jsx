@@ -25,7 +25,7 @@ const steps = [
 const internalLinks = [
   { to: '/setup-guide', anchor: 'How to make a Palworld dedicated server', desc: 'Full 2026 setup walkthrough — SteamCMD vs one-click deploy.' },
   { to: '/server-requirements', anchor: 'Palworld dedicated server requirements', desc: 'How much RAM and CPU you need, plus ports 8211 and 8212.' },
-  { to: '/pricing', anchor: 'Palworld server hosting pricing', desc: 'Compare 5GB, 7GB and 10GB plans by player count.' },
+  { to: '/pricing', anchor: 'Palworld server hosting pricing', desc: 'Compare 5GB, 8GB, 12GB and 16GB plans by player count.' },
   { to: '/guides/join-server', anchor: "How to join a friend's Palworld server", desc: 'Connect by IP, use the browser, and understand crossplay.' },
   { to: '/guides/server-settings', anchor: 'Best Palworld server settings', desc: 'Tune XP, gather, damage and PvP in PalWorldSettings.ini.' },
   { to: '/decentralized-palworld-hosting', anchor: 'Why host on the Flux decentralized cloud →', desc: 'No single point of failure, no lock-in, dedicated resources, DDoS, 99.9% uptime and 32 players.' },
@@ -60,7 +60,7 @@ const HomeContent = () => {
             never exposed the way it is when you self-host from home. You get full admin control through a
             web dashboard — a live console, a file manager for editing PalWorldSettings.ini, and on-demand
             backups with one-click restore — without ever touching SSH or router port forwarding. Plans
-            start at $3.99/month with the first month free, billed month-to-month with no long-term
+            start at $2.61/month with the first month free, billed month-to-month with no long-term
             contract, and you can pay by card, Apple Pay, Google Pay, or crypto.
           </p>
         </motion.div>
@@ -97,7 +97,8 @@ const HomeContent = () => {
           <p className="text-text-secondary leading-relaxed mb-4">
             <strong className="text-text">Up to 32 players.</strong> A Palworld dedicated server supports
             up to 32 players at once — far beyond the 4-player limit of in-game co-op. Pick 5GB RAM for a
-            small group of up to 8, 7GB for up to 16, or 10GB for a full 32-player world. See the{' '}
+            small co-op group, 8GB for up to 8, 12GB for up to 16, or 16GB for a full 32-player world on
+            the 1.0 update. See the{' '}
             <Link to="/server-requirements" className="text-primary hover:text-primary-light">
               Palworld dedicated server requirements
             </Link>{' '}

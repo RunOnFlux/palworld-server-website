@@ -22,7 +22,7 @@ export const pagesContent = {
     title: 'How to Make a Palworld Dedicated Server (2026 Guide)',
     metaTitle: 'How to Make a Palworld Dedicated Server (2026 Guide)',
     description:
-      'How to make a Palworld dedicated server in 2026: manual SteamCMD install vs a one-click Flux deploy in 30 seconds from $3.99/mo. Ports and config explained.',
+      'How to make a Palworld dedicated server in 2026: manual SteamCMD install vs a one-click Flux deploy in 30 seconds from $2.61/mo. Ports and config explained.',
     h1: 'How to Make a Palworld Dedicated Server (2026)',
     lead:
       'There are two ways to run a Palworld dedicated server: install and maintain it yourself with SteamCMD on your own hardware, or rent a pre-configured dedicated server and deploy it in about 30 seconds. This guide walks through both so you can pick the right path, then covers the ports, config, and admin tasks every Palworld server owner needs.',
@@ -51,7 +51,7 @@ export const pagesContent = {
       { type: 'p', text: 'The faster path skips the installation entirely. A managed Palworld dedicated server on the Flux decentralized cloud is pre-built with the correct SteamCMD image, the right ports already exposed, and DDoS protection on by default. Instead of an afternoon of setup, deployment takes about 30 seconds:' },
       { type: 'ol', items: [
         'Create a free account with Google or email.',
-        'Choose a plan sized to your group — 5GB RAM for small groups up to 8 players, 7GB for up to 16, or 10GB for a full 32-player server.',
+        'Choose a plan sized to your group — 5GB RAM for small co-op groups up to 4 players, 8GB for up to 8, 12GB for up to 16, or 16GB for a full 32-player server.',
         'Pick a server region close to your players from 50+ countries to keep latency low.',
         'Click deploy. Your Palworld dedicated server is provisioned, the game port is opened, and it comes online in under 30 seconds.',
         'Open the web dashboard to edit PalWorldSettings.ini, browse files, take backups, and use the console — no SSH or port forwarding required.',
@@ -77,7 +77,7 @@ export const pagesContent = {
       description: 'Deploy a Palworld dedicated server the fast way — a managed one-click deploy on the Flux decentralized cloud.',
       steps: [
         { name: 'Create an account', text: 'Sign up for free with Google or email.' },
-        { name: 'Choose a plan', text: 'Pick 5GB RAM for up to 8 players, 7GB for up to 16, or 10GB for a full 32-player server.' },
+        { name: 'Choose a plan', text: 'Pick 5GB RAM for up to 4 players, 8GB for up to 8, 12GB for up to 16, or 16GB for a full 32-player server.' },
         { name: 'Choose a region', text: 'Select a server location close to your players from 50+ countries.' },
         { name: 'Deploy', text: 'Click deploy — the game port opens and your server is online in about 30 seconds.' },
         { name: 'Configure and invite', text: 'Edit PalWorldSettings.ini from the dashboard and share your server address with your friends.' },
@@ -89,9 +89,9 @@ export const pagesContent = {
   'server-requirements': {
     slug: '/server-requirements',
     title: 'Palworld Dedicated Server Requirements (CPU, RAM, Ports)',
-    metaTitle: 'Palworld Dedicated Server Requirements (CPU, RAM, Ports)',
+    metaTitle: 'Palworld 1.0 Dedicated Server Requirements (CPU, RAM, Ports)',
     description:
-      'Palworld dedicated server requirements: RAM and CPU by player count (up to 32), ports 8211 UDP and 8212 TCP, disk space. Skip setup — deploy from $3.99/mo.',
+      'Palworld 1.0 dedicated server requirements: RAM and CPU by player count (up to 32), ports 8211 UDP and 8212 TCP, disk space. Skip setup — deploy from $2.61/mo.',
     h1: 'Palworld Dedicated Server Requirements',
     lead:
       'A Palworld dedicated server is CPU- and RAM-hungry, and its footprint grows as players build bases and capture Pals. This page covers exactly how much RAM and CPU you need for your player count, the ports you must open, and how much disk space to plan for.',
@@ -101,13 +101,14 @@ export const pagesContent = {
     ],
     body: [
       { type: 'h2', text: 'How much RAM does a Palworld server need?' },
-      { type: 'p', text: 'RAM is the most important resource for a Palworld dedicated server. Pocketpair recommends a minimum of 8GB, but real-world usage climbs as more players join and as bases, captured Pals, and world objects accumulate. A long-running server with a busy world uses noticeably more memory than a freshly created one, so size up if you plan to run a persistent community world.' },
+      { type: 'p', text: 'RAM is the most important resource for a Palworld dedicated server, and requirements went up with the 1.0 release: worlds are bigger (Sky Islands, 70+ new Pals) and Pocketpair now recommends 16GB for a full server. Real-world usage also climbs as more players join and as bases, captured Pals, and world objects accumulate, so a long-running world uses noticeably more memory than a freshly created one.' },
       { type: 'table', head: ['Plan / RAM', 'Recommended players', 'Best for'], rows: [
-        ['5GB RAM', 'Up to 8 players', 'Small friends group, casual co-op'],
-        ['7GB RAM', 'Up to 16 players', 'Medium group, active base building'],
-        ['10GB RAM', 'Up to 32 players', 'Full-size community server (max players)'],
+        ['5GB RAM', 'Up to 4 players', 'Small co-op group, casual play'],
+        ['8GB RAM', 'Up to 8 players', 'Friends group, regular sessions'],
+        ['12GB RAM', 'Up to 16 players', 'Medium group, active base building'],
+        ['16GB RAM', 'Up to 32 players', 'Full-size community server (max players)'],
       ] },
-      { type: 'p', text: 'These tiers map directly to the Flux hosting plans. If you are self-hosting, treat them as a guide: 5GB is a practical floor for a handful of players, and you should provision 10GB or more before opening a public 32-player server.' },
+      { type: 'p', text: 'These tiers map directly to the Flux hosting plans. If you are self-hosting, treat them as a guide: 5GB is a practical floor for a small co-op world on 1.0, and you should provision 16GB or more before opening a public 32-player server.' },
 
       { type: 'h2', text: 'CPU requirements' },
       { type: 'p', text: 'Palworld\'s server process benefits from strong single-thread performance. The simulation — Pal AI, base automation, and world physics — is sensitive to per-core speed, so a modern CPU with good single-core throughput matters more than a high core count. On a managed Flux plan the vCPU allocation scales with the plan tier, so a larger player cap comes with more CPU headroom automatically.' },
@@ -128,7 +129,7 @@ export const pagesContent = {
       { type: 'cta', text: 'See Palworld hosting plans and pricing →', href: '/pricing' },
     ],
     faq: [
-      { question: 'How much RAM do I need for a Palworld dedicated server?', answer: 'At least 5GB for small groups up to 8 players, 7GB for up to 16, and 10GB or more for a full 32-player server. Memory use grows as bases and captured Pals accumulate, so size up for long-running worlds.' },
+      { question: 'How much RAM do I need for a Palworld dedicated server?', answer: 'Since the 1.0 update: at least 5GB for small co-op groups up to 4 players, 8GB for up to 8, 12GB for up to 16, and 16GB or more for a full 32-player server. Memory use grows as bases and captured Pals accumulate, so size up for long-running worlds.' },
       { question: 'What ports does a Palworld server need?', answer: 'UDP port 8211 for game traffic (required) and TCP port 8212 for the optional REST admin API.' },
       { question: 'How many CPU cores does a Palworld server need?', answer: 'Palworld favors strong single-core performance over many cores. A modern CPU with good per-core speed handles the Pal AI and base simulation best; managed plans scale vCPU with the player tier.' },
       { question: 'How much disk space does a Palworld server use?', answer: 'The server build is a few gigabytes and the save grows with world size and base count. Allow headroom for the build plus a growing world and backups.' },
@@ -139,12 +140,12 @@ export const pagesContent = {
   pricing: {
     slug: '/pricing',
     title: 'Palworld Server Hosting Pricing & Plans',
-    metaTitle: 'Palworld Server Hosting Pricing — Plans from $3.99/mo',
+    metaTitle: 'Palworld 1.0 Server Hosting Pricing — Plans from $2.61/mo',
     description:
-      'Palworld server hosting plans from $3.99/mo: 5GB, 7GB & 10GB RAM tiers for up to 32 players. First month free, DDoS protection included. Deploy in 30 seconds.',
+      'Palworld server hosting plans from $2.61/mo: 5GB, 8GB, 12GB & 16GB RAM tiers for up to 32 players. First month free, DDoS protection included. Deploy in 30 seconds.',
     h1: 'Palworld Server Hosting Pricing',
     lead:
-      'Simple, transparent Palworld dedicated server pricing. Plans start at $3.99/month, every plan includes DDoS protection and full admin access, and new users get their first month free. Pick a tier by how many players you expect.',
+      'Simple, transparent Palworld dedicated server pricing. Plans start at $2.61/month, every plan includes DDoS protection and full admin access, and new users get their first month free. Pick a tier by how many players you expect.',
     breadcrumbs: [
       { name: 'Home', url: '/' },
       { name: 'Pricing', url: '/pricing' },
@@ -153,9 +154,10 @@ export const pagesContent = {
       { type: 'h2', text: 'Palworld hosting plans' },
       { type: 'p', text: 'Every plan is a full Palworld dedicated server with DDoS protection, a web dashboard, file manager, console access, and on-demand backups. The only difference between tiers is the RAM and CPU allocation, which determines how many players your server comfortably supports.' },
       { type: 'table', head: ['Plan', 'RAM', 'Players', 'Price'], rows: [
-        ['Starter', '5GB', 'Up to 8', 'from $3.99/mo'],
-        ['Standard', '7GB', 'Up to 16', 'from $5.99/mo'],
-        ['Performance', '10GB', 'Up to 32', 'from $8.99/mo'],
+        ['Starter', '5GB', 'Up to 4', 'from $2.61/mo'],
+        ['Standard', '8GB', 'Up to 8', 'from $4.38/mo'],
+        ['Advanced', '12GB', 'Up to 16', 'from $6.11/mo'],
+        ['Performance', '16GB', 'Up to 32', 'from $8.55/mo'],
       ] },
       { type: 'p', text: 'Prices shown are indicative starting points; the exact monthly price for each plan is calculated live at checkout based on the selected region and resources. There is no long-term contract and no hidden setup fee.' },
 
@@ -178,15 +180,15 @@ export const pagesContent = {
       { type: 'p', text: 'Pay however you prefer. Card payments (including Apple Pay and Google Pay) are handled through Stripe, and you can also pay in crypto with FLUX. Billing is month-to-month with no lock-in.' },
 
       { type: 'h2', text: 'Which plan should I choose?' },
-      { type: 'p', text: 'Choose Starter (5GB) for a small friends group, Standard (7GB) for an active mid-size group that builds a lot, and Performance (10GB) for a full 32-player community server. You can start small and move up later — see the Palworld dedicated server requirements guide if you are unsure how much RAM your group needs.' },
+      { type: 'p', text: 'Choose Starter (5GB) for a small co-op group, Standard (8GB) or Advanced (12GB) for an active mid-size group that builds a lot, and Performance (16GB) for a full 32-player community server on the 1.0 update. You can start small and move up later — see the Palworld dedicated server requirements guide if you are unsure how much RAM your group needs.' },
       { type: 'cta', text: 'Deploy your Palworld server — first month free →', href: '/#pricing' },
     ],
     product: {
       name: 'Palworld Dedicated Server Hosting',
-      description: 'Managed Palworld dedicated server hosting on the Flux decentralized cloud. Up to 32 players, DDoS protection, 99.9% uptime, plans from $3.99/month with the first month free.',
+      description: 'Managed Palworld dedicated server hosting on the Flux decentralized cloud. Up to 32 players, DDoS protection, 99.9% uptime, plans from $2.61/month with the first month free.',
       image: '/games/palworld/banner.webp',
-      lowPrice: '3.99',
-      highPrice: '8.99',
+      lowPrice: '2.61',
+      highPrice: '8.55',
       offerCount: '3',
     },
     related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server', 'decentralized-palworld-hosting'],
@@ -197,7 +199,7 @@ export const pagesContent = {
     title: "How to Join a Friend's Palworld Server (incl. Crossplay)",
     metaTitle: "How to Join a Friend's Palworld Server (Crossplay Guide)",
     description:
-      "Join a friend's Palworld server by IP and port or via the community list, plus Steam vs Xbox crossplay limits. Host your own 32-player server from $3.99/mo.",
+      "Join a friend's Palworld server by IP and port or via the community list, plus Steam vs Xbox crossplay limits. Host your own 32-player server from $2.61/mo.",
     h1: "How to Join a Friend's Palworld Server",
     lead:
       "Joining a friend's Palworld dedicated server takes just the server address and, sometimes, a password. This guide covers every way to connect, how crossplay works between Steam and Xbox/Game Pass, and what to do when a server will not show up.",
@@ -251,7 +253,7 @@ export const pagesContent = {
     title: 'Best Palworld Server Settings (PalWorldSettings.ini)',
     metaTitle: 'Best Palworld Server Settings (PalWorldSettings.ini)',
     description:
-      'Best Palworld server settings: XP rate, gather and damage multipliers, day length, PvP in PalWorldSettings.ini — plus tuned 32-player hosting from $3.99/mo.',
+      'Best Palworld server settings: XP rate, gather and damage multipliers, day length, PvP in PalWorldSettings.ini — plus tuned 32-player hosting from $2.61/mo.',
     h1: 'Best Palworld Server Settings',
     lead:
       'Every Palworld dedicated server is tuned through a single file, PalWorldSettings.ini. This guide explains the settings that matter most, what each one does, and recommended values for casual, balanced, and hardcore playstyles.',
@@ -308,7 +310,7 @@ export const pagesContent = {
     title: 'Why Host Your Palworld Server on a Decentralized Cloud',
     metaTitle: 'Decentralized Palworld Server Hosting on Flux Cloud',
     description:
-      'Decentralized Palworld hosting on Flux: no single point of failure, DDoS protection, 99.9% uptime. Deploy a 32-player server in 30s from $3.99/mo.',
+      'Decentralized Palworld hosting on Flux: no single point of failure, DDoS protection, 99.9% uptime. Deploy a 32-player server in 30s from $2.61/mo.',
     h1: 'Why Host Your Palworld Server on a Decentralized Cloud',
     lead:
       'Most game servers live in a single data center owned by one company. A decentralized cloud works differently: your Palworld dedicated server runs on a global network of independent nodes, so there is no single point of failure and no vendor holding your world hostage. This guide explains what decentralized hosting is, why it matters for Palworld, how it works, and who it is for.',
@@ -348,14 +350,14 @@ export const pagesContent = {
       { type: 'p', text: 'The decentralized part is invisible in day-to-day use — deploying is faster and simpler than a manual SteamCMD install, not harder. The Palworld image ships pre-built with the correct server, the game port already exposed, and DDoS protection on by default, so there is no router or firewall configuration to do.' },
       { type: 'ol', items: [
         'Create a free account with Google or email.',
-        'Choose a plan sized to your group — 5GB RAM for small groups up to 8 players, 7GB for up to 16, or 10GB for a full 32-player server.',
+        'Choose a plan sized to your group — 5GB RAM for small co-op groups up to 4 players, 8GB for up to 8, 12GB for up to 16, or 16GB for a full 32-player server.',
         'Pick a server region close to your players from 50+ countries to keep latency low.',
         'Click deploy. Your server is provisioned on the network, the game port opens, and it is online in about 30 seconds.',
         'Open the web dashboard to edit PalWorldSettings.ini, browse files, take backups, and use the console — no SSH or port forwarding required.',
       ] },
 
       { type: 'h2', text: 'Pay-as-you-go pricing' },
-      { type: 'p', text: 'Billing matches the no-lock-in philosophy: month-to-month, no long-term contract, and no hidden setup fee. Plans start at $3.99/month for the 5GB Starter tier, $5.99/month for 7GB, and $8.99/month for the 10GB Performance tier that runs a full 32-player world. New users get their first month free, so you can build a world and test performance before you pay. You can pay however you prefer — card, Apple Pay, and Google Pay through Stripe, or in crypto with FLUX — which fits the open, permissionless nature of the network.' },
+      { type: 'p', text: 'Billing matches the no-lock-in philosophy: month-to-month, no long-term contract, and no hidden setup fee. Plans start at $2.61/month for the 5GB Starter tier, with 8GB and 12GB tiers in between, up to $8.55/month for the 16GB Performance tier that runs a full 32-player world on the 1.0 update. New users get their first month free, so you can build a world and test performance before you pay. You can pay however you prefer — card, Apple Pay, and Google Pay through Stripe, or in crypto with FLUX — which fits the open, permissionless nature of the network.' },
       { type: 'cta', text: 'Deploy a Palworld server on Flux — first month free →', href: '/#pricing' },
 
       { type: 'h2', text: 'Who is decentralized hosting for?' },
@@ -366,7 +368,7 @@ export const pagesContent = {
       { question: 'What is a decentralized cloud for game hosting?', answer: 'Instead of running your server in one company\'s data center, a decentralized cloud spreads compute across thousands of independent nodes worldwide. Flux is one such network, with capacity in 50+ countries, so your Palworld server has no single point of failure and is not tied to one provider or region.' },
       { question: 'Is a decentralized Palworld server reliable?', answer: 'Yes. Because the network is spread across many independent nodes and regions, there is no single component whose failure takes your server down. Flux targets 99.9% uptime and includes DDoS protection on every plan, so a persistent world stays online 24/7.' },
       { question: 'Does decentralized hosting support 32 players, crossplay and mods?', answer: 'Yes. A Palworld server on Flux supports the full 32-player cap, can be configured for Steam and Xbox/Game Pass crossplay, and gives you full access to PalWorldSettings.ini and a file manager to change any setting or mod your world.' },
-      { question: 'How do I pay for a decentralized Palworld server?', answer: 'Billing is month-to-month with no contract and the first month free. You can pay by card, Apple Pay, or Google Pay through Stripe, or in crypto with FLUX. Plans start at $3.99/month and scale to a full 32-player server.' },
+      { question: 'How do I pay for a decentralized Palworld server?', answer: 'Billing is month-to-month with no contract and the first month free. You can pay by card, Apple Pay, or Google Pay through Stripe, or in crypto with FLUX. Plans start at $2.61/month and scale to a full 32-player server.' },
       { question: 'What does no vendor lock-in actually mean?', answer: 'No long-term contract, no prepaid credit tied to one provider, and full access to your world save and config files so you can back them up or move them at any time. You rent capacity on an open network rather than signing into a walled garden, and you can cancel whenever you like.' },
     ],
     related: ['pricing', 'setup-guide', 'server-requirements', 'server-settings'],
@@ -375,9 +377,9 @@ export const pagesContent = {
   'nitrado-alternative': {
     slug: '/nitrado-alternative',
     title: 'Nitrado Alternative for Palworld',
-    metaTitle: 'Nitrado Alternative for Palworld — Deploy from $3.99/mo',
+    metaTitle: 'Nitrado Alternative for Palworld — Deploy from $2.61/mo',
     description:
-      'Looking for a Nitrado alternative for Palworld? Host on the Flux decentralized cloud: dedicated resources, no single point of failure, DDoS included, up to 32 players, from $3.99/mo, first month free.',
+      'Looking for a Nitrado alternative for Palworld? Host on the Flux decentralized cloud: dedicated resources, no single point of failure, DDoS included, up to 32 players, from $2.61/mo, first month free.',
     h1: 'Looking for a Nitrado Alternative for Palworld?',
     lead:
       'Nitrado is one of the best-known Palworld hosts, and it is a capable provider. But like most traditional hosts it runs your server in a fixed set of company-owned data centers with a single point of failure, and its slot-based plans tie pricing to player count. Palworld on Flux takes a different approach — a decentralized cloud of independent nodes across 50+ countries, dedicated resources, and pay-as-you-go pricing.',
@@ -395,7 +397,7 @@ export const pagesContent = {
         'Control and payment — some owners want full config access, no contract, and the option to pay in crypto as well as by card.',
       ] },
       { type: 'h2', text: 'How Palworld on Flux is different' },
-      { type: 'p', text: 'Flux runs your Palworld dedicated server on a decentralized network of independent nodes with dedicated CPU, RAM and storage reserved for you, a 99.9% uptime target, and nodes in 50+ countries so you can host near your players. You get the full 32-player cap, Steam and Xbox/Game Pass crossplay, and complete access to PalWorldSettings.ini through a file manager. DDoS protection is included on every plan, there are no egress (bandwidth) fees, deployment takes about 30 seconds with UDP 8211 and the REST API (TCP 8212) already configured, and pricing is transparent pay-as-you-go from $3.99/mo with the first month free — pay by card, Apple Pay, Google Pay, or in crypto with FLUX, no contract.' },
+      { type: 'p', text: 'Flux runs your Palworld dedicated server on a decentralized network of independent nodes with dedicated CPU, RAM and storage reserved for you, a 99.9% uptime target, and nodes in 50+ countries so you can host near your players. You get the full 32-player cap, Steam and Xbox/Game Pass crossplay, and complete access to PalWorldSettings.ini through a file manager. DDoS protection is included on every plan, there are no egress (bandwidth) fees, deployment takes about 30 seconds with UDP 8211 and the REST API (TCP 8212) already configured, and pricing is transparent pay-as-you-go from $2.61/mo with the first month free — pay by card, Apple Pay, Google Pay, or in crypto with FLUX, no contract.' },
       { type: 'h2', text: 'Palworld on Flux vs Nitrado at a glance' },
       { type: 'table', head: ['Feature', 'Traditional host', 'Palworld on Flux'], rows: [
         ['Infrastructure', 'Single company data centers', 'Decentralized cloud, 50+ countries'],
@@ -408,15 +410,15 @@ export const pagesContent = {
         ['Egress / bandwidth fees', 'Possible', 'None'],
         ['Deploy time', 'Minutes', 'About 30 seconds'],
         ['Payment', 'Card', 'Card, Apple/Google Pay, or crypto'],
-        ['Pricing', 'Slot-based tiers', 'Pay-as-you-go from $3.99/mo, first month free'],
+        ['Pricing', 'Slot-based tiers', 'Pay-as-you-go from $2.61/mo, first month free'],
       ] },
       { type: 'h2', text: 'Which should you choose?' },
       { type: 'p', text: 'If you prefer a large legacy brand and slot-based plans in a single region, Nitrado is a fine option. If you want decentralized resilience with no single point of failure, multi-region hosting close to your players, no egress fees, full config control with no contract, and card-or-crypto payment, Palworld on Flux is designed for that. Your world is portable — download your save and PalWorldSettings.ini and move them across in minutes.' },
       { type: 'cta', text: 'Deploy a Palworld dedicated server on Flux →', href: '/#pricing' },
     ],
     faq: [
-      { question: 'What is a good Nitrado alternative for Palworld?', answer: 'Palworld on Flux is a decentralized alternative: your server runs across 50+ countries with dedicated resources, the full 32-player cap, crossplay, included DDoS protection, and no egress fees — from $3.99/mo with the first month free.' },
-      { question: 'Is Palworld on Flux cheaper than Nitrado?', answer: 'Flux uses pay-as-you-go pricing from $3.99/mo with the first month free, so you pay for the RAM and region you pick rather than a fixed slot tier. The exact cost depends on your configuration.' },
+      { question: 'What is a good Nitrado alternative for Palworld?', answer: 'Palworld on Flux is a decentralized alternative: your server runs across 50+ countries with dedicated resources, the full 32-player cap, crossplay, included DDoS protection, and no egress fees — from $2.61/mo with the first month free.' },
+      { question: 'Is Palworld on Flux cheaper than Nitrado?', answer: 'Flux uses pay-as-you-go pricing from $2.61/mo with the first month free, so you pay for the RAM and region you pick rather than a fixed slot tier. The exact cost depends on your configuration.' },
       { question: 'Can I move my Palworld server from Nitrado to Flux?', answer: 'Yes. Download your world save and PalWorldSettings.ini from your current host and upload them to Flux through the file manager. A Palworld world is not locked to any provider.' },
       { question: 'Does Flux support 32 players and crossplay like Nitrado?', answer: 'Yes. A Palworld server on Flux supports the full 32-player cap and can be configured for Steam and Xbox/Game Pass crossplay, with full access to every setting.' },
     ],
@@ -426,9 +428,9 @@ export const pagesContent = {
   'gportal-alternative': {
     slug: '/gportal-alternative',
     title: 'GPORTAL Alternative for Palworld',
-    metaTitle: 'GPORTAL Alternative for Palworld — Deploy from $3.99/mo',
+    metaTitle: 'GPORTAL Alternative for Palworld — Deploy from $2.61/mo',
     description:
-      'Looking for a GPORTAL alternative for Palworld? Host on the Flux decentralized cloud: dedicated resources, no single point of failure, DDoS included, up to 32 players, from $3.99/mo, first month free.',
+      'Looking for a GPORTAL alternative for Palworld? Host on the Flux decentralized cloud: dedicated resources, no single point of failure, DDoS included, up to 32 players, from $2.61/mo, first month free.',
     h1: 'Looking for a GPORTAL Alternative for Palworld?',
     lead:
       'GPORTAL is a popular game server host and a common pick for Palworld. It is a capable provider — but, like most traditional hosts, it runs your server inside a single company\'s data centers with a single point of failure. Palworld on Flux runs your dedicated server on a decentralized cloud of independent nodes across 50+ countries, with dedicated resources and transparent pay-as-you-go pricing.',
@@ -446,7 +448,7 @@ export const pagesContent = {
         'Control and payment — some owners want full config access, no contract, and crypto payment as an option.',
       ] },
       { type: 'h2', text: 'How Palworld on Flux is different' },
-      { type: 'p', text: 'Flux runs your Palworld dedicated server on a decentralized network of independent nodes with dedicated CPU, RAM and storage reserved for you, a 99.9% uptime target, and nodes in 50+ countries so you can host near your players. You get the full 32-player cap, Steam and Xbox/Game Pass crossplay, and complete access to PalWorldSettings.ini through a file manager. DDoS protection is included on every plan, there are no egress (bandwidth) fees, deployment takes about 30 seconds with UDP 8211 and the REST API (TCP 8212) already configured, and pricing is transparent pay-as-you-go from $3.99/mo with the first month free — pay by card, Apple Pay, Google Pay, or in crypto with FLUX, no contract.' },
+      { type: 'p', text: 'Flux runs your Palworld dedicated server on a decentralized network of independent nodes with dedicated CPU, RAM and storage reserved for you, a 99.9% uptime target, and nodes in 50+ countries so you can host near your players. You get the full 32-player cap, Steam and Xbox/Game Pass crossplay, and complete access to PalWorldSettings.ini through a file manager. DDoS protection is included on every plan, there are no egress (bandwidth) fees, deployment takes about 30 seconds with UDP 8211 and the REST API (TCP 8212) already configured, and pricing is transparent pay-as-you-go from $2.61/mo with the first month free — pay by card, Apple Pay, Google Pay, or in crypto with FLUX, no contract.' },
       { type: 'h2', text: 'Palworld on Flux vs GPORTAL at a glance' },
       { type: 'table', head: ['Feature', 'Traditional host', 'Palworld on Flux'], rows: [
         ['Infrastructure', 'Single company data centers', 'Decentralized cloud, 50+ countries'],
@@ -459,15 +461,15 @@ export const pagesContent = {
         ['Egress / bandwidth fees', 'Possible', 'None'],
         ['Deploy time', 'Minutes', 'About 30 seconds'],
         ['Payment', 'Card', 'Card, Apple/Google Pay, or crypto'],
-        ['Pricing', 'Slot-based tiers', 'Pay-as-you-go from $3.99/mo, first month free'],
+        ['Pricing', 'Slot-based tiers', 'Pay-as-you-go from $2.61/mo, first month free'],
       ] },
       { type: 'h2', text: 'Which should you choose?' },
       { type: 'p', text: 'If you want a long-established brand and a single familiar region works for your group, GPORTAL is a reasonable choice. If you care about resilience with no single point of failure, hosting close to players across many regions, no egress fees, full config control with no contract, and card-or-crypto payment, Palworld on Flux is built for that. Your world moves with you — download your save and PalWorldSettings.ini and upload them in minutes.' },
       { type: 'cta', text: 'Deploy a Palworld dedicated server on Flux →', href: '/#pricing' },
     ],
     faq: [
-      { question: 'What is a good GPORTAL alternative for Palworld?', answer: 'Palworld on Flux is a decentralized alternative: your server runs across 50+ countries with dedicated resources, the full 32-player cap, crossplay, included DDoS protection, and no egress fees — from $3.99/mo with the first month free.' },
-      { question: 'Is Palworld on Flux cheaper than GPORTAL?', answer: 'Flux uses pay-as-you-go pricing from $3.99/mo with the first month free, so you pay for the RAM and region you choose rather than a fixed slot tier. The exact monthly cost depends on your configuration.' },
+      { question: 'What is a good GPORTAL alternative for Palworld?', answer: 'Palworld on Flux is a decentralized alternative: your server runs across 50+ countries with dedicated resources, the full 32-player cap, crossplay, included DDoS protection, and no egress fees — from $2.61/mo with the first month free.' },
+      { question: 'Is Palworld on Flux cheaper than GPORTAL?', answer: 'Flux uses pay-as-you-go pricing from $2.61/mo with the first month free, so you pay for the RAM and region you choose rather than a fixed slot tier. The exact monthly cost depends on your configuration.' },
       { question: 'Can I move my Palworld server from GPORTAL to Flux?', answer: 'Yes. Download your world save and PalWorldSettings.ini from your current host and upload them to Flux through the file manager. A Palworld world is not locked to any provider.' },
       { question: 'Does Flux support 32 players and crossplay like GPORTAL?', answer: 'Yes. A Palworld server on Flux supports the full 32-player cap and can be configured for Steam and Xbox/Game Pass crossplay, with full access to every setting.' },
     ],

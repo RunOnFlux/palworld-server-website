@@ -164,7 +164,7 @@ const Support = () => {
         </div>
 
         {/* Support image hero */}
-        <div className="relative w-full flex justify-center items-center pt-20 pb-2">
+        <div className="relative w-full flex justify-center items-center pt-28 pb-2">
           <img
             src="/games/palworld/support.webp"
             alt="Support"

@@ -107,7 +107,7 @@ const ArticlePage = ({ pageKey }) => {
 
       <Header onLoginClick={handleLoginClick} />
 
-      <main className="min-h-screen bg-background pt-24 pb-16">
+      <main className="min-h-screen bg-background pt-32 pb-16">
         <article className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Breadcrumb */}
           <nav aria-label="Breadcrumb" className="mb-6">

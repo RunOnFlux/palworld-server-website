@@ -6,8 +6,14 @@ export const gameConfig = {
   gameName: "Palworld",
   gameType: "palworld",
   serverName: "Palworld on Flux",
-  tagline: "Palworld Server Hosting — Rent a Dedicated Palworld Server from $3.99/mo",
-  description: "Palworld server hosting on the decentralized Flux cloud. Rent a dedicated Palworld server for up to 32 players with instant deployment in under 30 seconds, DDoS protection, 99.9% uptime, and nodes in 50+ countries. Plans from $3.99/month — first month free for new users.",
+  tagline: "Palworld 1.0 Server Hosting — Rent a Dedicated Palworld Server from $2.61/mo",
+
+  // Site-wide announcement bar (rendered at the very top of the fixed header)
+  announcement: {
+    enabled: true,
+    text: "🎉 Updated for Palworld 1.0 — Sky Islands, 70+ new Pals & full crossplay",
+  },
+  description: "Palworld server hosting on the decentralized Flux cloud, updated for the 1.0 release with full crossplay. Rent a dedicated Palworld server for up to 32 players with instant deployment in under 30 seconds, DDoS protection, 99.9% uptime, and nodes in 50+ countries. Plans from $2.61/month — first month free for new users.",
 
   // Graphics & Branding
   assets: {
@@ -150,16 +156,20 @@ export const gameConfig = {
   // Each question is a long-tail keyword; each answer is direct and citable (for GEO).
   faq: [
     {
+      question: "Is Flux server hosting updated for Palworld 1.0?",
+      answer: "Yes. All Palworld servers on Flux run the latest dedicated server build, including the 1.0 release with Sky Islands, 70+ new Pals, and full crossplay between Steam, Xbox, PS5, and Mac. Servers pull the current version automatically on deploy and on restart."
+    },
+    {
       question: "How much does Palworld server hosting cost?",
-      answer: "Palworld server hosting on Flux starts at $3.99/month for a 5GB RAM plan, with 7GB and 10GB plans available for larger groups. New users get their first month free, with no long-term contract or hidden fees."
+      answer: "Palworld server hosting on Flux starts at $2.61/month for a 5GB RAM plan, with 8GB, 12GB, and 16GB plans available for larger groups. New users get their first month free, with no long-term contract or hidden fees."
     },
     {
       question: "How many players can a Palworld dedicated server host?",
-      answer: "A Palworld dedicated server supports up to 32 players simultaneously. Pick 5GB RAM for small groups, 7GB for medium groups, or 10GB for a full 32-player server."
+      answer: "A Palworld dedicated server supports up to 32 players simultaneously. Pick 5GB RAM for small co-op groups, 8GB or 12GB for medium groups, or 16GB for a full 32-player server."
     },
     {
       question: "How much RAM do I need for a Palworld server?",
-      answer: "Palworld needs at least 5GB of RAM for small groups of up to 8 players, 7GB for medium groups up to 16 players, and 10GB or more for the full 32-player cap. Base building and captured Pals increase memory usage over time, so sizing up is recommended for long-term worlds."
+      answer: "Since the 1.0 update, Palworld needs at least 5GB of RAM for small co-op groups of up to 4 players, 8GB for up to 8 players, 12GB for up to 16, and 16GB or more for the full 32-player cap. Base building and captured Pals increase memory usage over time, so sizing up is recommended for long-term worlds."
     },
     {
       question: "How do I host my own Palworld dedicated server?",
@@ -191,7 +201,7 @@ export const gameConfig = {
     },
     {
       question: "What are the system requirements for a Palworld dedicated server?",
-      answer: "A Palworld dedicated server needs at least 5GB of RAM for small groups, 7GB for medium groups, and 10GB or more for a full 32-player server, plus a modern CPU with good single-core performance. It also needs UDP port 8211 open for game traffic. On Flux the resources and ports are provisioned for you at deploy time."
+      answer: "A Palworld dedicated server needs at least 5GB of RAM for small co-op groups, 8-12GB for medium groups, and 16GB or more for a full 32-player server on the 1.0 update, plus a modern CPU with good single-core performance. It also needs UDP port 8211 open for game traffic. On Flux the resources and ports are provisioned for you at deploy time."
     },
     {
       question: "Does Palworld support crossplay on a dedicated server?",
