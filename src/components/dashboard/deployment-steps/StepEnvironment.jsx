@@ -10,6 +10,7 @@ const stepVariants = {
 
 // Moved outside component to prevent recreation on every render
 const PARAMETER_DESCRIPTIONS = {
+  COMMUNITY: 'List your server in the in-game community server browser so anyone can find it. Leave as false for a private server — you can still share your address directly. If you enable it, set a Server Password in the dashboard Config tab unless you want the server open to everyone.',
   TYPE: 'Server configuration type.',
   DIFFICULTY: 'Game difficulty level (peaceful, easy, normal, hard). Affects mob damage, hunger, and spawn rates.',
   GAME_MODE: 'Default game mode for players: survival, creative, adventure, or spectator.',
