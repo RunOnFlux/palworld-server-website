@@ -223,6 +223,55 @@ class StripeService {
    * @param {string} appName - App name to check
    * @returns {Promise<Object|null>} Subscription object or null
    */
+  async chargeSubscriptionUpdate({ appName, hash, price, description = '' }) {
+    const auth = await apiService.getStoredAuth();
+    if (!auth) throw new Error('Authentication required');
+    const payload = {
+      zelid: auth.zelid,
+      signature: auth.signature,
+      loginPhrase: auth.loginPhrase,
+      details: {
+        name: appName,
+        description,
+        hash,
+        price: parseFloat(parseFloat(price).toFixed(2)),
+        productName: appName,
+        kpi: { origin: 'Palworld Website', marketplace: true, registration: false },
+      },
+    };
+    const response = await fetch(`${this.stripeBridgeUrl}/api/v1/stripe/subscription/charge-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || data.data || 'Failed to charge subscription update');
+    }
+    return data.data;
+  }
+
+  async updateSubscriptionPrice(appName, newPrice) {
+    const auth = await apiService.getStoredAuth();
+    if (!auth) throw new Error('Authentication required');
+    const response = await fetch(`${this.stripeBridgeUrl}/api/v1/stripe/subscription/update-price`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        zelid: auth.zelid,
+        signature: auth.signature,
+        loginPhrase: auth.loginPhrase,
+        appName,
+        newPrice: parseFloat(parseFloat(newPrice).toFixed(2)),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.status === 'error') {
+      throw new Error(data.message || data.data || 'Failed to update subscription price');
+    }
+    return data.data;
+  }
+
   async getSubscriptionStatus(appName) {
     try {
       const auth = await apiService.getStoredAuth();

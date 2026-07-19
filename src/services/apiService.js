@@ -575,6 +575,19 @@ class ApiService {
     return paymentHash;
   }
 
+  /** Fiat + FLUX price for a spec (used to price a hardware change delta). */
+  async calculateAppPrice(spec) {
+    const response = await this.post('/apps/calculatefiatandfluxprice', spec, { timeout: 30000 });
+    if (response.status === 'success' && response.data) {
+      return {
+        usd: parseFloat(response.data.usd) || 0,
+        flux: parseFloat(response.data.flux) || 0,
+        fluxDiscount: parseFloat(response.data.fluxDiscount) || 0,
+      };
+    }
+    throw new Error(response.data?.message || response.data || 'Failed to calculate price');
+  }
+
   async signMessageWithSSO(message) {
     try {
       // Get Firebase user and token

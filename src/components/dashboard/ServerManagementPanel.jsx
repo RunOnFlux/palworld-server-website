@@ -6,9 +6,10 @@ import { MdMemory, MdSpeed, MdStorage, MdFolder, MdDownload, MdEdit, MdDelete, M
 import { RiFolderReceivedFill } from 'react-icons/ri';
 import { GrPlan } from 'react-icons/gr';
 import { FaFileImage, FaFileVideo, FaFileAudio, FaFileArchive, FaFileAlt, FaFileCode, FaFilePdf, FaFile } from 'react-icons/fa';
-import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, Plus, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square } from 'lucide-react';
+import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, Plus, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu } from 'lucide-react';
 import EnvironmentTab from './EnvironmentTab';
 import GeolocationTab from './GeolocationTab';
+import HardwareTab from './HardwareTab';
 
 // Lazy load Monaco Editor (heavy: ~4.7MB) - only loads when file editing is used
 const Editor = lazy(() => import('@monaco-editor/react'));
@@ -559,7 +560,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
     }
   };
 
-  const handleReinstall = async () => {
+  const handleReinstall = async (force = true) => {
     if (isReinstalling || !server?.locations?.length) return;
     setShowReinstallConfirm(false);
     setIsReinstalling(true);
@@ -615,8 +616,8 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
 
     // Stream the redeploy response — emits one log entry per phase transition
     const streamRedeploy = async (nodeBaseUrl, label, onPhase) => {
-      console.log(`🔧 [Redeploy] ${nodeBaseUrl}/apps/redeploy/${server.name}/true`);
-      const response = await fetch(`${nodeBaseUrl}/apps/redeploy/${server.name}/true`, {
+      console.log(`🔧 [Redeploy] ${nodeBaseUrl}/apps/redeploy/${server.name}/${force}`);
+      const response = await fetch(`${nodeBaseUrl}/apps/redeploy/${server.name}/${force}`, {
         method: 'GET',
         headers: { zelidauth: JSON.stringify(zelidauth) },
       });
@@ -761,6 +762,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'environment', label: 'Deployment Settings', icon: SlidersHorizontal },
     { id: 'geolocation', label: 'Location', icon: MapPin },
+    { id: 'hardware', label: 'Hardware', icon: Cpu },
     { id: 'config', label: 'Server Settings', icon: Settings },
     { id: 'remote', label: 'Remote Control', icon: Globe },
     { id: 'terminal', label: 'Console', icon: Terminal },
@@ -914,12 +916,17 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
           {/* Tab Content - Only render active tab to prevent unnecessary API calls and memory leaks */}
           {activeTab === 'environment' && (
             <div key="environment" className="animate-fade-in">
-              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={handleReinstall} />
+              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} />
             </div>
           )}
           {activeTab === 'geolocation' && (
             <div key="geolocation" className="animate-fade-in">
-              <GeolocationTab server={server} onUpdate={onUpdate} onRedeploy={handleReinstall} />
+              <GeolocationTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} />
+            </div>
+          )}
+          {activeTab === 'hardware' && (
+            <div key="hardware" className="animate-fade-in">
+              <HardwareTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} onReinstall={() => handleReinstall(true)} onSwitchTab={setActiveTab} />
             </div>
           )}
           {activeTab === 'overview' && (

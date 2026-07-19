@@ -447,13 +447,13 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setApplyOpen(false)} />
           <div className="relative w-full max-w-md rounded-2xl overflow-hidden shadow-2xl shadow-black/60 border border-gray-700/60">
-            <div style={{ height: '3px', background: propagated ? 'linear-gradient(90deg,#84A02C,#556B1C)' : 'linear-gradient(90deg,#3b82f6,#2563eb)' }} />
+            <div style={{ height: '3px', background: propagated ? 'linear-gradient(90deg,#2196F3,#1666A5)' : 'linear-gradient(90deg,#3b82f6,#2563eb)' }} />
             <div className="bg-gradient-to-b from-gray-800/95 to-gray-900/95 p-6">
               <div className="flex items-center gap-3 mb-5">
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={propagated
-                    ? { background: 'rgba(132,160,44,0.1)', border: '1px solid rgba(132,160,44,0.25)' }
+                    ? { background: 'rgba(33,150,243,0.1)', border: '1px solid rgba(33,150,243,0.25)' }
                     : { background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)' }}
                 >
                   {propagated
@@ -467,7 +467,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
               </div>
 
               {propagated ? (
-                <div className="rounded-xl p-3.5 mb-5" style={{ background: 'rgba(132,160,44,0.07)', border: '1px solid rgba(132,160,44,0.2)' }}>
+                <div className="rounded-xl p-3.5 mb-5" style={{ background: 'rgba(33,150,243,0.07)', border: '1px solid rgba(33,150,243,0.2)' }}>
                   <p className="font-semibold text-sm mb-0.5 text-primary">New spec is live on the network</p>
                   <p className="text-gray-400 text-xs leading-relaxed">Safe to redeploy now — this keeps your world and data.</p>
                 </div>
@@ -500,7 +500,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
                       : 'text-white'
                   }`}
                   style={!propagating
-                    ? { background: 'linear-gradient(90deg,#84A02C,#6d8722)', boxShadow: '0 4px 12px rgba(132,160,44,0.3)' }
+                    ? { background: 'linear-gradient(90deg,#2196F3,#1B7AC7)', boxShadow: '0 4px 12px rgba(33,150,243,0.3)' }
                     : undefined}
                 >
                   {propagating ? (
