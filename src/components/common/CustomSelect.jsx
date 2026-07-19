@@ -205,7 +205,12 @@ const CustomSelect = memo(({
                       <div className="flex items-center gap-2">
                         {option.nodeCount !== undefined && option.nodeCount > 0 && (
                           <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300">
-                            {option.nodeCount}
+                            {option.nodeCount} nodes
+                          </span>
+                        )}
+                        {option.ipCount !== undefined && option.ipCount > 0 && (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+                            {option.ipCount} IPs
                           </span>
                         )}
                         {option.isMaster !== undefined && !option.isMaster && (
