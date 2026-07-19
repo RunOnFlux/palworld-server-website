@@ -7,6 +7,8 @@ import { RiFolderReceivedFill } from 'react-icons/ri';
 import { GrPlan } from 'react-icons/gr';
 import { FaFileImage, FaFileVideo, FaFileAudio, FaFileArchive, FaFileAlt, FaFileCode, FaFilePdf, FaFile } from 'react-icons/fa';
 import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, Plus, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square } from 'lucide-react';
+import EnvironmentTab from './EnvironmentTab';
+import GeolocationTab from './GeolocationTab';
 
 // Lazy load Monaco Editor (heavy: ~4.7MB) - only loads when file editing is used
 const Editor = lazy(() => import('@monaco-editor/react'));
@@ -757,6 +759,8 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
   const hasCompose = server.compose?.length > 0 && server.compose[0]?.name !== 'null';
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
+    { id: 'environment', label: 'Deployment Settings', icon: SlidersHorizontal },
+    { id: 'geolocation', label: 'Location', icon: MapPin },
     { id: 'config', label: 'Server Settings', icon: Settings },
     { id: 'remote', label: 'Remote Control', icon: Globe },
     { id: 'terminal', label: 'Console', icon: Terminal },
@@ -908,6 +912,16 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
             </div>
           )}
           {/* Tab Content - Only render active tab to prevent unnecessary API calls and memory leaks */}
+          {activeTab === 'environment' && (
+            <div key="environment" className="animate-fade-in">
+              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={handleReinstall} />
+            </div>
+          )}
+          {activeTab === 'geolocation' && (
+            <div key="geolocation" className="animate-fade-in">
+              <GeolocationTab server={server} onUpdate={onUpdate} onRedeploy={handleReinstall} />
+            </div>
+          )}
           {activeTab === 'overview' && (
             <div key="overview" className="animate-fade-in">
               <OverviewTab server={server} masterLocation={masterLocation} onMasterError={retryResolveMaster} statsRefreshKey={statsRefreshKey} onSwitchTab={setActiveTab} />

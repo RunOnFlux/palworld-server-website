@@ -502,6 +502,79 @@ class ApiService {
    * @param {string} message - Message to sign
    * @returns {Promise<string>} Signature
    */
+  /** App owner's RSA public key for enterprise (v8) encryption. */
+  async getAppPublicKey(name, owner) {
+    return this.post('/apps/getpublickey', { name, owner });
+  }
+
+  /** Current daemon block height (used to keep spec-only updates free). */
+  async getBlockHeight() {
+    try {
+      const response = await this.get('/daemon/getinfo');
+      if (response.status === 'success' && response.data?.blocks) {
+        return response.data.blocks;
+      }
+    } catch (error) {
+      console.error('Failed to fetch block height:', error);
+    }
+    return null;
+  }
+
+  /** App's permanent on-chain messages (registration + updates) with block height + type. */
+  async getAppUpdateMessages(appName) {
+    try {
+      const res = await this.get(`/apps/permanentmessages?appname=${encodeURIComponent(appName)}`);
+      return res.status === 'success' && Array.isArray(res.data) ? res.data : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Push a spec-only appupdate on-chain: verify -> sign (SSO) -> appupdate. Returns the
+   * new spec's payment/message hash. Works for enterprise and non-enterprise specs.
+   */
+  async updateAppSpecification(spec) {
+    const updatedSpec = { ...spec };
+    delete updatedSpec.hash;
+    delete updatedSpec.height;
+
+    let finalSpec = updatedSpec;
+    try {
+      const verifyResponse = await this.post('/apps/verifyappupdatespecifications', updatedSpec, { timeout: 30000 });
+      if (verifyResponse.status === 'success' && verifyResponse.data) {
+        finalSpec = verifyResponse.data;
+        if (updatedSpec.enterprise) finalSpec.enterprise = updatedSpec.enterprise;
+        if (updatedSpec.expire) finalSpec.expire = updatedSpec.expire;
+      }
+    } catch (e) {
+      console.warn('verifyappupdatespecifications failed, using local spec:', e.message);
+    }
+
+    const timestamp = Date.now();
+    const updateType = 'fluxappupdate';
+    const version = '1';
+    const message = `${updateType}${version}${JSON.stringify(finalSpec)}${timestamp}`;
+    const signature = await this.signMessageWithSSO(message);
+
+    const response = await this.post('/apps/appupdate', {
+      type: updateType,
+      version: parseInt(version),
+      appSpecification: finalSpec,
+      timestamp,
+      signature,
+    }, { timeout: 120000 });
+
+    if (response.status === 'error' || response.data?.code === 401) {
+      throw new Error(response.data?.message || response.data || response.message || 'App update failed');
+    }
+    const paymentHash = response.data;
+    if (!paymentHash || typeof paymentHash !== 'string') {
+      throw new Error('Failed to get payment hash from update');
+    }
+    return paymentHash;
+  }
+
   async signMessageWithSSO(message) {
     try {
       // Get Firebase user and token

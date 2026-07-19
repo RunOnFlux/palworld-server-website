@@ -21,7 +21,8 @@ const StepLocation = memo(({
   formatLocationLabel,
   getFlagIcon,
   onBack,
-  onContinue
+  onContinue,
+  showNav = true
 }) => {
   // Check if continent is already allowed (whole continent added)
   const continentAllowed = allowedLocations.includes(`ac${geolocationForm.continent}`);
@@ -168,22 +169,24 @@ const StepLocation = memo(({
         )}
       </div>
 
-      <div className="flex gap-3 pt-4 relative z-0">
-        <button
-          type="button"
-          onClick={onBack}
-          className="btn-secondary flex-1"
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          onClick={onContinue}
-          className="btn-primary flex-1"
-        >
-          Continue
-        </button>
-      </div>
+      {showNav && (
+        <div className="flex gap-3 pt-4 relative z-0">
+          <button
+            type="button"
+            onClick={onBack}
+            className="btn-secondary flex-1"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onContinue}
+            className="btn-primary flex-1"
+          >
+            Continue
+          </button>
+        </div>
+      )}
     </motion.div>
   );
 });
