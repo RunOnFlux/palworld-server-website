@@ -23,6 +23,7 @@ const steps = [
 ];
 
 const internalLinks = [
+  { to: '/rent-palworld-server', anchor: 'Rent a Palworld dedicated server', desc: 'What you get, how much it costs, and how to deploy in 30 seconds.' },
   { to: '/setup-guide', anchor: 'How to make a Palworld dedicated server', desc: 'Full 2026 setup walkthrough — SteamCMD vs one-click deploy.' },
   { to: '/server-requirements', anchor: 'Palworld dedicated server requirements', desc: 'How much RAM and CPU you need, plus ports 8211 and 8212.' },
   { to: '/pricing', anchor: 'Palworld server hosting pricing', desc: 'Compare 5GB, 8GB, 12GB and 16GB plans by player count.' },

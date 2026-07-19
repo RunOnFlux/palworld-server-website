@@ -17,6 +17,79 @@ const SITE = 'https://palworld.runonflux.com';
 // -------------------------------------------------------------------------
 
 export const pagesContent = {
+  'rent-palworld-server': {
+    slug: '/rent-palworld-server',
+    title: 'Rent a Palworld Server',
+    metaTitle: 'Rent a Palworld Dedicated Server — from $2.61/mo',
+    description:
+      'Rent a Palworld dedicated server on the Flux decentralized cloud: up to 32 players, crossplay, DDoS protection, deploy in 30s from $2.61/mo. First month free.',
+    h1: 'Rent a Palworld Dedicated Server',
+    lead:
+      'Renting a Palworld dedicated server means someone else handles the hardware, the install, the port forwarding, and the uptime — you pick a plan, click deploy, and your world is online in about 30 seconds. This page covers what you get when you rent, how much a Palworld server costs, and how renting on the Flux decentralized cloud compares to running one yourself.',
+    breadcrumbs: [
+      { name: 'Home', url: '/' },
+      { name: 'Rent a Server', url: '/rent-palworld-server' },
+    ],
+    body: [
+      { type: 'h2', text: 'Why rent a Palworld server instead of self-hosting?' },
+      { type: 'p', text: 'You can run a Palworld dedicated server on your own PC with SteamCMD, but you then own every part of keeping it alive: the machine has to stay powered and online 24/7, you patch it whenever Pocketpair ships an update, you forward UDP 8211 on your router and firewall, and you expose your home IP address with no DDoS protection. Renting removes all of that. The server runs on managed infrastructure, the correct ports are already open, updates and the base image are handled for you, and your personal connection is never exposed.' },
+      { type: 'p', text: 'Renting also frees your own hardware. A Palworld world is CPU- and RAM-hungry and gets heavier as players build bases and capture Pals, so hosting it locally ties up your machine and your bandwidth for as long as you want the world online. A rented server keeps the world running while your PC is off.' },
+
+      { type: 'h2', text: 'How much does it cost to rent a Palworld server?' },
+      { type: 'p', text: 'Palworld server rental is priced by RAM, which maps to how many players your world comfortably supports. Plans start at $2.61/month, every plan includes DDoS protection and full admin access, and new users get their first month free.' },
+      { type: 'table', head: ['Plan / RAM', 'Recommended players', 'Price'], rows: [
+        ['5GB RAM', 'Up to 4 players', 'from $2.61/mo'],
+        ['8GB RAM', 'Up to 8 players', 'from $4.38/mo'],
+        ['12GB RAM', 'Up to 16 players', 'from $6.11/mo'],
+        ['16GB RAM', 'Up to 32 players', 'from $8.55/mo'],
+      ] },
+      { type: 'p', text: 'Prices shown are indicative starting points; the exact monthly price is calculated live at checkout based on the region and resources you choose. Billing is month-to-month — there is no long-term contract and no hidden setup fee, so you can cancel any time.' },
+      { type: 'cta', text: 'Rent a Palworld server — first month free →', href: '/#pricing' },
+
+      { type: 'h2', text: 'What you get when you rent on Flux' },
+      { type: 'p', text: 'Every rented Palworld server is a full dedicated server, not a shared slot. The plan sets your RAM and vCPU; everything else is included:' },
+      { type: 'ul', items: [
+        'Up to 32 players on a single persistent server that stays online 24/7.',
+        'Crossplay support — configure for Steam and Xbox/Game Pass players to play together.',
+        'Enterprise-grade DDoS protection on every plan, at no extra cost.',
+        '99.9% uptime on the Flux decentralized network, with servers in 50+ countries.',
+        'Full admin access: web console, file manager, and direct PalWorldSettings.ini editing.',
+        'On-demand backups and one-click restore, plus save transfer so you can upload an existing world.',
+        'Ports handled for you — UDP 8211 and the REST admin API (TCP 8212) are exposed at deploy time.',
+      ] },
+
+      { type: 'h2', text: 'Rent a server close to your players' },
+      { type: 'p', text: 'Latency is set by distance, so where you rent matters. Traditional hosts run a fixed set of data centers; Flux is a decentralized network with capacity in 50+ countries, so you pick a region near your group at deploy time and can move if your community shifts. There is no single point of failure and no egress (bandwidth) fee.' },
+
+      { type: 'h2', text: 'How to rent a Palworld server in 30 seconds' },
+      { type: 'ol', items: [
+        'Create a free account with Google or email — no card needed to start.',
+        'Choose a plan sized to your group: 5GB for up to 4 players, 8GB for up to 8, 12GB for up to 16, or 16GB for a full 32-player server.',
+        'Pick a server region close to your players from 50+ countries.',
+        'Click deploy. The game port opens and your Palworld dedicated server is online in about 30 seconds.',
+        'Open the web dashboard to edit PalWorldSettings.ini, browse files, take backups, and invite your friends — no SSH or port forwarding required.',
+      ] },
+      { type: 'p', text: 'Prefer to compare against a specific host first? See how renting on Flux stacks up as a GPORTAL alternative or a Nitrado alternative for Palworld, or read the full Palworld dedicated server requirements to size your plan.' },
+      { type: 'cta', text: 'Rent a Palworld dedicated server on Flux →', href: '/#pricing' },
+    ],
+    faq: [
+      { question: 'How much does it cost to rent a Palworld server?', answer: 'Palworld server rental starts at $2.61/month for a 5GB plan (up to 4 players) and scales to $8.55/month for a 16GB plan that runs a full 32-player server. Every plan includes DDoS protection, and new users get the first month free. The exact price depends on the region and resources you pick at checkout.' },
+      { question: 'Where can I rent a Palworld dedicated server?', answer: 'You can rent a Palworld dedicated server on the Flux decentralized cloud with deployment in about 30 seconds, servers in 50+ countries, DDoS protection included, and month-to-month billing with no contract.' },
+      { question: 'Is renting a Palworld server better than self-hosting?', answer: 'Renting removes the work and cost of self-hosting: no dedicated hardware to keep powered, no manual updates or port forwarding, no exposed home IP, and DDoS protection included. Self-hosting is free of hosting fees but you take on the machine, networking, and uptime yourself.' },
+      { question: 'Can I rent a Palworld server for 32 players?', answer: 'Yes. The 16GB plan supports the full 32-player cap. Smaller plans suit co-op groups: 5GB for up to 4, 8GB for up to 8, and 12GB for up to 16 players.' },
+      { question: 'Can I cancel my Palworld server rental any time?', answer: 'Yes. Billing is month-to-month with no long-term contract and the first month is free, so you can cancel whenever you like and download your world save from the file manager to keep it.' },
+    ],
+    product: {
+      name: 'Palworld Dedicated Server Rental',
+      description: 'Rent a managed Palworld dedicated server on the Flux decentralized cloud. Up to 32 players, DDoS protection, 99.9% uptime, plans from $2.61/month with the first month free.',
+      image: '/games/palworld/banner.webp',
+      lowPrice: '2.61',
+      highPrice: '8.55',
+      offerCount: '3',
+    },
+    related: ['pricing', 'server-requirements', 'setup-guide', 'gportal-alternative', 'nitrado-alternative'],
+  },
+
   'setup-guide': {
     slug: '/setup-guide',
     title: 'How to Make a Palworld Dedicated Server (2026 Guide)',
@@ -535,6 +608,7 @@ export function buildReviewNodes(list = reviews) {
 
 // Human-readable labels for related-link anchors (keyword-rich).
 export const pageAnchors = {
+  'rent-palworld-server': 'Rent a Palworld dedicated server',
   'setup-guide': 'How to make a Palworld dedicated server',
   'server-requirements': 'Palworld dedicated server requirements',
   pricing: 'Palworld server hosting pricing',

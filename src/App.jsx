@@ -30,6 +30,7 @@ const Success = lazyPage(() => import('./pages/Success'));
 const Cancel = lazyPage(() => import('./pages/Cancel'));
 const NotFound = lazyPage(() => import('./pages/NotFound'));
 const Support = lazyPage(() => import('./pages/Support'));
+const RentServer = lazyPage(() => import('./pages/RentServer'));
 const SetupGuide = lazyPage(() => import('./pages/SetupGuide'));
 const ServerRequirements = lazyPage(() => import('./pages/ServerRequirements'));
 const Pricing = lazyPage(() => import('./pages/Pricing'));
@@ -47,6 +48,7 @@ const ROUTE_PAGES = {
   '/success': Success,
   '/cancel': Cancel,
   '/support': Support,
+  '/rent-palworld-server': RentServer,
   '/setup-guide': SetupGuide,
   '/server-requirements': ServerRequirements,
   '/pricing': Pricing,
@@ -124,6 +126,7 @@ export function AppRoutes() {
             <Route path="/success" element={<Success />} />
             <Route path="/cancel" element={<Cancel />} />
             <Route path="/support" element={<Support />} />
+            <Route path="/rent-palworld-server" element={<RentServer />} />
             <Route path="/setup-guide" element={<SetupGuide />} />
             <Route path="/server-requirements" element={<ServerRequirements />} />
             <Route path="/pricing" element={<Pricing />} />

@@ -36,6 +36,7 @@
 ## Pages
 
 - [Home / features / FAQ](https://palworld.runonflux.com/)
+- [Rent a Palworld dedicated server](https://palworld.runonflux.com/rent-palworld-server)
 - [Pricing and plans](https://palworld.runonflux.com/pricing)
 - [How to set up a Palworld server](https://palworld.runonflux.com/setup-guide)
 - [Palworld server requirements](https://palworld.runonflux.com/server-requirements)

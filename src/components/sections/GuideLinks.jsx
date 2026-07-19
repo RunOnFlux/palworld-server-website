@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { BookOpen, Server, Users, Settings, Tag, GitCompare, LifeBuoy, ArrowRight } from 'lucide-react';
 
 const guides = [
+  { to: '/rent-palworld-server', icon: Tag, label: 'Rent a Palworld dedicated server', desc: 'What you get, how much it costs, and how to deploy in 30 seconds — first month free.' },
   { to: '/nitrado-alternative', icon: GitCompare, label: 'Nitrado alternative', desc: 'Decentralized Nitrado alternative for Palworld — 32 players, dedicated resources, from $2.61/mo.' },
   { to: '/gportal-alternative', icon: GitCompare, label: 'GPORTAL alternative', desc: 'Decentralized GPORTAL alternative for Palworld — no single point of failure, no egress fees.' },
   { to: '/setup-guide', icon: BookOpen, label: 'How to make a Palworld dedicated server', desc: 'Full 2026 setup walkthrough — SteamCMD vs one-click deploy.' },

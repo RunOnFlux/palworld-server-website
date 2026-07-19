@@ -21,6 +21,7 @@ export default defineConfig(({ isSsrBuild }) => {
         // SPA routes the plugin can't discover from the single index.html entry.
         // These are the indexable content/guide pages plus /support.
         dynamicRoutes: [
+          '/rent-palworld-server',
           '/pricing',
           '/setup-guide',
           '/server-requirements',
