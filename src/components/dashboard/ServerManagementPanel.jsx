@@ -22,8 +22,6 @@ import marketplaceService from '../../services/marketplaceService';
 import ServerTerminal from './ServerTerminal';
 import ServerStats from './ServerStats';
 import secureStorage from '../../utils/secureStorage';
-import { parseEnvArray } from '../../utils/appSpecHelpers';
-import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
 
@@ -426,15 +424,22 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
     fetchState();
   }, [masterLocation, server?.name]);
 
-  // ── Auto-reconcile Palworld PublicPort for community-listed servers ──────────
-  // Randomized deploys expose a high external game port, but the persisted
-  // PalWorldSettings.ini is seeded from the image default (PublicPort=8211) and
-  // DISABLE_GENERATE_SETTINGS=true means env vars never rewrite it. A stale
-  // PublicPort ONLY breaks the in-game community server browser (direct-connect
-  // is unaffected). So, gated strictly on COMMUNITY=true, if the ini's PublicPort
-  // ≠ the external game port, patch it on the master (Syncthing replicates to the
-  // slaves) and restart. Anti-loop: confirm the write before restarting and mark
-  // the server done for this mount.
+  // ── Auto-reconcile Palworld PublicPort to the actual external game port ───────
+  // Randomized deploys expose a high external game port (e.g. 57356), but the
+  // persisted PalWorldSettings.ini is seeded from the image default
+  // (PublicPort=8211) and DISABLE_GENERATE_SETTINGS=true means env vars never
+  // rewrite it. A stale PublicPort makes the in-game community browser hand out
+  // IP:8211 (unreachable) instead of IP:<externalPort>, so joining fails.
+  // Direct-connect is unaffected either way. On first panel open we patch the
+  // ini's PublicPort to the external game port (ports[0]) on the master (Syncthing
+  // replicates to the slaves) and restart. This runs for EVERY server — NOT gated
+  // on COMMUNITY — so the advertised address is always correct.
+  //
+  // ONLY PublicPort is touched. RCONPort / RESTAPIPort in the ini are the
+  // container's INTERNAL bind ports — Flux maps the external ports onto them
+  // (e.g. 59025→8212), so the server must keep listening on the defaults; changing
+  // them would break the REST proxy. Same reason PORT/QUERY_PORT are never set.
+  // Anti-loop: confirm the write before restarting and mark the server done.
   const publicPortReconcileRef = useRef({});
   const publicPortInFlightRef = useRef(false);
   useEffect(() => {
@@ -445,28 +450,15 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
     let cancelled = false;
 
     const reconcile = async () => {
-      // 1. COMMUNITY flag from the on-chain env (decrypt enterprise compose).
-      const outer = await apiService.getAppSpecs(appName);
-      if (!outer?.name) return;
-      let compose = outer.compose;
-      if (outer.enterprise && (!compose || compose.length === 0)) {
-        const authForDecrypt = await apiService.getStoredAuth();
-        const fluxApiBase = sessionStorage.getItem('stickyBackendDNS') || 'https://api.runonflux.io';
-        const decrypted = await fetchDecryptedEnterpriseSpec(appName, fluxApiBase, authForDecrypt);
-        compose = decrypted?.compose;
-      }
-      const env = parseEnvArray(compose?.[0]?.environmentParameters);
-      if (String(env.COMMUNITY ?? '').toLowerCase() !== 'true') {
-        publicPortReconcileRef.current[appName] = true; // not community-listed → nothing to do
+      // 1. Expected PublicPort = the external game port (index 0) actually in use.
+      //    Skip legacy/default apps whose external port is still 8211 (nothing to fix).
+      const expected = String(server.ports?.[0] || server.compose?.[0]?.ports?.[0] || '');
+      if (!expected || expected === '8211') {
+        publicPortReconcileRef.current[appName] = true;
         return;
       }
 
-      // 2. Expected external game port (index 0).
-      const expected = String(
-        server.ports?.[0] || server.compose?.[0]?.ports?.[0] || compose?.[0]?.ports?.[0] || 8211
-      );
-
-      // 3. Read the persisted ini from the master node.
+      // 2. Node + paths (master node; Syncthing replicates the write to the slaves).
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!zelidauth) return;
       const authHeader = JSON.stringify(zelidauth);
@@ -475,10 +467,18 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
       const component = server?.version >= 4 && server?.compose?.length > 0 ? server.compose[0].name : 'null';
       const dlUrl = `${nodeBase}/apps/downloadfile/${appName}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
 
-      const res = await fetch(dlUrl, { headers: { zelidauth: authHeader } });
-      if (!res.ok) return; // ini not present yet (still provisioning) — retry on next open
-      const ini = await res.text();
-      if (cancelled || !ini || !ini.includes('OptionSettings=')) return;
+      // 3. Read the persisted ini — retry a few times in case the container's first
+      //    boot is still generating the default config, so it works on first open.
+      let ini = null;
+      for (let attempt = 0; attempt < 4 && !cancelled; attempt += 1) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
+        const res = await fetch(dlUrl, { headers: { zelidauth: authHeader } });
+        if (res.ok) {
+          const text = await res.text();
+          if (text && text.includes('OptionSettings=')) { ini = text; break; }
+        }
+      }
+      if (cancelled || !ini) return; // not ready yet — will retry on next panel open
 
       // 4. Compare current PublicPort.
       const current = /PublicPort=(\d+)/.exec(ini)?.[1];
@@ -519,7 +519,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
 
       if (persisted) {
         publicPortReconcileRef.current[appName] = true;
-        toast.success('Community server address updated — server restarting.');
+        toast.success('Server public address updated — server restarting.');
         if (onUpdate) onUpdate();
       } else {
         toast.error('Public port change did not persist — will retry.');
