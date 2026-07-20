@@ -8,6 +8,7 @@ import apiService from '../../services/apiService';
 import storageService from '../../services/storageService';
 import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walletService';
 import marketplaceService from '../../services/marketplaceService';
+import { withModsMount } from '../../config/modsConfig';
 import geolocationData from '../../utils/geolocation';
 import toast from 'react-hot-toast';
 
@@ -517,7 +518,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         environmentParameters: Array.isArray(service.environmentParameters) ? service.environmentParameters : [],
         commands: Array.isArray(service.commands) ? service.commands : [],
         containerPorts: Array.isArray(service.containerPorts) ? service.containerPorts : [],
-        containerData: service.containerData || '',
+        containerData: withModsMount(service.containerData),
         tiered: typeof service.tiered === 'boolean' ? service.tiered : false,
         cpu: parseNumericValue(plan.specs?.cpu) || service.cpu || 1,
         ram: parseNumericValue(plan.specs?.ram) || service.ram || 2000,
@@ -823,7 +824,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
           environmentParameters: environmentParameters,
           commands: Array.isArray(component.commands) ? component.commands : [],
           containerPorts: Array.isArray(component.containerPorts) ? component.containerPorts : [],
-          containerData: component.containerData || '',
+          containerData: withModsMount(component.containerData),
           tiered: typeof component.tiered === 'boolean' ? component.tiered : false,
           cpu: Math.round(cpuValue * 10) / 10,
           ram: Math.round(ramValue),
@@ -1025,7 +1026,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
           environmentParameters,
           commands: Array.isArray(component.commands) ? component.commands : [],
           containerPorts: Array.isArray(component.containerPorts) ? component.containerPorts : [],
-          containerData: component.containerData || '',
+          containerData: withModsMount(component.containerData),
           tiered: typeof component.tiered === 'boolean' ? component.tiered : false,
           cpu: Math.round(cpuValue * 10) / 10,
           ram: Math.round(ramValue),
@@ -1175,7 +1176,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
           environmentParameters,
           commands: Array.isArray(component.commands) ? component.commands : [],
           containerPorts: Array.isArray(component.containerPorts) ? component.containerPorts : [],
-          containerData: component.containerData || '',
+          containerData: withModsMount(component.containerData),
           tiered: typeof component.tiered === 'boolean' ? component.tiered : false,
           cpu: Math.round(cpuValue * 10) / 10,
           ram: Math.round(ramValue),

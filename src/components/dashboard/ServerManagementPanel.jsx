@@ -6,10 +6,11 @@ import { MdMemory, MdSpeed, MdStorage, MdFolder, MdDownload, MdEdit, MdDelete, M
 import { RiFolderReceivedFill } from 'react-icons/ri';
 import { GrPlan } from 'react-icons/gr';
 import { FaFileImage, FaFileVideo, FaFileAudio, FaFileArchive, FaFileAlt, FaFileCode, FaFilePdf, FaFile } from 'react-icons/fa';
-import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, Plus, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu } from 'lucide-react';
+import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, Plus, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package } from 'lucide-react';
 import EnvironmentTab from './EnvironmentTab';
 import GeolocationTab from './GeolocationTab';
 import HardwareTab from './HardwareTab';
+import ModManager from './ModManager';
 
 // Lazy load Monaco Editor (heavy: ~4.7MB) - only loads when file editing is used
 const Editor = lazy(() => import('@monaco-editor/react'));
@@ -764,6 +765,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
     { id: 'geolocation', label: 'Location', icon: MapPin },
     { id: 'hardware', label: 'Hardware', icon: Cpu },
     { id: 'config', label: 'Server Settings', icon: Settings },
+    { id: 'mods', label: 'Mods', icon: Package },
     { id: 'remote', label: 'Remote Control', icon: Globe },
     { id: 'terminal', label: 'Console', icon: Terminal },
     { id: 'files', label: 'Files', icon: Folder },
@@ -937,6 +939,11 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
           {activeTab === 'config' && (
             <div key="config" className="animate-fade-in">
               <ConfigTab server={server} masterLocation={masterLocation} onMasterError={retryResolveMaster} />
+            </div>
+          )}
+          {activeTab === 'mods' && (
+            <div key="mods" className="animate-fade-in">
+              <ModManager server={server} masterLocation={masterLocation} onMasterError={retryResolveMaster} onRedeploy={() => handleReinstall(false)} />
             </div>
           )}
           {activeTab === 'remote' && (
@@ -1345,7 +1352,7 @@ const PALWORLD_SETTINGS = [
   { key: 'bShowPlayerList', label: 'Show Player List', type: 'toggle', default: 'True', description: 'Show player list to all' },
   // --- Admin ---
   { key: '_section_admin', type: 'section', label: 'Admin & API', icon: ShieldCheck },
-  { key: 'RESTAPIEnabled', label: 'REST API', type: 'toggle', default: 'true', description: 'Enable REST API (required for Remote Control tab)' },
+  { key: 'RESTAPIEnabled', label: 'REST API', type: 'toggle', default: 'true', description: 'Enable REST API on port 8212. Required — the health check pings it; if off (or no Admin Password), the server restart-loops. Also powers the Remote Control tab.' },
   { key: 'ServerReplicatePawnCullDistance', label: 'Pawn Cull Distance', type: 'number', default: '15000.000000', step: '1000', description: 'Network pawn cull distance' },
   { key: 'CrossplayPlatforms', label: 'Crossplay Platforms', type: 'multicheck', default: 'Steam,Xbox,PS5,Mac', options: ['Steam', 'Xbox', 'PS5', 'Mac'], description: 'Allowed crossplay platforms', paren: true },
   { key: 'BanListURL', label: 'Ban List URL', type: 'text', default: 'https://api.palworldgame.com/api/banlist.txt', description: 'URL for ban list' },
@@ -1632,16 +1639,51 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
           </button>
         </div>
 
-        {/* Info banner — show warning if AdminPassword is empty */}
-        {(!settings.AdminPassword || !settings.AdminPassword.trim()) && !loading && (
-          <div className="px-4 py-3 flex items-center gap-3" style={{ background: 'rgba(234,179,8,0.05)', borderTop: '1px solid rgba(234,179,8,0.1)' }}>
-            <AlertTriangle className="w-5 h-5 text-yellow-500/80 flex-shrink-0" />
-            <div>
-              <p className="text-xs font-medium text-yellow-400/80">Admin Password not set</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Set an AdminPassword in the Server section to enable the REST API and Remote Control features.</p>
+        {/* REST API health warning — the server's healthcheck pings the REST API (port 8212).
+            If it isn't reachable the app is marked unhealthy and restart-loops (re-downloading
+            the game each time). It needs BOTH RESTAPIEnabled=On AND an AdminPassword — and
+            those live in different sections, which is easy to miss. */}
+        {!loading && (() => {
+          const hasPw = settings.AdminPassword && settings.AdminPassword.trim();
+          const restOn = String(settings.RESTAPIEnabled).toLowerCase() === 'true';
+          if (hasPw && restOn) return null;
+          return (
+            <div className="px-4 py-3 flex items-start gap-3" style={{ background: 'rgba(234,179,8,0.06)', borderTop: '1px solid rgba(234,179,8,0.15)' }}>
+              <AlertTriangle className="w-5 h-5 text-yellow-500/90 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-yellow-400">Enable the REST API — required</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                  Your server&apos;s health check pings the REST API (port 8212). If it isn&apos;t reachable,
+                  the server is marked unhealthy and <strong>restarts repeatedly</strong> (re-downloading
+                  the game every time). You need <span className="font-mono text-yellow-300">REST API = On</span>{' '}
+                  <em>and</em> an <span className="font-mono text-yellow-300">Admin Password</span> — they&apos;re in
+                  different sections below.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {!restOn && (
+                    <button
+                      type="button"
+                      onClick={() => { updateSetting('RESTAPIEnabled', 'true'); setExpandedSections(p => ({ ...p, _section_admin: true })); }}
+                      className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-yellow-500/15 border border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/25 transition-colors cursor-pointer"
+                    >
+                      Enable REST API
+                    </button>
+                  )}
+                  {!hasPw && (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedSections(p => ({ ...p, _section_server: true }))}
+                      className="px-2.5 py-1 rounded-md text-[11px] font-medium text-slate-300 border border-slate-600/60 bg-slate-700/40 hover:bg-slate-600/50 transition-colors cursor-pointer"
+                    >
+                      Set Admin Password
+                    </button>
+                  )}
+                  <span className="text-[11px] text-slate-500">then Save to apply.</span>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {showAdvanced ? (
@@ -6246,75 +6288,29 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
         const blocksToAdd = Math.min(duration.blocks, MAX_SUBSCRIPTION_BLOCKS - currentExpire);
         const newExpire = currentExpire + blocksToAdd;
 
-        // Use cached plans instead of fetching
-        console.log('📦 Using cached plans:', cachedPlans.length);
-        console.log('🔍 Looking for server specs:', { cpu: server.cpu, ram: server.ram, hdd: server.hdd });
+        // Price the REAL current spec at the new expire via the Flux API. This handles
+        // custom hardware (e.g. from the Hardware tab) that no marketplace plan matches, and
+        // already includes Flux's long-duration discount — matching how zomboid prices renewals.
+        const outer = await apiService.getAppSpecs(server.name);
+        if (!outer?.name) throw new Error('Could not load the current app spec.');
 
-        if (!cachedPlans || cachedPlans.length === 0) {
-          throw new Error('No plans available');
-        }
-
-        // Find matching plan based on hardware specs
-        const matchingPlan = cachedPlans.find(plan => {
-          const planConfig = plan._config?.components?.[0] || {};
-          const planCpu = planConfig.cpu || planConfig.cpubasic || 0;
-          const planRam = planConfig.ram || planConfig.rambasic || 0;
-          const planHdd = planConfig.hdd || planConfig.hddbasic || 0;
-
-          const cpuMatch = Math.round(planCpu * 100) === Math.round(server.cpu * 100);
-          const ramMatch = planRam === server.ram;
-          const hddMatch = planHdd === server.hdd;
-
-          console.log('  Plan:', plan.name, { planCpu, planRam, planHdd, cpuMatch, ramMatch, hddMatch });
-          return cpuMatch && ramMatch && hddMatch;
-        });
-
-        console.log('✅ Matching plan:', matchingPlan);
-
-        if (!matchingPlan || !matchingPlan.price) {
-          // Custom plan - no matching marketplace plan, skip pricing silently
-          console.log('ℹ️ Custom plan detected, pricing unavailable');
-          setPricing({ customPlan: true });
-          return;
-        }
-
-        // Calculate price: monthly price × actual months being added
-        // plan.price.monthly is in cents, convert to dollars
-        const monthlyPrice = matchingPlan.price.monthly / 100;
-        const actualMonthsAdded = blocksToAdd / BLOCKS_PER_MONTH;
-
-        // Calculate new total subscription duration (for discount calculation)
+        // Discount is derived by Flux from the spec's expire; we compute it here only for display.
         const newTotalMonths = newExpire / BLOCKS_PER_MONTH;
-
-        // Apply discount based on NEW TOTAL subscription duration (matching FluxOS backend logic)
         let discount = 0;
-        if (newTotalMonths >= 9) {
-          discount = 12; // 12% discount for 9+ months
-        } else if (newTotalMonths >= 6) {
-          discount = 6;  // 6% discount for 6+ months
-        } else if (newTotalMonths >= 3) {
-          discount = 3;  // 3% discount for 3+ months
-        }
+        if (newTotalMonths >= 9) discount = 12;
+        else if (newTotalMonths >= 6) discount = 6;
+        else if (newTotalMonths >= 3) discount = 3;
 
-        // Calculate final price with discount
-        const basePrice = monthlyPrice * actualMonthsAdded;
-        const totalPrice = basePrice * (1 - discount / 100);
+        const p = await apiService.calculateAppPrice({ ...outer, expire: newExpire });
+        if (!(p?.usd > 0)) throw new Error('Price calculation returned no price.');
 
-        console.log('💰 Plan pricing:', {
-          plan: matchingPlan.name,
-          monthlyPrice,
-          actualMonthsAdded: actualMonthsAdded.toFixed(2),
-          newTotalMonths: newTotalMonths.toFixed(2),
-          discount: `${discount}%`,
-          basePrice: basePrice.toFixed(2),
-          totalPrice: totalPrice.toFixed(2)
-        });
+        console.log('💰 Renewal price from API (real spec):', { usd: p.usd, flux: p.flux, discount });
 
         setPricing({
-          price: totalPrice,
+          price: p.usd, // Flux's long-duration discount already included
           blocksToAdd: blocksToAdd,
           newExpire: newExpire,
-          discount: discount
+          discount: discount,
         });
 
       } catch (error) {
@@ -6410,52 +6406,26 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
         freshNewExpire
       });
 
-      // Recalculate price with fresh data (use cached plans)
-      if (!cachedPlans || cachedPlans.length === 0) {
-        throw new Error('No plans available');
-      }
+      // Recalculate price with fresh data via the Flux API (matches zomboid; prices any spec,
+      // including custom hardware set through the Hardware tab).
+      const freshOuter = await apiService.getAppSpecs(server.name);
+      if (!freshOuter?.name) throw new Error('Could not load the current app spec.');
 
-      const matchingPlan = cachedPlans.find(plan => {
-        const planConfig = plan._config?.components?.[0] || {};
-        const planCpu = planConfig.cpu || planConfig.cpubasic || 0;
-        const planRam = planConfig.ram || planConfig.rambasic || 0;
-        const planHdd = planConfig.hdd || planConfig.hddbasic || 0;
-
-        const cpuMatch = Math.round(planCpu * 100) === Math.round(server.cpu * 100);
-        const ramMatch = planRam === server.ram;
-        const hddMatch = planHdd === server.hdd;
-
-        return cpuMatch && ramMatch && hddMatch;
-      });
-
-      if (!matchingPlan || !matchingPlan.price) {
-        throw new Error('No matching plan found for server specs');
-      }
-
-      const monthlyPrice = matchingPlan.price.monthly / 100;
-      const actualMonthsAdded = freshBlocksToAdd / BLOCKS_PER_MONTH;
-      // Discount based on total remaining time after renewal (not spec expire field)
       const newTotalMonths = (freshRemainingBlocks + freshBlocksToAdd) / BLOCKS_PER_MONTH;
-
-      // Apply discount based on total subscription duration
       let discount = 0;
-      if (newTotalMonths >= 9) {
-        discount = 12;
-      } else if (newTotalMonths >= 6) {
-        discount = 6;
-      } else if (newTotalMonths >= 3) {
-        discount = 3;
-      }
+      if (newTotalMonths >= 9) discount = 12;
+      else if (newTotalMonths >= 6) discount = 6;
+      else if (newTotalMonths >= 3) discount = 3;
 
-      const basePrice = monthlyPrice * actualMonthsAdded;
-      const freshPrice = basePrice * (1 - discount / 100);
+      const freshP = await apiService.calculateAppPrice({ ...freshOuter, expire: freshNewExpire });
+      if (!(freshP?.usd > 0)) throw new Error('Price calculation returned no price.');
+      const freshPrice = freshP.usd; // Flux's duration discount already included
 
-      console.log('💰 FRESH PRICE CALCULATION (before payment):', {
+      console.log('💰 FRESH PRICE (API, before payment):', {
         freshBlockHeight,
         freshRemainingBlocks,
         freshBlocksToAdd,
         freshNewExpire,
-        actualMonthsAdded: actualMonthsAdded.toFixed(2),
         newTotalMonths: newTotalMonths.toFixed(2),
         discount: `${discount}%`,
         freshPrice: freshPrice.toFixed(2),
@@ -6577,25 +6547,11 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
 
   // Calculate FLUX price for renewal
   const fluxPrice = (() => {
-    if (!pricing || pricing.error || pricing.customPlan || apiPricingFlux.usd <= 0) return 0;
-
-    // Find matching plan to get monthly price
-    const matchingPlan = cachedPlans?.find(plan => {
-      const planConfig = plan._config?.components?.[0] || {};
-      const planCpu = planConfig.cpu || planConfig.cpubasic || 0;
-      const planRam = planConfig.ram || planConfig.rambasic || 0;
-      const planHdd = planConfig.hdd || planConfig.hddbasic || 0;
-      return Math.round(planCpu * 100) === Math.round(server.cpu * 100) && planRam === server.ram && planHdd === server.hdd;
-    });
-    if (!matchingPlan) return 0;
-
-    const monthlyUsd = matchingPlan.price.monthly / 100;
+    if (!pricing || pricing.error || !(pricing.price > 0) || apiPricingFlux.usd <= 0) return 0;
+    // Convert the API-priced renewal (USD) to FLUX using the current FLUX/USD rate. Works for
+    // any spec — including custom hardware from the Hardware tab that no plan matches.
     const fluxPerUsd = apiPricingFlux.flux / apiPricingFlux.usd;
-    const actualMonths = pricing.blocksToAdd / BLOCKS_PER_MONTH;
-    // Only apply crypto-specific discount from Flux API, not duration discount (that's for fiat)
-    const fluxDiscount = apiPricingFlux.fluxDiscount || 0;
-
-    return parseFloat((monthlyUsd * fluxPerUsd * actualMonths * (1 - fluxDiscount / 100)).toFixed(2));
+    return parseFloat((pricing.price * fluxPerUsd).toFixed(2));
   })();
 
   const handleCryptoRenewal = async (walletType) => {
@@ -7253,24 +7209,6 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
                   <RefreshCw className="w-4 h-4 animate-spin" />
                   <span>Calculating price...</span>
                 </div>
-              ) : (pricing && pricing.customPlan) ? (
-                <div className="flex items-start gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                  <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-300">
-                      This server uses a custom plan. Renewal is available through FluxCloud.
-                    </p>
-                    <a
-                      href="https://cloud.runonflux.com/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors"
-                    >
-                      Open FluxCloud
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                </div>
               ) : (pricing && !pricing.error) ? (
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
@@ -7326,7 +7264,7 @@ Price
           )}
 
           {/* Auto-Renewal Toggle */}
-          {pricing && !pricing.customPlan && !pricing.error && (
+          {pricing && !pricing.error && (
             <div className="bg-gradient-to-br from-blue-900/20 to-indigo-900/20 border-2 border-blue-700/50 rounded-2xl p-3 sm:p-4 shadow-lg shadow-blue-500/10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -7378,7 +7316,7 @@ Price
           )}
 
           {/* Crypto Payment Panel - only when auto-renewal is OFF */}
-          {!waitingForCrypto && !autoRenewal && pricing && !pricing.customPlan && !pricing.error && (
+          {!waitingForCrypto && !autoRenewal && pricing && !pricing.error && (
             <div className="border-2 border-blue-700/40 rounded-2xl overflow-hidden shadow-lg shadow-blue-500/5">
               <button
                 type="button"
@@ -7455,7 +7393,7 @@ Price
           {/* Renewal Button */}
           {!waitingForCrypto && <button
             onClick={handleRenewal}
-            disabled={isProcessing || isLoadingLimits || isLoadingPrice || !pricing || pricing?.error || pricing?.customPlan}
+            disabled={isProcessing || isLoadingLimits || isLoadingPrice || !pricing || pricing?.error}
             className="w-full px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw className={`w-4 h-4 ${isProcessing ? 'animate-spin' : ''}`} />

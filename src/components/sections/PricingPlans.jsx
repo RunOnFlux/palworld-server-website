@@ -6,7 +6,8 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 gsap.registerPlugin(ScrollTrigger);
 import { Helmet } from 'react-helmet-async';
-import { Star, Users, Cpu, HardDrive, Network, Flame, Check } from 'lucide-react';
+import { Star, Users, Cpu, HardDrive, Network, Flame, Check, BarChart3, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import marketplaceService from '../../services/marketplaceService';
 import { gameConfig } from '../../config/gameConfig';
 import { useAuth } from '../../context/AuthContext';
@@ -535,6 +536,38 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
             <span>Looking for other games?</span>
             <span className="inline-flex items-center gap-1.5 text-primary font-semibold text-sm group-hover:underline">Check out all games we offer <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg></span>
           </a>
+        </motion.div>
+
+        {/* Why host on Flux — comparison CTA */}
+        <motion.div
+          className="mt-8 max-w-4xl mx-auto"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <Link
+            to="/decentralized-palworld-hosting"
+            className="group flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6 p-6 sm:p-8 rounded-2xl border border-primary/40 bg-gradient-to-r from-primary/10 via-blue-500/10 to-primary/10 hover:border-primary/70 hover:from-primary/20 hover:to-primary/20 transition-all duration-300 shadow-lg shadow-primary/5 hover:shadow-primary/20"
+          >
+            <div className="flex items-center gap-4 text-center sm:text-left">
+              <div className="hidden sm:flex flex-shrink-0 items-center justify-center w-14 h-14 rounded-xl bg-primary/20 border border-primary/30">
+                <BarChart3 className="w-7 h-7 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold text-text">
+                  Why host on the Flux decentralized cloud
+                </h3>
+                <p className="text-sm text-text-secondary mt-1">
+                  No single point of failure, no lock-in, dedicated resources, DDoS protection, 99.9% uptime and 32 players.
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex flex-shrink-0 items-center gap-2 px-5 py-3 rounded-xl bg-primary text-white font-semibold whitespace-nowrap shadow-md group-hover:gap-3 transition-all duration-300">
+              Learn why
+              <ArrowRight className="w-5 h-5" />
+            </span>
+          </Link>
         </motion.div>
       </div>
     </section>

@@ -2,7 +2,7 @@
 import { useRef, useEffect } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { motion } from 'framer-motion';
-import { ArrowRight, Gift, Server, Zap } from 'lucide-react';
+import { ArrowRight, Gift, Server, Zap, Sparkles } from 'lucide-react';
 import PropTypes from 'prop-types';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -100,6 +100,23 @@ const Hero = ({ onGetStarted }) => {
       {/* Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
         <div>
+          {/* Palworld 1.0 announcement badge — promoted */}
+          {gameConfig.announcement?.enabled && (
+            <motion.div
+              className="relative flex w-fit max-w-full mx-auto items-center justify-center gap-2.5 px-4 sm:px-5 py-2 mb-5 rounded-full overflow-hidden text-xs sm:text-sm font-bold text-white text-center leading-snug border border-white/40 shadow-[0_0_30px_rgba(33,150,243,0.55),0_0_70px_rgba(33,150,243,0.3)]"
+              style={{ background: 'linear-gradient(135deg, rgba(33,150,243,0.9), rgba(76,175,80,0.85))' }}
+              initial={{ opacity: 0, y: -14, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: 0.1, duration: 0.6, ease: 'backOut' }}
+            >
+              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/35 to-transparent animate-[shimmer_3s_infinite]" />
+              <span className="relative flex items-center gap-1 rounded-full bg-white/25 px-2 py-0.5 text-[10px] sm:text-xs font-extrabold uppercase tracking-wider flex-shrink-0">
+                <Sparkles className="w-3 h-3" /> New
+              </span>
+              <span className="relative">{gameConfig.announcement.text.replace(/^\s*🎉\s*/, '')}</span>
+            </motion.div>
+          )}
+
           {/* Badge */}
           <motion.div
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary/70 border border-primary rounded-full text-white text-sm font-semibold mb-8 shadow-[0_0_20px_rgba(33,150,243,0.6),0_0_40px_rgba(33,150,243,0.3)]"

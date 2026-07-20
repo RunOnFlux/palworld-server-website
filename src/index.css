@@ -198,6 +198,47 @@
     transition: transform 200ms, box-shadow 200ms, border-color 200ms;
   }
 
+  /* Hardware tab range slider — filled track (inline gradient) + premium thumb */
+  .hw-range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 9999px;
+    outline: none;
+  }
+  .hw-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    background: #fff;
+    border: 3px solid #2196F3;
+    box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.15), 0 2px 6px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .hw-range::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    background: #fff;
+    border: 3px solid #2196F3;
+    box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.15), 0 2px 6px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hw-range::-webkit-slider-thumb:hover { transform: scale(1.15); }
+    .hw-range::-moz-range-thumb:hover { transform: scale(1.15); }
+  }
+  .hw-range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 6px rgba(33, 150, 243, 0.35), 0 2px 6px rgba(0, 0, 0, 0.45);
+  }
+  .hw-range:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 6px rgba(33, 150, 243, 0.35), 0 2px 6px rgba(0, 0, 0, 0.45);
+  }
+
   /* Custom Scrollbar */
   .scrollbar-thin::-webkit-scrollbar {
     @apply w-2;
