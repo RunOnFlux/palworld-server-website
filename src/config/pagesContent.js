@@ -287,6 +287,7 @@ export const pagesContent = {
 
       { type: 'h2', text: 'Join by IP address and port' },
       { type: 'p', text: 'The most reliable way to join a dedicated server is by its address. Ask the server owner for the IP and port — it looks like 203.0.113.10:8211, where 8211 is the default Palworld game port.' },
+      { type: 'p', text: 'If you rented your server on Flux, you do not need a numeric IP: your server has a permanent address in the form yourserver.app.runonflux.io, and you connect using that address plus the game port — the same IP:Port field, just with a domain instead of raw numbers (for example palworld-yourname.app.runonflux.io:32871). You will find the full address, port included and ready to copy, on your dashboard.' },
       { type: 'ol', items: [
         'Launch Palworld and choose Join Multiplayer Game (Dedicated Server).',
         'At the bottom of the server list, enter the server address in the IP:Port field (for example 203.0.113.10:8211).',

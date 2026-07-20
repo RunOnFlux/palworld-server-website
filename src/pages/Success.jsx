@@ -11,6 +11,8 @@ const Success = () => {
   const isDeployment = searchParams.get('deployment') === 'true';
   const paymentHash = searchParams.get('hash');
   const stripeSessionId = searchParams.get('session_id'); // Stripe adds this automatically
+  const serverName = searchParams.get('server');
+  const gamePort = searchParams.get('port'); // external game port registered on Flux
   const [countdown, setCountdown] = useState(4);
   const [canClose, setCanClose] = useState(true);
 
@@ -135,6 +137,14 @@ const Success = () => {
             <p className="text-gray-400 text-sm mb-6">
               {isRenewal ? 'Your subscription has been renewed successfully.' : 'Your server is being deployed on the Flux network.'}
             </p>
+            {isDeployment && serverName && (
+              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4 text-left">
+                <p className="text-xs text-blue-300 font-semibold mb-1">How players join</p>
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Your server address is <span className="font-mono text-blue-300 break-all">{serverName.toLowerCase()}.app.runonflux.io{gamePort ? `:${gamePort}` : ''}</span>{gamePort ? '' : ' plus the game port shown on your dashboard'}. Share it with friends — they enter it in Palworld’s “Join via IP” field.
+                </p>
+              </div>
+            )}
             {paymentHash && (
               <div className="bg-gray-900/50 rounded-lg p-3 mb-4 border border-gray-700">
                 <p className="text-xs text-gray-500 mb-1">Flux Hash</p>
@@ -172,9 +182,17 @@ const Success = () => {
         <div className="text-center max-w-md">
         <CheckCircle className="w-20 h-20 text-blue-500 mx-auto mb-6" />
         <h1 className="text-4xl font-bold mb-4">Payment Successful!</h1>
-        <p className="text-text-secondary mb-8">
+        <p className="text-text-secondary mb-6">
           Your server is being deployed. Check your dashboard for details.
         </p>
+        {isDeployment && serverName && (
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-8 text-left">
+            <p className="text-sm text-blue-300 font-semibold mb-1">How players join</p>
+            <p className="text-xs text-text-secondary leading-relaxed">
+              Your server address is <span className="font-mono text-blue-300 break-all">{serverName.toLowerCase()}.app.runonflux.io{gamePort ? `:${gamePort}` : ''}</span>{gamePort ? '' : ' plus the game port shown on your dashboard'}. Share it with friends — they enter it in Palworld’s “Join via IP” field.
+            </p>
+          </div>
+        )}
         <Button
           variant="primary"
           size="lg"

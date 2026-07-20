@@ -9,6 +9,7 @@ import storageService from '../../services/storageService';
 import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walletService';
 import marketplaceService from '../../services/marketplaceService';
 import { withModsMount } from '../../config/modsConfig';
+import { applyRandomExternalPorts, registerAppSpecWithPortRetry, palworldGamePort } from '../../utils/appSpecHelpers';
 import geolocationData from '../../utils/geolocation';
 import toast from 'react-hot-toast';
 
@@ -842,7 +843,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         name: appName,
         description: 'Palworld Server on Flux Decentralized Cloud',
         owner: zelidauth.zelid,
-        compose: compose,
+        compose: applyRandomExternalPorts(compose), // random external ports (35000–65535) for co-location
         instances: getPlanInstances(selectedPlan),
         expire: 88000 * subscriptionMonths, // PON Fork support
         contacts: [contactsReference], // Flux Storage reference
@@ -862,7 +863,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       } else {
         console.log('📝 Step 1: Registering app spec with FluxOS...');
         try {
-          hash = await apiService.registerAppSpec(appSpec);
+          hash = await registerAppSpecWithPortRetry(appSpec);
           console.log('✅ Step 1 complete - Payment hash received:', hash);
         } catch (error) {
           console.error('❌ Step 1 failed - App registration error:', error);
@@ -874,7 +875,8 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
       // Step 2: Create Stripe checkout with payment hash
       console.log('💳 Step 2: Creating Stripe checkout session with payment hash...');
-      const successUrl = `${window.location.origin}/success?deployment=true&hash=${hash}`;
+      const gamePort = palworldGamePort(appSpec) || 8211;
+      const successUrl = `${window.location.origin}/success?deployment=true&hash=${hash}&server=${appName.toLowerCase()}&port=${gamePort}`;
       const cancelUrl = `${window.location.origin}/cancel?deployment=true`;
 
       try {
@@ -1042,7 +1044,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         name: appName,
         description: 'Palworld Server on Flux Decentralized Cloud',
         owner: zelidauth.zelid,
-        compose: compose,
+        compose: applyRandomExternalPorts(compose), // random external ports (35000–65535) for co-location
         instances: getPlanInstances(selectedPlan),
         expire: 88000 * subscriptionMonths,
         contacts: [contactsReference],
@@ -1060,7 +1062,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       } else {
         console.log('📝 Crypto: Registering app spec...');
         try {
-          hash = await apiService.registerAppSpec(appSpec);
+          hash = await registerAppSpecWithPortRetry(appSpec);
           console.log('✅ Payment hash:', hash);
         } catch {
           toast.error('Failed to register app specification');
@@ -1192,7 +1194,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         name: appName,
         description: 'Palworld Server on Flux Decentralized Cloud',
         owner: zelidauth.zelid,
-        compose,
+        compose: applyRandomExternalPorts(compose), // random external ports (35000–65535) for co-location
         instances: getPlanInstances(selectedPlan),
         expire: 88000, // Always 1 month for free first month
         contacts: [contactsReference],
@@ -1204,13 +1206,14 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
       // Register app spec
       console.log('📝 Registering app spec (free first month)...');
-      const hash = await apiService.registerAppSpec(appSpec);
+      const hash = await registerAppSpecWithPortRetry(appSpec);
       console.log('✅ App registered, hash:', hash);
 
       // If auto-renewal, create Stripe subscription with trial
       if (autoRenewal) {
         console.log('💳 Creating Stripe subscription with 30-day trial...');
-        const successUrl = `${window.location.origin}/success?deployment=true&hash=${hash}`;
+        const gamePort = palworldGamePort(appSpec) || 8211;
+        const successUrl = `${window.location.origin}/success?deployment=true&hash=${hash}&server=${appName.toLowerCase()}&port=${gamePort}`;
         const cancelUrl = `${window.location.origin}/cancel?deployment=true`;
         const appDescription = 'Palworld Server on Flux Decentralized Cloud';
 

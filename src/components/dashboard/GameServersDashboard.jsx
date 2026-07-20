@@ -16,6 +16,12 @@ const BLOCK_TIME_POST_FORK = 0.5; // minutes per block after fork
 const DEFAULT_EXPIRE_PRE_FORK = 22_000; // blocks
 const DEFAULT_EXPIRE_POST_FORK = 88_000; // blocks
 
+// External game port (index 0) from the app spec — a randomized deploy exposes a
+// high port (35000–65535); legacy servers fall back to the default 8211.
+const gamePortOf = (server) => server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211;
+// The address players enter in Palworld's "Join via IP" field: domain:port.
+const gameAddressOf = (server) => `${server.name.toLowerCase()}.app.runonflux.io:${gamePortOf(server)}`;
+
 /**
  * GameServersDashboard Component
  * Shows deployed game servers with status monitoring
@@ -887,9 +893,8 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleCopyDomain = useCallback((serverId, appName) => {
-    const domain = `${appName.toLowerCase()}.app.runonflux.io`;
-    navigator.clipboard.writeText(domain).catch(() => {});
+  const handleCopyDomain = useCallback((serverId, address) => {
+    navigator.clipboard.writeText(address).catch(() => {});
     setCopiedServerId(serverId);
 
     // Reset icon after 2 seconds
@@ -1072,17 +1077,18 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-bold text-white truncate flex-1">{server.name}</h3>
                 </div>
-                <div className="flex items-center gap-2 mt-1">
+                <p className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold mt-1.5">Server address · players connect here</p>
+                <div className="flex items-center gap-2 mt-0.5">
                   <Globe className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
-                  <span className="font-mono text-xs text-gray-400 truncate flex-1">{server.name.toLowerCase()}.app.runonflux.io</span>
+                  <span className="font-mono text-xs text-gray-400 truncate flex-1" title="Players enter this in Palworld's Join via IP field">{gameAddressOf(server)}</span>
                   <button
-                    onClick={() => handleCopyDomain(server.name, server.name)}
+                    onClick={() => handleCopyDomain(server.name, gameAddressOf(server))}
                     className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
                       copiedServerId === server.name
                         ? 'text-blue-400 bg-blue-400/10'
                         : 'text-gray-400 hover:text-white hover:bg-gray-700'
                     }`}
-                    aria-label="Copy server domain"
+                    aria-label="Copy server address"
                   >
                     {copiedServerId === server.name ? (
                       <Check className="w-3.5 h-3.5" />
@@ -1347,18 +1353,19 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                         <span className="text-sm font-semibold text-white">{server.name}</span>
                       </div>
 
-                      {/* Domain with Copy Button - No Chip */}
+                      {/* Server address (domain + game port) — players connect here */}
+                      <span className="block text-[9px] uppercase tracking-wider text-gray-500 font-semibold mb-0.5">Server address · players connect here</span>
                       <div className="flex items-center gap-2">
                         <Globe className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
-                        <span className="text-xs text-gray-400 font-mono">{server.name.toLowerCase()}.app.runonflux.io</span>
+                        <span className="text-xs text-gray-400 font-mono" title="Players enter this in Palworld's Join via IP field">{gameAddressOf(server)}</span>
                         <button
-                          onClick={() => handleCopyDomain(server.name, server.name)}
+                          onClick={() => handleCopyDomain(server.name, gameAddressOf(server))}
                           className={`p-0.5 rounded transition-all ${
                             copiedServerId === server.name
                               ? 'text-blue-400'
                               : 'text-gray-500 hover:text-gray-300'
                           }`}
-                          title="Copy domain"
+                          title="Copy address"
                         >
                           {copiedServerId === server.name ? (
                             <Check className="w-3.5 h-3.5" />

@@ -11,6 +11,84 @@ import {
   encryptEnterpriseWithAes,
 } from './enterpriseCrypto';
 
+// ---------------------------------------------------------------------------
+// Port randomization — co-location on one Flux IP
+// ---------------------------------------------------------------------------
+// To run the same game multiple times on the same physical Flux node/IP, each
+// deploy must expose DIFFERENT external ports (the node's public IP is shared,
+// up to 8 apps per IP). The container-internal (bind) ports stay FIXED at the
+// image defaults — containers have separate network namespaces, so binding
+// 8211 inside N containers never collides. Only the EXTERNAL `ports` are
+// randomized, into the Flux-allowed high range 35000–65535 (verified clean of
+// bannedPorts/enterprisePorts). Index alignment is preserved: ports[i] maps to
+// containerPorts[i], so ports[0]=game(UDP 8211), ports[1]=query(UDP 27015),
+// ports[2]=REST(TCP 8212).
+
+/** Palworld container (bind) ports — never randomized. */
+export const PALWORLD_CONTAINER_PORTS = [8211, 27015, 8212];
+
+const EXTERNAL_PORT_MIN = 35000;
+const EXTERNAL_PORT_MAX = 65535;
+
+/** `count` distinct random ports in [35000, 65535]. */
+export const generateExternalPorts = (count) => {
+  const span = EXTERNAL_PORT_MAX - EXTERNAL_PORT_MIN + 1;
+  const set = new Set();
+  while (set.size < count) {
+    set.add(EXTERNAL_PORT_MIN + Math.floor(Math.random() * span));
+  }
+  return [...set];
+};
+
+/** A component is the Palworld game component if it binds the game port (8211). */
+const isPalworldGameComponent = (containerPorts) =>
+  Array.isArray(containerPorts) && containerPorts.map(Number).includes(8211);
+
+/**
+ * For a NEW deploy: randomize the EXTERNAL ports of the Palworld game component
+ * (keeping containerPorts as the fixed bind ports), so the app can co-locate on
+ * a shared IP. Non-game components pass through untouched. Field order within
+ * each component object is preserved (spread keeps `ports` in place) — required
+ * for FluxOS signature verification.
+ */
+export const applyRandomExternalPorts = (compose) =>
+  (compose || []).map((c) => {
+    const containerPorts = Array.isArray(c?.containerPorts) ? c.containerPorts : [];
+    if (!isPalworldGameComponent(containerPorts)) return c;
+    return { ...c, ports: generateExternalPorts(containerPorts.length) };
+  });
+
+/**
+ * Register an app spec, retrying with freshly re-rolled external ports if the
+ * daemon rejects the registration for a port-related reason. The large random
+ * range makes collisions extremely rare; this is defensive belt-and-suspenders.
+ */
+export const registerAppSpecWithPortRetry = async (appSpec, { maxAttempts = 3 } = {}) => {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await apiService.registerAppSpec(appSpec);
+    } catch (err) {
+      const msg = String(err?.message || err || '').toLowerCase();
+      if (attempt >= maxAttempts || !msg.includes('port')) throw err;
+      console.error(`registerAppSpec attempt ${attempt} failed (possible port conflict) — rerolling external ports`, err);
+      // Mutate in place so the caller's appSpec reflects the ports actually registered.
+      appSpec.compose = applyRandomExternalPorts(appSpec.compose);
+    }
+  }
+};
+
+/**
+ * The external game port (index 0 of the Palworld game component) of an app spec
+ * or compose array — the port players connect to. Undefined if not present.
+ */
+export const palworldGamePort = (appSpecOrCompose) => {
+  const compose = Array.isArray(appSpecOrCompose) ? appSpecOrCompose : appSpecOrCompose?.compose;
+  const game = (compose || []).find(
+    (c) => Array.isArray(c?.containerPorts) && c.containerPorts.map(Number).includes(8211),
+  );
+  return game?.ports?.[0];
+};
+
 /**
  * Merge the marketplace fixed env (["KEY=value"]) with a user/default env object
  * (user wins), dedup by key, and return an inline ["KEY=value"] array. Secrets go

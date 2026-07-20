@@ -22,6 +22,8 @@ import marketplaceService from '../../services/marketplaceService';
 import ServerTerminal from './ServerTerminal';
 import ServerStats from './ServerStats';
 import secureStorage from '../../utils/secureStorage';
+import { parseEnvArray } from '../../utils/appSpecHelpers';
+import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
 
@@ -423,6 +425,114 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
     };
     fetchState();
   }, [masterLocation, server?.name]);
+
+  // ── Auto-reconcile Palworld PublicPort for community-listed servers ──────────
+  // Randomized deploys expose a high external game port, but the persisted
+  // PalWorldSettings.ini is seeded from the image default (PublicPort=8211) and
+  // DISABLE_GENERATE_SETTINGS=true means env vars never rewrite it. A stale
+  // PublicPort ONLY breaks the in-game community server browser (direct-connect
+  // is unaffected). So, gated strictly on COMMUNITY=true, if the ini's PublicPort
+  // ≠ the external game port, patch it on the master (Syncthing replicates to the
+  // slaves) and restart. Anti-loop: confirm the write before restarting and mark
+  // the server done for this mount.
+  const publicPortReconcileRef = useRef({});
+  const publicPortInFlightRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen || !masterLocation || !server?.name) return;
+    const appName = server.name;
+    if (publicPortReconcileRef.current[appName] || publicPortInFlightRef.current) return;
+    publicPortInFlightRef.current = true;
+    let cancelled = false;
+
+    const reconcile = async () => {
+      // 1. COMMUNITY flag from the on-chain env (decrypt enterprise compose).
+      const outer = await apiService.getAppSpecs(appName);
+      if (!outer?.name) return;
+      let compose = outer.compose;
+      if (outer.enterprise && (!compose || compose.length === 0)) {
+        const authForDecrypt = await apiService.getStoredAuth();
+        const fluxApiBase = sessionStorage.getItem('stickyBackendDNS') || 'https://api.runonflux.io';
+        const decrypted = await fetchDecryptedEnterpriseSpec(appName, fluxApiBase, authForDecrypt);
+        compose = decrypted?.compose;
+      }
+      const env = parseEnvArray(compose?.[0]?.environmentParameters);
+      if (String(env.COMMUNITY ?? '').toLowerCase() !== 'true') {
+        publicPortReconcileRef.current[appName] = true; // not community-listed → nothing to do
+        return;
+      }
+
+      // 2. Expected external game port (index 0).
+      const expected = String(
+        server.ports?.[0] || server.compose?.[0]?.ports?.[0] || compose?.[0]?.ports?.[0] || 8211
+      );
+
+      // 3. Read the persisted ini from the master node.
+      const zelidauth = await secureStorage.getItem('zelidauth');
+      if (!zelidauth) return;
+      const authHeader = JSON.stringify(zelidauth);
+      const [host, nodePort = 16127] = masterLocation.ip.split(':');
+      const nodeBase = `https://${host.replace(/\./g, '-')}-${nodePort}.node.api.runonflux.io`;
+      const component = server?.version >= 4 && server?.compose?.length > 0 ? server.compose[0].name : 'null';
+      const dlUrl = `${nodeBase}/apps/downloadfile/${appName}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
+
+      const res = await fetch(dlUrl, { headers: { zelidauth: authHeader } });
+      if (!res.ok) return; // ini not present yet (still provisioning) — retry on next open
+      const ini = await res.text();
+      if (cancelled || !ini || !ini.includes('OptionSettings=')) return;
+
+      // 4. Compare current PublicPort.
+      const current = /PublicPort=(\d+)/.exec(ini)?.[1];
+      if (current === expected) {
+        publicPortReconcileRef.current[appName] = true;
+        return;
+      }
+
+      // 5. Surgical patch — replace only the PublicPort value; keep the rest of the
+      //    user-owned ini untouched (it is one big OptionSettings=(...) line).
+      const patched = /PublicPort=\d+/.test(ini)
+        ? ini.replace(/PublicPort=\d+/, `PublicPort=${expected}`)
+        : ini.replace(/OptionSettings=\(/, `OptionSettings=(PublicPort=${expected},`);
+      if (patched === ini) { publicPortReconcileRef.current[appName] = true; return; }
+
+      toast('Applying an automatic config change (public port) — restarting your server…', { icon: '🔧', duration: 6000 });
+
+      // 6. Stop → write while stopped (so the game can't clobber it) → verify → start.
+      const startServer = () => fetch(`${nodeBase}/apps/appstart/${appName}`, { headers: { zelidauth: authHeader } }).catch(() => {});
+      try { await fetch(`${nodeBase}/apps/appstop/${appName}`, { headers: { zelidauth: authHeader } }); } catch { /* maybe already stopped */ }
+      await new Promise((r) => setTimeout(r, 5000));
+      if (cancelled) return;
+
+      const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${appName}/${component}/${encodeURIComponent('appdata/Config/LinuxServer')}`;
+      const fd = new FormData();
+      fd.append('PalWorldSettings.ini', new Blob([patched], { type: 'text/plain' }));
+      const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
+      if (!up.ok) { await startServer(); toast.error('Could not apply the public port automatically.'); return; }
+
+      // 7. Confirm the write persisted BEFORE restarting (anti-loop safeguard).
+      let persisted = false;
+      try {
+        const verifyRes = await fetch(dlUrl, { headers: { zelidauth: authHeader } });
+        if (verifyRes.ok) persisted = /PublicPort=(\d+)/.exec(await verifyRes.text())?.[1] === expected;
+      } catch { /* treat as not persisted */ }
+
+      await startServer();
+
+      if (persisted) {
+        publicPortReconcileRef.current[appName] = true;
+        toast.success('Community server address updated — server restarting.');
+        if (onUpdate) onUpdate();
+      } else {
+        toast.error('Public port change did not persist — will retry.');
+      }
+    };
+
+    reconcile()
+      .catch(() => { /* transient/network — allow a retry on the next panel open */ })
+      .finally(() => { publicPortInFlightRef.current = false; });
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, masterLocation, server?.name]);
 
   const handleTogglePause = async () => {
     if (isTogglingPause || !masterLocation) return;
@@ -1145,8 +1255,9 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
     const queryHost = server?.domainReady !== true
       ? masterLocation.ip.split(':')[0]
       : `${server.name.toLowerCase()}.app.runonflux.io`;
+    const gamePort = server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211;
     const fetchStatus = () => {
-      fetch(`/api/${endpoint}/${queryHost}`)
+      fetch(`/api/${endpoint}/${queryHost}?port=${gamePort}`)
         .then(r => r.json())
         .then(data => setLivePalworld({ ...data, lastCheck: new Date().toISOString() }))
         .catch(() => {});
@@ -1202,7 +1313,7 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
                 </div>
               </div>
             </div>
-            <InfoRow label="Domain" value={`${server.name.toLowerCase()}.app.runonflux.io`} />
+            <InfoRow label="Connect Address" value={`${server.name.toLowerCase()}.app.runonflux.io:${server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211}`} />
           </div>
         </div>
       </div>
@@ -1943,7 +2054,9 @@ const RemoteControlTab = ({ server, masterLocation, onMasterError }) => {
   const apiCall = async (endpoint, method = 'GET', body = null) => {
     const host = getHost();
     if (!host) throw new Error('No server IP available');
-    const port = 8212;
+    // External REST port (index 2 = the 8212 slot). Randomized deploys expose a
+    // high port; fall back to 8212 for legacy servers / missing spec.
+    const port = server?.ports?.[2] || server?.compose?.[0]?.ports?.[2] || 8212;
     const url = method === 'GET'
       ? `/api/palworld-rest/${host}/${endpoint}?port=${port}&password=${encodeURIComponent(adminPassword)}`
       : `/api/palworld-rest/${host}/${endpoint}?port=${port}&password=${encodeURIComponent(adminPassword)}`;
