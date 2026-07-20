@@ -258,6 +258,68 @@ app.post('/api/palworld-rest/:host/:endpoint', async (req, res) => {
 });
 
 /**
+ * GET /api/mod-download?url=<direct .pak URL>
+ * Same-origin proxy so the browser can fetch a mod file and re-upload it to the
+ * Flux node's file manager. Fetching mod hosts directly from the browser is blocked
+ * by CORS, so the Mods tab routes downloads through here.
+ * Only http(s) URLs, 300 MB cap.
+ */
+const MOD_MAX_BYTES = 300 * 1024 * 1024;
+app.get('/api/mod-download', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'Missing url parameter' });
+
+  let target;
+  try {
+    target = new URL(url);
+  } catch {
+    return res.status(400).json({ error: 'Invalid url' });
+  }
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    return res.status(400).json({ error: 'Only http(s) URLs are allowed' });
+  }
+
+  try {
+    const upstream = await fetch(target.href, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'palworld-server-website/mod-download' },
+    });
+    if (!upstream.ok || !upstream.body) {
+      return res.status(502).json({ error: `Upstream returned HTTP ${upstream.status}` });
+    }
+
+    const len = Number(upstream.headers.get('content-length') || 0);
+    if (len && len > MOD_MAX_BYTES) {
+      return res.status(413).json({ error: 'File exceeds 300 MB limit' });
+    }
+
+    res.setHeader('Content-Type', 'application/octet-stream');
+    if (len) res.setHeader('Content-Length', String(len));
+
+    let received = 0;
+    const reader = upstream.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.length;
+      if (received > MOD_MAX_BYTES) {
+        try { await reader.cancel(); } catch {}
+        res.destroy();
+        return;
+      }
+      if (!res.write(Buffer.from(value))) {
+        await new Promise((r) => res.once('drain', r));
+      }
+    }
+    res.end();
+  } catch (error) {
+    console.log(`❌ mod-download failed for ${target.href}: ${error.message}`);
+    if (!res.headersSent) res.status(500).json({ error: error.message });
+    else res.destroy();
+  }
+});
+
+/**
  * Health check endpoint
  */
 app.get('/api/health', (req, res) => {

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Server, Rocket, Users } from 'lucide-react';
+import { Server, Rocket, Users } from 'lucide-react';
 
 /**
  * Long-form homepage content section.
@@ -22,19 +22,9 @@ const steps = [
   { icon: Rocket, title: '3. Deploy in 30 seconds', text: 'Click deploy and your Palworld dedicated server comes online in about 30 seconds.' },
 ];
 
-const internalLinks = [
-  { to: '/rent-palworld-server', anchor: 'Rent a Palworld dedicated server', desc: 'What you get, how much it costs, and how to deploy in 30 seconds.' },
-  { to: '/setup-guide', anchor: 'How to make a Palworld dedicated server', desc: 'Full 2026 setup walkthrough — SteamCMD vs one-click deploy.' },
-  { to: '/server-requirements', anchor: 'Palworld dedicated server requirements', desc: 'How much RAM and CPU you need, plus ports 8211 and 8212.' },
-  { to: '/pricing', anchor: 'Palworld server hosting pricing', desc: 'Compare 5GB, 8GB, 12GB and 16GB plans by player count.' },
-  { to: '/guides/join-server', anchor: "How to join a friend's Palworld server", desc: 'Connect by IP, use the browser, and understand crossplay.' },
-  { to: '/guides/server-settings', anchor: 'Best Palworld server settings', desc: 'Tune XP, gather, damage and PvP in PalWorldSettings.ini.' },
-  { to: '/decentralized-palworld-hosting', anchor: 'Why host on the Flux decentralized cloud →', desc: 'No single point of failure, no lock-in, dedicated resources, DDoS, 99.9% uptime and 32 players.' },
-];
-
 const HomeContent = () => {
   return (
-    <section id="learn-more" className="relative py-12 bg-background border-t border-border/20 overflow-hidden">
+    <section id="learn-more" className="relative py-12 bg-background-alt border-t border-border/20 overflow-hidden">
       <div className="absolute inset-0 opacity-5 pointer-events-none" style={gridBg} />
 
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -129,32 +119,6 @@ const HomeContent = () => {
           </p>
         </motion.div>
 
-        {/* Internal links block */}
-        <motion.div
-          className="mt-12"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-        >
-          <h2 className="text-xl sm:text-2xl font-bold mb-4">Palworld hosting guides</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {internalLinks.map((l) => (
-              <Link
-                key={l.to}
-                to={l.to}
-                className="group flex items-start gap-3 bg-surface hover:bg-surface-hover border border-border hover:border-primary/40 rounded-lg p-4 transition-colors"
-              >
-                <ArrowRight className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                <span>
-                  <span className="block font-semibold text-text group-hover:text-primary transition-colors">
-                    {l.anchor}
-                  </span>
-                  <span className="block text-sm text-text-secondary mt-0.5">{l.desc}</span>
-                </span>
-              </Link>
-            ))}
-          </div>
-        </motion.div>
       </div>
     </section>
   );

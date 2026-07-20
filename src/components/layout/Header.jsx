@@ -131,13 +131,6 @@ const Header = ({ onLoginClick }) => {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border/20">
-      {gameConfig.announcement?.enabled && (
-        <div className="bg-gradient-to-r from-primary via-accent to-primary text-white text-xs sm:text-sm font-semibold shadow-[0_1px_10px_rgba(33,150,243,0.4)]">
-          <div className="flex items-center justify-center gap-2 px-4 py-1.5 text-center">
-            <span>{gameConfig.announcement.text}</span>
-          </div>
-        </div>
-      )}
       <nav className="w-full px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
