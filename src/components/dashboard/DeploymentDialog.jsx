@@ -780,21 +780,6 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       const contactsReference = storageService.getContactsStorageReference(contactsId);
       console.log('✅ Email uploaded, reference:', contactsReference);
 
-      // Upload environment parameters to Flux Storage if any
-      let envReference = null;
-      if (envParamsArray.length > 0) {
-        console.log('📦 Uploading environment parameters to Flux Storage...');
-        const envId = storageService.generateEnvId();
-
-        await storageService.uploadEnv({
-          envid: envId,
-          env: envParamsArray
-        });
-
-        envReference = storageService.getEnvStorageReference(envId);
-        console.log('✅ Environment uploaded, reference:', envReference);
-      }
-
       // Build compose array - use parent app compose as base, override CPU/RAM/HDD from config
       // This matches FluxCloud InstallDialog.vue behavior exactly
       const parentCompose = selectedPlan._app.compose || [];
@@ -802,14 +787,14 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       const compose = parentCompose.map((component, componentIndex) => {
         const configComponent = configComponents[componentIndex] || configComponents[0] || {};
 
-        // Parent compose env is the base; the config's env overrides it by key
+        // Parent compose env is the base, the config's env overrides it by key,
+        // and the wizard's env params win last — all written INLINE into the spec
+        // (no Flux Storage / F_S_ENV reference).
         const environmentParameters = mergeEnvParams(
           component.environmentParameters,
-          configComponent.environmentParameters
+          configComponent.environmentParameters,
+          envParamsArray
         );
-        if (envReference) {
-          environmentParameters.push(envReference);
-        }
 
         // Use parent compose for repotag/ports/etc, override only CPU/RAM/HDD from config
         const cpuValue = configComponent.cpu || component.cpu || 1;
@@ -988,17 +973,11 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       await storageService.uploadContacts({ contactsid: contactsId, contacts: [email] });
       const contactsReference = storageService.getContactsStorageReference(contactsId);
 
-      // Upload environment params
+      // Environment params — written INLINE into the spec (no Flux Storage / F_S_ENV)
       const envParamsArray = [];
       Object.entries(environmentParams).forEach(([key, value]) => {
         if (value) envParamsArray.push(`${key}=${value}`);
       });
-      let envReference = null;
-      if (envParamsArray.length > 0) {
-        const envId = storageService.generateEnvId();
-        await storageService.uploadEnv({ envid: envId, env: envParamsArray });
-        envReference = storageService.getEnvStorageReference(envId);
-      }
 
       // Build app spec (same as handleDeployImpl) - use parent compose, override CPU/RAM/HDD from config
       const appName = serverConfig.appName;
@@ -1008,14 +987,14 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       const compose = parentCompose.map((component, componentIndex) => {
         const configComp = configComponents[componentIndex] || configComponents[0] || {};
 
-        // Parent compose env is the base; the config's env overrides it by key
+        // Parent compose env is the base, the config's env overrides it by key,
+        // and the wizard's env params win last — all written INLINE into the spec
+        // (no Flux Storage / F_S_ENV reference).
         const environmentParameters = mergeEnvParams(
           component.environmentParameters,
-          configComp.environmentParameters
+          configComp.environmentParameters,
+          envParamsArray
         );
-        if (envReference) {
-          environmentParameters.push(envReference);
-        }
         const cpuValue = parseNumericValue(configComp.cpu) || parseNumericValue(component.cpu) || 1;
         const ramValue = parseRamValue(configComp.ram) || parseRamValue(component.ram) || 1000;
         const hddValue = parseHddValue(configComp.hdd) || parseHddValue(component.hdd) || 10;
