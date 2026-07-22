@@ -353,6 +353,15 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
 
   return (
     <div className="p-4 space-y-4">
+      {/* Backup reminder before relocating */}
+      <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3">
+        <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
+        <p className="text-xs leading-relaxed text-amber-200/90">
+          <span className="font-semibold text-amber-300">Back up your server before changing location.</span>{' '}
+          Moving to a new region redeploys your server on different Flux nodes, so any data that isn’t backed up may be permanently lost. Download a backup first.
+        </p>
+      </div>
+
       {limitStatus && (limitStatus.free ? (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-2.5">
           <div className="flex items-center gap-2.5 min-w-0">

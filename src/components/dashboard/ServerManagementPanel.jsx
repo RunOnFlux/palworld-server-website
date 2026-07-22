@@ -1313,7 +1313,7 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
                 </div>
               </div>
             </div>
-            <InfoRow label="Connect Address" value={`${server.name.toLowerCase()}.app.runonflux.io:${server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211}`} />
+            <InfoRow label="Connect Address" value={`${server.name.toLowerCase()}.app.runonflux.io:${server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211}`} copyText={`${server.name.toLowerCase()}.app.runonflux.io:${server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211}`} />
           </div>
         </div>
       </div>
@@ -7577,11 +7577,31 @@ Price
 };
 
 // Helper component for info rows
-const InfoRow = ({ label, value }) => (
-  <div>
-    <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{label}</div>
-    <div className="text-sm text-white font-medium">{value}</div>
-  </div>
-);
+const InfoRow = ({ label, value, copyText }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(copyText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div>
+      <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">{label}</div>
+      <div className="text-sm text-white font-medium flex items-center gap-1.5">
+        <span className="break-all min-w-0">{value}</span>
+        {copyText && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            title="Copy"
+            className={`p-1.5 rounded-lg hover:bg-slate-700/50 transition-colors flex-shrink-0 ${copied ? 'text-emerald-400' : 'text-slate-400 hover:text-white'}`}
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default ServerManagementPanel;
