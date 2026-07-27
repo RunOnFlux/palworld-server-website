@@ -6,6 +6,7 @@ import {
 import secureStorage from '../../utils/secureStorage';
 import apiService from '../../services/apiService';
 import { computeRemainingExpire } from '../../utils/appSpecHelpers';
+import { restartApp } from '../../utils/appPower';
 import { MODS_VOLUME_PATH, MOD_CATALOG, fileNameFromUrl, withModsMount } from '../../config/modsConfig';
 
 /**
@@ -238,11 +239,11 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     setStep('restarting');
     try {
       const authHeader = await auth();
-      try {
-        await fetch(`${base}/apps/appstop/${server.name}`, { headers: { zelidauth: authHeader } });
-      } catch { /* may already be stopped */ }
-      await new Promise((r) => setTimeout(r, 5000));
-      await fetch(`${base}/apps/appstart/${server.name}`, { headers: { zelidauth: authHeader } });
+      // Atomic restart instead of stop → sleep → start: that shape left the server down
+      // whenever the start leg failed or the component unmounted in between. restartApp
+      // also verifies the container came back and falls back to a start if it didn't.
+      const state = await restartApp(base, server.name, authHeader);
+      if (state === 'stopped') throw new Error('The server did not come back up — use the Start button on the Overview tab.');
       await new Promise((r) => setTimeout(r, 15000));
       setNeedsRestart(false);
       setNotice('Server restarted — mod changes applied.');

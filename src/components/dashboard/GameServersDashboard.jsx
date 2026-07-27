@@ -7,6 +7,8 @@ import { MdMemory, MdSpeed, MdStorage } from 'react-icons/md';
 import ServerManagementPanel from './ServerManagementPanel';
 import apiService, { parseAddress } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
+import secureStorage from '../../utils/secureStorage';
+import { recoverPendingRestores } from '../../utils/appPower';
 import toast from 'react-hot-toast';
 
 // Flux blockchain fork constants (from FluxOS)
@@ -100,6 +102,28 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
       }
     }, 5 * 60 * 1000);
     return () => clearInterval(blockHeightInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Finish any restart this browser still owes a server.
+  //
+  // FluxOS treats an API stop as a durable operator lock and will NOT restart the
+  // container itself — only a start clears it. So if a node dies (or FluxOS restarts)
+  // inside the stopped window of a config write, the app stays `exited` forever. Every
+  // dashboard load re-checks the debt and starts whatever is still down.
+  useEffect(() => {
+    const heal = async () => {
+      try {
+        const zelidauth = await secureStorage.getItem('zelidauth');
+        if (!zelidauth) return;
+        const recovered = await recoverPendingRestores(JSON.stringify(zelidauth));
+        if (recovered.length && isMountedRef.current) {
+          toast.success(`Restarted ${recovered.length === 1 ? 'a server' : `${recovered.length} servers`} that had been left stopped.`);
+          handleUpdate();
+        }
+      } catch { /* best effort — retried on the next dashboard load */ }
+    };
+    heal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

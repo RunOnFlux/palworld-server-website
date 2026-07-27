@@ -24,6 +24,7 @@ import ServerStats from './ServerStats';
 import secureStorage from '../../utils/secureStorage';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
+import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore, recoverPendingRestores } from '../../utils/appPower';
 
 // Helper functions for expiration display
 const formatExpiration = (expiresAt) => {
@@ -56,6 +57,46 @@ const getExpirationClass = (expiresAt) => {
   if (diff < 0) return 'text-red-400';
   if (days < 7) return 'text-orange-400';
   return 'text-emerald-400';
+};
+
+// ── PublicPort reconcile bookkeeping (see the effect in ServerManagementPanel) ──────
+// Apps whose reconcile is running right now. Module scope, not a ref: the dashboard keys
+// this panel on the server name, so closing it unmounts the component and would wipe a
+// ref-based guard while the container is still stopped.
+const publicPortReconcileInFlight = new Set();
+
+// The reconcile stops the container, so it must not be able to run on every visit forever.
+// A server that keeps rewriting its ini gets at most this many restarts, then we give up.
+const PORT_RECONCILE_MAX_ATTEMPTS = 3;
+const PORT_RECONCILE_STORE = 'palworld:publicPortReconcile';
+
+const readPublicPort = (ini) => /PublicPort=(\d+)/.exec(ini)?.[1];
+
+// Surgical patch — replace only the PublicPort value; the rest of the user-owned ini is
+// one big OptionSettings=(...) line and must survive untouched.
+const patchPublicPort = (ini, port) => (
+  /PublicPort=\d+/.test(ini)
+    ? ini.replace(/PublicPort=\d+/, `PublicPort=${port}`)
+    : ini.replace(/OptionSettings=\(/, `OptionSettings=(PublicPort=${port},`)
+);
+
+// Persisted so the marker survives page reloads and panel remounts — the previous
+// in-memory guard reset on every close, which is how one server could be restarted
+// repeatedly across a session. Keyed by port so a redeploy (new random port) re-runs.
+const readPortReconcileMark = (appName, port) => {
+  try {
+    const entry = JSON.parse(localStorage.getItem(PORT_RECONCILE_STORE) || '{}')[appName];
+    if (entry?.port === port) return { done: !!entry.done, attempts: entry.attempts || 0 };
+  } catch { /* unreadable/disabled storage — behave as a fresh server */ }
+  return { done: false, attempts: 0 };
+};
+
+const writePortReconcileMark = (appName, port, patch) => {
+  try {
+    const store = JSON.parse(localStorage.getItem(PORT_RECONCILE_STORE) || '{}');
+    store[appName] = { ...readPortReconcileMark(appName, port), ...patch, port };
+    localStorage.setItem(PORT_RECONCILE_STORE, JSON.stringify(store));
+  } catch { /* storage full or disabled — the attempt cap degrades, nothing breaks */ }
 };
 
 // Language detection for Monaco Editor
@@ -439,88 +480,129 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
   // container's INTERNAL bind ports — Flux maps the external ports onto them
   // (e.g. 59025→8212), so the server must keep listening on the defaults; changing
   // them would break the REST proxy. Same reason PORT/QUERY_PORT are never set.
-  // Anti-loop: confirm the write before restarting and mark the server done.
-  const publicPortReconcileRef = useRef({});
-  const publicPortInFlightRef = useRef(false);
+  //
+  // Two safeguards, because this stops a container the user did not ask to stop:
+  //  - The restart is guaranteed by withAppStopped (finally + retries + unload rescue),
+  //    so an unmount, a failed upload or a network blip can never strand the app `exited`.
+  //  - The "done" marker is persisted (localStorage) and attempt-capped, so a server that
+  //    keeps rewriting its ini gets a bounded number of restarts instead of one per visit.
   useEffect(() => {
     if (!isOpen || !masterLocation || !server?.name) return;
     const appName = server.name;
-    if (publicPortReconcileRef.current[appName] || publicPortInFlightRef.current) return;
-    publicPortInFlightRef.current = true;
+    // Module-scoped, unlike a ref: closing the panel unmounts this component (the parent
+    // keys it on the server name), which would otherwise reset an in-flight guard.
+    if (publicPortReconcileInFlight.has(appName)) return;
+    publicPortReconcileInFlight.add(appName);
     let cancelled = false;
 
     const reconcile = async () => {
       // 1. Expected PublicPort = the external game port (index 0) actually in use.
       //    Skip legacy/default apps whose external port is still 8211 (nothing to fix).
       const expected = String(server.ports?.[0] || server.compose?.[0]?.ports?.[0] || '');
-      if (!expected || expected === '8211') {
-        publicPortReconcileRef.current[appName] = true;
-        return;
-      }
+      if (!expected || expected === '8211') return;
 
-      // 2. Node + paths (master node; Syncthing replicates the write to the slaves).
+      // 2. Already reconciled, or already retried too often? Never touch the container.
+      const mark = readPortReconcileMark(appName, expected);
+      if (mark.done || mark.attempts >= PORT_RECONCILE_MAX_ATTEMPTS) return;
+
+      // 3. Node + paths (master node; Syncthing replicates the write to the slaves).
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!zelidauth) return;
       const authHeader = JSON.stringify(zelidauth);
-      const [host, nodePort = 16127] = masterLocation.ip.split(':');
-      const nodeBase = `https://${host.replace(/\./g, '-')}-${nodePort}.node.api.runonflux.io`;
+      const nodeBase = nodeApiBase(masterLocation.ip);
+
+      // Settle any restart still owed to THIS server before deciding anything: a server
+      // left stopped by an earlier write must come back up, not be treated as an
+      // intentional stop by the write-while-stopped path below.
+      await recoverPendingRestores(authHeader, { appName });
+
       const component = server?.version >= 4 && server?.compose?.length > 0 ? server.compose[0].name : 'null';
       const dlUrl = `${nodeBase}/apps/downloadfile/${appName}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
+      const readIni = async () => {
+        try {
+          const res = await fetch(dlUrl, { headers: { zelidauth: authHeader, 'x-apicache-bypass': true } });
+          if (!res.ok) return null;
+          const text = await res.text();
+          return text && text.includes('OptionSettings=') ? text : null;
+        } catch { return null; }
+      };
 
-      // 3. Read the persisted ini — retry a few times in case the container's first
+      // 4. Read the persisted ini — retry a few times in case the container's first
       //    boot is still generating the default config, so it works on first open.
       let ini = null;
-      for (let attempt = 0; attempt < 4 && !cancelled; attempt += 1) {
+      for (let attempt = 0; attempt < 4 && !cancelled && !ini; attempt += 1) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
-        const res = await fetch(dlUrl, { headers: { zelidauth: authHeader } });
-        if (res.ok) {
-          const text = await res.text();
-          if (text && text.includes('OptionSettings=')) { ini = text; break; }
-        }
+        ini = await readIni();
       }
-      if (cancelled || !ini) return; // not ready yet — will retry on next panel open
+      // Nothing has been touched yet, so bailing out here is free — retry on next open.
+      if (cancelled || !ini) return;
 
-      // 4. Compare current PublicPort.
-      const current = /PublicPort=(\d+)/.exec(ini)?.[1];
-      if (current === expected) {
-        publicPortReconcileRef.current[appName] = true;
+      // 5. Compare current PublicPort — the common case, no restart needed.
+      if (readPublicPort(ini) === expected) {
+        writePortReconcileMark(appName, expected, { done: true });
+        return;
+      }
+      if (patchPublicPort(ini, expected) === ini) {
+        writePortReconcileMark(appName, expected, { done: true }); // nothing patchable
         return;
       }
 
-      // 5. Surgical patch — replace only the PublicPort value; keep the rest of the
-      //    user-owned ini untouched (it is one big OptionSettings=(...) line).
-      const patched = /PublicPort=\d+/.test(ini)
-        ? ini.replace(/PublicPort=\d+/, `PublicPort=${expected}`)
-        : ini.replace(/OptionSettings=\(/, `OptionSettings=(PublicPort=${expected},`);
-      if (patched === ini) { publicPortReconcileRef.current[appName] = true; return; }
-
-      toast('Applying an automatic config change (public port) — restarting your server…', { icon: '🔧', duration: 6000 });
-
-      // 6. Stop → write while stopped (so the game can't clobber it) → verify → start.
-      const startServer = () => fetch(`${nodeBase}/apps/appstart/${appName}`, { headers: { zelidauth: authHeader } }).catch(() => {});
-      try { await fetch(`${nodeBase}/apps/appstop/${appName}`, { headers: { zelidauth: authHeader } }); } catch { /* maybe already stopped */ }
-      await new Promise((r) => setTimeout(r, 5000));
-      if (cancelled) return;
-
-      const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${appName}/${component}/${encodeURIComponent('appdata/Config/LinuxServer')}`;
-      const fd = new FormData();
-      fd.append('PalWorldSettings.ini', new Blob([patched], { type: 'text/plain' }));
-      const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
-      if (!up.ok) { await startServer(); toast.error('Could not apply the public port automatically.'); return; }
-
-      // 7. Confirm the write persisted BEFORE restarting (anti-loop safeguard).
+      // 6. Write while stopped so the running game can't clobber the file. Past this point
+      //    `cancelled` is deliberately ignored: the work must finish even if the panel is
+      //    closed mid-flight, and withAppStopped owns bringing the container back.
+      //    A server the user has stopped is written to but left stopped, and never toasts
+      //    about a restart that isn't happening.
       let persisted = false;
+      let busy = false;
+      let startState;
       try {
-        const verifyRes = await fetch(dlUrl, { headers: { zelidauth: authHeader } });
-        if (verifyRes.ok) persisted = /PublicPort=(\d+)/.exec(await verifyRes.text())?.[1] === expected;
-      } catch { /* treat as not persisted */ }
+        ({ startState } = await withAppStopped(nodeBase, appName, authHeader, async ({ wasRunning }) => {
+          // Count the attempt only once the container has actually been touched.
+          if (wasRunning) writePortReconcileMark(appName, expected, { attempts: mark.attempts + 1 });
 
-      await startServer();
+          // Re-read while stopped: Palworld flushes its own settings on shutdown, so
+          // patching the copy read before the stop would revert whatever it just wrote.
+          const fresh = (await readIni()) || ini;
+          if (readPublicPort(fresh) === expected) { persisted = true; return; }
+
+          const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${appName}/${component}/${encodeURIComponent('appdata/Config/LinuxServer')}`;
+          const fd = new FormData();
+          fd.append('PalWorldSettings.ini', new Blob([patchPublicPort(fresh, expected)], { type: 'text/plain' }));
+          const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
+          if (!up.ok) throw new Error(`Upload failed: HTTP ${up.status}`);
+
+          // Confirm the write landed before marking this server done (anti-loop).
+          const verify = await readIni();
+          persisted = verify ? readPublicPort(verify) === expected : false;
+        }, {
+          // Announce the restart exactly when the stop is issued — never when the lock was
+          // taken by another operation, nor when the server was already down.
+          onPhase: (phase) => {
+            if (phase === 'stopping') {
+              toast('Applying an automatic config change (public port) — restarting your server…', { icon: '🔧', duration: 6000 });
+            }
+          },
+        }));
+      } catch (err) {
+        // AppBusyError: a save/restart is already running — leave it alone, retry next open.
+        busy = err?.name === 'AppBusyError';
+        startState = err?.startState;
+        persisted = false;
+      }
+      if (busy) return;
+
+      // The restart is guaranteed to be attempted, but if the node refused it the user has
+      // to know rather than discover an `exited` server later.
+      if (startState === 'stopped') {
+        toast.error('Your server did not come back up automatically — press Start on the Overview tab.', { duration: 10000 });
+      }
 
       if (persisted) {
-        publicPortReconcileRef.current[appName] = true;
+        writePortReconcileMark(appName, expected, { done: true });
         toast.success('Server public address updated — server restarting.');
         if (onUpdate) onUpdate();
+      } else if (readPortReconcileMark(appName, expected).attempts >= PORT_RECONCILE_MAX_ATTEMPTS) {
+        toast.error('Could not set the server public port automatically. Direct connect still works — contact support for the community browser.');
       } else {
         toast.error('Public port change did not persist — will retry.');
       }
@@ -528,7 +610,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
 
     reconcile()
       .catch(() => { /* transient/network — allow a retry on the next panel open */ })
-      .finally(() => { publicPortInFlightRef.current = false; });
+      .finally(() => { publicPortReconcileInFlight.delete(appName); });
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -575,6 +657,12 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
 
   const handleStop = async () => {
     if (isStopping || !masterLocation) return;
+    // Don't race a config save / port reconcile: those stop the container and own the
+    // restart, so a stop slipped in between would be undone a few seconds later.
+    if (isAppPowerBusy(server.name)) {
+      toast('A maintenance task is running on this server — try again in a moment.', { icon: '⏳' });
+      return;
+    }
     setIsStopping(true);
     try {
       const [host, port = 16127] = masterLocation.ip.split(':');
@@ -590,6 +678,9 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
       if (data.status === 'error') {
         toast.error(data.data?.message || 'Stop failed');
       } else {
+        // The user wants it down: cancel any restart this browser still owed the server,
+        // so the recovery sweep doesn't start it back up on the next dashboard load.
+        clearPendingRestore(server.name);
         setIsStopped(true);
         toast.success('Server stopped');
         if (onUpdate) onUpdate();
@@ -640,20 +731,16 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
     if (isRestarting || !masterLocation) return;
     setIsRestarting(true);
     try {
-      const [host, port = 16127] = masterLocation.ip.split(':');
       const zelidauth = await secureStorage.getItem('zelidauth');
-      const response = await fetch(
-        `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/apprestart/${server.name}`,
-        {
-          method: 'GET',
-          headers: { zelidauth: JSON.stringify(zelidauth) },
-        }
-      );
-      const data = await response.json();
-      if (data.status === 'error') {
-        toast.error(data.data?.message || 'Restart failed');
+      // restartApp verifies the container came back and falls back to a start, so a failed
+      // `apprestart` can't leave the server down.
+      const state = await restartApp(nodeApiBase(masterLocation.ip), server.name, JSON.stringify(zelidauth));
+      if (state === 'stopped') {
+        toast.error('Restart failed — the server is stopped. Use Start to bring it back.');
+        setIsStopped(true);
       } else {
         toast.success('Server restarting...');
+        setIsStopped(false);
         // Trigger stats + status checks as server boots
         // Stats refresh immediately, onUpdate after 20s+ (listrunningapps cache is 15s)
         [5000, 10000, 20000, 30000, 60000].forEach(delay => {
@@ -1602,26 +1689,14 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
     setError(null);
     setSuccess(false);
 
-    const [host, port = 16127] = masterLocation.ip.split(':');
-    const nodeBase = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io`;
+    const nodeBase = nodeApiBase(masterLocation.ip);
 
     try {
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!zelidauth) throw new Error('Not authenticated');
       const authHeader = JSON.stringify(zelidauth);
 
-      // Step 1: Stop the server
-      setSavingStep('stopping');
-      try {
-        await fetch(`${nodeBase}/apps/appstop/${server.name}`, {
-          headers: { zelidauth: authHeader },
-        });
-      } catch { /* server might already be stopped */ }
-      // Wait for the server to fully stop
-      await new Promise(r => setTimeout(r, 5000));
-
-      // Step 2: Write config file
-      setSavingStep('writing');
+      // Build the file first — a formatting error must never cost the user a stopped server.
       let content;
       if (showAdvanced) {
         content = advancedContent.replace(/OptionSettings=\(\n([\s\S]+?)\n\)/, (_, inner) => {
@@ -1634,28 +1709,37 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
       const uploadPath = encodeURIComponent('appdata/Config/LinuxServer');
       const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${server.name}/${selectedComponent}/${uploadPath}`;
 
-      const blob = new Blob([content], { type: 'text/plain' });
-      const formData = new FormData();
-      formData.append('PalWorldSettings.ini', blob);
+      // Write with the container stopped so the running game can't overwrite the file on
+      // shutdown. withAppStopped restarts it no matter how the upload ends — a throw here
+      // used to skip the start entirely and leave the app `exited`.
+      const { wasRunning, startState } = await withAppStopped(
+        nodeBase,
+        server.name,
+        authHeader,
+        async () => {
+          const blob = new Blob([content], { type: 'text/plain' });
+          const formData = new FormData();
+          formData.append('PalWorldSettings.ini', blob);
 
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { zelidauth: authHeader },
-        body: formData,
-      });
+          const response = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: { zelidauth: authHeader },
+            body: formData,
+          });
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `Upload failed: HTTP ${response.status}`);
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `Upload failed: HTTP ${response.status}`);
+          }
+        },
+        { onPhase: (phase) => setSavingStep(phase === 'working' ? 'writing' : phase) },
+      );
+
+      if (wasRunning && startState === 'stopped') {
+        throw new Error('Config saved, but the server did not come back up. Use the Start button.');
       }
-
-      // Step 3: Start the server
-      setSavingStep('starting');
-      await fetch(`${nodeBase}/apps/appstart/${server.name}`, {
-        headers: { zelidauth: authHeader },
-      });
-      // Wait for server to fully boot
-      await new Promise(r => setTimeout(r, 30000));
+      // Wait for server to fully boot (skipped when it was already stopped before saving)
+      if (wasRunning) await new Promise(r => setTimeout(r, 30000));
 
       setOriginalContent(content);
       originalSettings.current = { ...settings };
@@ -1664,7 +1748,14 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
       setTimeout(() => setSuccess(false), 5000);
     } catch (err) {
       if (err instanceof TypeError) onMasterError();
-      setError(err.message);
+      // `startState` is set by withAppStopped even when the write failed — say so, so a
+      // server that couldn't be brought back doesn't look like a plain save error.
+      const downHint = err.startState === 'stopped'
+        ? ' The server is stopped — use the Start button to bring it back.'
+        : '';
+      setError(err.name === 'AppBusyError'
+        ? 'Another operation is running on this server — try again in a moment.'
+        : `${err.message}${downHint}`);
     } finally {
       setSaving(false);
       setSavingStep('');
