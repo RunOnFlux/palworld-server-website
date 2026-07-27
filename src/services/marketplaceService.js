@@ -159,7 +159,7 @@ class MarketplaceService {
           } : null,
           playerLimit: players,
           specs: {
-            players: `Up to ${players} players`,
+            players: `~${players} players`,
             ram: ram ? `${parseFloat((ram / 1000).toFixed(1))} GB` : 'N/A',
             storage: hdd ? `${hdd} GB SSD/NVMe` : 'N/A',
             cpu: cpu ? `${parseFloat(cpu.toFixed(1))} ${cpu > 1 ? 'vCores' : 'vCore'}` : 'N/A',

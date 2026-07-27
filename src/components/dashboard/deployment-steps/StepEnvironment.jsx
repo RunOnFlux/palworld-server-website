@@ -16,7 +16,7 @@ const PARAMETER_DESCRIPTIONS = {
   GAME_MODE: 'Default game mode for players: survival, creative, adventure, or spectator.',
   GAMEMODE: 'Default game mode for players: survival, creative, adventure, or spectator.',
   MODE: 'Server game mode setting.',
-  MAX_PLAYERS: 'Maximum number of players allowed online simultaneously.',
+  MAX_PLAYERS: 'Maximum number of players allowed online simultaneously. We never cap this — set it to whatever you need, and change it any time from the dashboard.',
   PVP: 'Enable (TRUE) or disable (FALSE) player vs player combat.',
   ENABLE_WHITELIST: 'If TRUE, only whitelisted players can join. Manage whitelist via server console.',
   ALLOW_FLIGHT: 'Allow flight in survival mode. Usually FALSE to prevent cheating.',

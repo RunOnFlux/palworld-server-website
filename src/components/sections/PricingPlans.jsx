@@ -34,7 +34,7 @@ const getSpecIcon = (key) => {
  */
 const getSpecLabel = (key) => {
   const labelMap = {
-    players: 'Players',
+    players: 'Recommended for',
     ram: 'RAM',
     storage: 'Storage',
     cpu: 'CPU',
@@ -487,6 +487,12 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
           ))}
         </div>
 
+        {/* No player-slot limits — plan numbers are capacity guidance, not a quota */}
+        <p className="mt-10 max-w-3xl mx-auto text-center text-sm text-text-secondary leading-relaxed px-4">
+          <strong className="text-text">We don&apos;t sell player slots.</strong> The player count on each plan is a
+          guide to what its CPU and RAM handle comfortably — not a limit we enforce. Palworld itself caps a dedicated server at 32 players — that is the game&apos;s limit, not ours.
+        </p>
+
         {/* Guarantees */}
         <motion.div
           className="mt-12 max-w-3xl mx-auto"
@@ -506,6 +512,10 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
             <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-3 bg-surface/30 border border-border/30 rounded-lg">
               <Check className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
               <span className="text-xs sm:text-sm text-text-secondary font-medium whitespace-nowrap">No setup fees</span>
+            </div>
+            <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-3 bg-surface/30 border border-border/30 rounded-lg">
+              <Check className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+              <span className="text-xs sm:text-sm text-text-secondary font-medium whitespace-nowrap">No player slot limits</span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-3 bg-surface/30 border border-border/30 rounded-lg">
               <Check className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />

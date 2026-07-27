@@ -156,6 +156,10 @@ export const gameConfig = {
   // Each question is a long-tail keyword; each answer is direct and citable (for GEO).
   faq: [
     {
+      question: "Do you limit how many players can join?",
+      answer: "No. We don't sell player slots and we never cap your server. The player count shown on each plan is a guide to what its CPU and RAM handle comfortably — you can set your server to any number you like. The only hard limit is Palworld's own: the game caps a dedicated server at 32 players."
+    },
+    {
       question: "Is Flux server hosting updated for Palworld 1.0?",
       answer: "Yes. All Palworld servers on Flux run the latest dedicated server build, including the 1.0 release with Sky Islands, 70+ new Pals, and full crossplay between Steam, Xbox, PS5, and Mac. Servers pull the current version automatically on deploy and on restart."
     },

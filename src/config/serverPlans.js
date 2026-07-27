@@ -57,7 +57,7 @@ export const transformPlanData = (apiPlan) => {
     stripeProductId: apiPlan.stripeProductId,
     stripePriceId: apiPlan.stripePriceId,
     specs: {
-      players: `Up to ${estimatedPlayers} players`,
+      players: `~${estimatedPlayers} players`,
       ram: ramValue ? `${parseFloat((ramValue / 1000).toFixed(1))} GB` : "N/A",
       storage: hddValue ? `${hddValue} GB SSD/NVMe` : "N/A",
       cpu: cpuValue ? `${parseFloat(cpuValue.toFixed(1))} ${cpuValue > 1 ? 'vCores' : 'vCore'}` : "N/A",
