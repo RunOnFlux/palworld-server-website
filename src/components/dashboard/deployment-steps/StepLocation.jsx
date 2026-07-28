@@ -15,6 +15,7 @@ const StepLocation = memo(({
   onGeolocationFormChange,
   availableContinents,
   availableCountries,
+  availableRegions = [],
   allowedLocations,
   onAddLocation,
   onRemoveLocation,
@@ -57,6 +58,29 @@ const StepLocation = memo(({
     ];
   }, [availableCountries, getFlagIcon, allowedLocations, geolocationForm.continent, continentAllowed]);
 
+  // Check if the selected country is already allowed as a whole
+  const countryAllowed = allowedLocations.includes(`ac${geolocationForm.continent}_${geolocationForm.country}`);
+
+  // Region options. The parent only sends regions when the selected country
+  // genuinely splits into several viable ones, so an empty list means this
+  // country has nothing useful to narrow down and the field stays hidden.
+  const regionOptions = useMemo(() => {
+    if (countryAllowed) return [{ value: '', label: 'Entire country already added' }];
+    const base = `ac${geolocationForm.continent}_${geolocationForm.country}_`;
+    const filtered = availableRegions.filter(r => !allowedLocations.includes(`${base}${r.code}`));
+    return [
+      { value: '', label: 'Any Region' },
+      ...filtered.map(region => ({
+        value: region.code,
+        label: region.name,
+        nodeCount: region.nodeCount,
+        ipCount: region.ipCount
+      }))
+    ];
+  }, [availableRegions, allowedLocations, geolocationForm.continent, geolocationForm.country, countryAllowed]);
+
+  const showRegions = !!geolocationForm.country && availableRegions.length > 0;
+
   return (
     <motion.div
       key="step4"
@@ -94,7 +118,7 @@ const StepLocation = memo(({
               <CustomSelect
                 id="continent"
                 value={geolocationForm.continent}
-                onChange={(e) => onGeolocationFormChange({ continent: e.target.value, country: '' })}
+                onChange={(e) => onGeolocationFormChange({ continent: e.target.value, country: '', region: '' })}
                 options={continentOptions}
                 placeholder="Select Continent"
                 className="w-full"
@@ -108,7 +132,7 @@ const StepLocation = memo(({
               <CustomSelect
                 id="country"
                 value={geolocationForm.country}
-                onChange={(e) => onGeolocationFormChange({ ...geolocationForm, country: e.target.value })}
+                onChange={(e) => onGeolocationFormChange({ ...geolocationForm, country: e.target.value, region: '' })}
                 options={countryOptions}
                 placeholder="Any Country"
                 disabled={!geolocationForm.continent}
@@ -116,6 +140,27 @@ const StepLocation = memo(({
               />
             </div>
           </div>
+
+          {showRegions && (
+            <div className="mb-3">
+              <label htmlFor="region" className="block text-sm font-medium text-text mb-2">
+                Region (Optional)
+              </label>
+              <CustomSelect
+                id="region"
+                value={geolocationForm.region || ''}
+                onChange={(e) => onGeolocationFormChange({ ...geolocationForm, region: e.target.value })}
+                options={regionOptions}
+                placeholder="Any Region"
+                className="w-full"
+              />
+              <p className="mt-2 text-xs text-gray-400">
+                This country has hosts in several regions. Narrowing to one cuts latency for
+                players nearby, but leaves fewer hosts to deploy on — leave it on
+                <span className="font-medium"> Any Region</span> if you are not sure.
+              </p>
+            </div>
+          )}
 
           <button
             type="button"

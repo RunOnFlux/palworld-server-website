@@ -100,6 +100,17 @@ const CONTINENT_NAMES = {
   AF: 'Africa', AS: 'Asia', EU: 'Europe',
   NA: 'North America', OC: 'Oceania', SA: 'South America',
 };
+// Countries where a region can be picked. The US on purpose and only the US:
+// it is where distance inside one country actually costs the player latency
+// (coast to coast is ~60-80ms). Elsewhere the country is a precise enough choice.
+const REGION_PICKER_COUNTRIES = new Set(['US']);
+// Extra unique IPs a region must have beyond the instance count before we offer it.
+// Pinning to a single region shrinks the host pool hard, so we only surface regions
+// that keep spare hosts for a failed placement or a later relocation.
+const REGION_IP_HEADROOM = 2;
+// Several viable regions or none at all — one qualifying region is the same as
+// picking the country, so the extra dropdown would only add a dead choice.
+const MIN_REGIONS_TO_OFFER = 2;
 
 const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const { user, isAuthenticated } = useAuth();
@@ -130,6 +141,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const [availableLocations, setAvailableLocations] = useState({ nodes: [] });
   const [availableContinents, setAvailableContinents] = useState([]);
   const [availableCountries, setAvailableCountries] = useState([]);
+  const [availableRegions, setAvailableRegions] = useState([]);
 
   const [blockedPaymentUrl, setBlockedPaymentUrl] = useState(null);
   const [showPopupBlockedDialog, setShowPopupBlockedDialog] = useState(false);
@@ -296,6 +308,10 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
             nodes.push({
               cont: g.continentCode,
               country: g.countryCode,
+              // FluxOS matches the third geolocation level against the node's
+              // regionName verbatim ("North Carolina", "Île-de-France") — never
+              // the short code — so we carry the raw string through untouched.
+              region: g.regionName || '',
               ip,
               cores: b.cores,
               ram: b.ram || 0,
@@ -447,6 +463,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
     const contAgg = new Map(); // code -> { nodeCount, ips:Set }
     const ctryAgg = new Map(); // `${cont}_${country}` -> { nodeCount, ips:Set }
+    const regAgg = new Map();  // `${cont}_${country}_${region}` -> { nodeCount, ips:Set }
     nodes.forEach((n) => {
       if (!fits(n)) return;
       if (!contAgg.has(n.cont)) contAgg.set(n.cont, { nodeCount: 0, ips: new Set() });
@@ -457,6 +474,12 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       if (!ctryAgg.has(key)) ctryAgg.set(key, { nodeCount: 0, ips: new Set() });
       const cc = ctryAgg.get(key);
       cc.nodeCount++; if (n.ip) cc.ips.add(n.ip);
+
+      if (!n.region) return; // node can't be placed by region — country is as deep as it goes
+      const regKey = `${key}_${n.region}`;
+      if (!regAgg.has(regKey)) regAgg.set(regKey, { nodeCount: 0, ips: new Set() });
+      const rr = regAgg.get(regKey);
+      rr.nodeCount++; if (n.ip) rr.ips.add(n.ip);
     });
 
     // Continents — gate on unique IPs >= instances
@@ -486,7 +509,26 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     } else {
       setAvailableCountries([]);
     }
-  }, [planHardware, isEnterprise, geolocationForm.continent, getCountryName]);
+
+    // Regions for the selected country — US only (see REGION_PICKER_COUNTRIES),
+    // and even there only when its nodes really do spread across viable regions.
+    if (geolocationForm.continent && REGION_PICKER_COUNTRIES.has(geolocationForm.country)) {
+      const prefix = `${geolocationForm.continent}_${geolocationForm.country}_`;
+      const regions = [];
+      regAgg.forEach((v, key) => {
+        if (!key.startsWith(prefix)) return;
+        const ipCount = v.ips.size;
+        // Stricter than the country gate — see REGION_IP_HEADROOM.
+        if (ipCount >= requiredInstances + REGION_IP_HEADROOM) {
+          regions.push({ code: key.slice(prefix.length), name: key.slice(prefix.length), nodeCount: v.nodeCount, ipCount });
+        }
+      });
+      regions.sort((a, b) => b.ipCount - a.ipCount);
+      setAvailableRegions(regions.length >= MIN_REGIONS_TO_OFFER ? regions : []);
+    } else {
+      setAvailableRegions([]);
+    }
+  }, [planHardware, isEnterprise, geolocationForm.continent, geolocationForm.country, getCountryName]);
 
   // Recompute whenever the node list, instance count, plan hardware, enterprise flag
   // or selected continent changes (all captured via computeAvailability's identity).
@@ -1337,11 +1379,16 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
     if (parts.length === 1) {
       return continentNames[parts[0]] || parts[0];
-    } else {
-      const continent = continentNames[parts[0]] || parts[0];
-      const country = getCountryName(parts[1]);
+    }
+
+    const continent = continentNames[parts[0]] || parts[0];
+    const country = getCountryName(parts[1]);
+    if (parts.length === 2) {
       return `${country} (${continent})`;
     }
+    // Region names can themselves contain "_" — rejoin everything past the country.
+    const region = parts.slice(2).join('_');
+    return `${region}, ${country}`;
   }, [getCountryName]);
 
   // Get flag icon for country code
@@ -1359,19 +1406,23 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     let geoCode = `ac${geolocationForm.continent}`;
     if (geolocationForm.country) {
       geoCode += `_${geolocationForm.country}`;
+      if (geolocationForm.region) {
+        geoCode += `_${geolocationForm.region}`;
+      }
     }
 
     setAllowedLocations(prev => {
       if (prev.includes(geoCode)) return prev;
-      // Adding whole continent — remove individual countries from that continent
-      if (!geolocationForm.country) {
+      // Adding a broader location supersedes anything nested inside it: a whole
+      // continent absorbs its countries, and a whole country absorbs its regions.
+      if (!geolocationForm.country || !geolocationForm.region) {
         const prefix = `${geoCode}_`;
         return [...prev.filter(code => !code.startsWith(prefix)), geoCode];
       }
       return [...prev, geoCode];
     });
     setPaymentHash(null); // Spec changed
-    setGeolocationForm({ continent: '', country: '' });
+    setGeolocationForm({ continent: '', country: '', region: '' });
   }, [geolocationForm]);
 
   // Remove allowed location
@@ -1442,6 +1493,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
             onGeolocationFormChange={setGeolocationForm}
             availableContinents={availableContinents}
             availableCountries={availableCountries}
+            availableRegions={availableRegions}
             allowedLocations={allowedLocations}
             onAddLocation={handleAddLocation}
             onRemoveLocation={handleRemoveLocation}

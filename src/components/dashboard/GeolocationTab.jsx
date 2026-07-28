@@ -52,6 +52,14 @@ const CONTINENT_NAMES = {
   AF: 'Africa', AS: 'Asia', EU: 'Europe',
   NA: 'North America', OC: 'Oceania', SA: 'South America',
 };
+// Countries where a region can be picked. The US on purpose and only the US:
+// it is where distance inside one country actually costs the player latency
+// (coast to coast is ~60-80ms). Elsewhere the country is a precise enough choice.
+const REGION_PICKER_COUNTRIES = new Set(['US']);
+// Mirrors DeploymentDialog: a region needs spare IPs beyond the instance count,
+// and the country needs several viable regions before the picker is worth showing.
+const REGION_IP_HEADROOM = 2;
+const MIN_REGIONS_TO_OFFER = 2;
 
 const sortedKey = (arr) => [...arr].sort().join('|');
 
@@ -77,7 +85,8 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
   const [nodes, setNodes] = useState([]);
   const [availableContinents, setAvailableContinents] = useState([]);
   const [availableCountries, setAvailableCountries] = useState([]);
-  const [geolocationForm, setGeolocationForm] = useState({ continent: '', country: '' });
+  const [availableRegions, setAvailableRegions] = useState([]);
+  const [geolocationForm, setGeolocationForm] = useState({ continent: '', country: '', region: '' });
   const [allowedLocations, setAllowedLocations] = useState([]);
   const [originalGeo, setOriginalGeo] = useState(''); // sorted key of the on-chain geolocation
 
@@ -150,6 +159,8 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
           list.push({
             cont: g.continentCode,
             country: g.countryCode,
+            // Matched verbatim by FluxOS as the third geolocation level.
+            region: g.regionName || '',
             ip: rawIp.split(':')[0],
             cores: b.cores,
             ram: b.ram || 0,
@@ -191,6 +202,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
 
     const contAgg = new Map();
     const ctryAgg = new Map();
+    const regAgg = new Map();
     nodes.forEach((n) => {
       if (!fits(n)) return;
       if (!contAgg.has(n.cont)) contAgg.set(n.cont, { nodeCount: 0, ips: new Set() });
@@ -200,6 +212,11 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
       if (!ctryAgg.has(key)) ctryAgg.set(key, { nodeCount: 0, ips: new Set() });
       const cc = ctryAgg.get(key);
       cc.nodeCount++; if (n.ip) cc.ips.add(n.ip);
+      if (!n.region) return;
+      const regKey = `${key}_${n.region}`;
+      if (!regAgg.has(regKey)) regAgg.set(regKey, { nodeCount: 0, ips: new Set() });
+      const rr = regAgg.get(regKey);
+      rr.nodeCount++; if (n.ip) rr.ips.add(n.ip);
     });
 
     const continents = [];
@@ -225,7 +242,25 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
     } else {
       setAvailableCountries([]);
     }
-  }, [nodes, geolocationForm.continent, getCountryName]);
+
+    // Regions — same US-only rule and IP headroom as the deploy dialog.
+    if (geolocationForm.continent && REGION_PICKER_COUNTRIES.has(geolocationForm.country)) {
+      const prefix = `${geolocationForm.continent}_${geolocationForm.country}_`;
+      const regions = [];
+      regAgg.forEach((v, key) => {
+        if (!key.startsWith(prefix)) return;
+        const ipCount = v.ips.size;
+        if (ipCount >= inst + REGION_IP_HEADROOM) {
+          const name = key.slice(prefix.length);
+          regions.push({ code: name, name, nodeCount: v.nodeCount, ipCount });
+        }
+      });
+      regions.sort((a, b) => b.ipCount - a.ipCount);
+      setAvailableRegions(regions.length >= MIN_REGIONS_TO_OFFER ? regions : []);
+    } else {
+      setAvailableRegions([]);
+    }
+  }, [nodes, geolocationForm.continent, geolocationForm.country, getCountryName]);
 
   const watchPropagation = useCallback((targetHash) => {
     if (!targetHash) return;
@@ -260,7 +295,9 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
     const parts = code.split('_');
     if (parts.length === 1) return CONTINENT_NAMES[parts[0]] || parts[0];
     const continent = CONTINENT_NAMES[parts[0]] || parts[0];
-    return `${getCountryName(parts[1])} (${continent})`;
+    if (parts.length === 2) return `${getCountryName(parts[1])} (${continent})`;
+    // Region names can contain "_" — rejoin everything past the country.
+    return `${parts.slice(2).join('_')}, ${getCountryName(parts[1])}`;
   }, [getCountryName]);
 
   const getFlagIcon = useCallback((code) => `flag:${code.toLowerCase()}-4x3`, []);
@@ -268,17 +305,21 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
   const handleAddLocation = useCallback(() => {
     if (!geolocationForm.continent) { toast.error('Please select a continent'); return; }
     let geoCode = `ac${geolocationForm.continent}`;
-    if (geolocationForm.country) geoCode += `_${geolocationForm.country}`;
+    if (geolocationForm.country) {
+      geoCode += `_${geolocationForm.country}`;
+      if (geolocationForm.region) geoCode += `_${geolocationForm.region}`;
+    }
     setAllowedLocations((prev) => {
       if (prev.includes(geoCode)) return prev;
-      if (!geolocationForm.country) {
+      // A broader location absorbs anything nested inside it.
+      if (!geolocationForm.country || !geolocationForm.region) {
         const prefix = `${geoCode}_`;
         return [...prev.filter((code) => !code.startsWith(prefix)), geoCode];
       }
       return [...prev, geoCode];
     });
     setSavedOk(false);
-    setGeolocationForm({ continent: '', country: '' });
+    setGeolocationForm({ continent: '', country: '', region: '' });
   }, [geolocationForm]);
 
   const handleRemoveLocation = useCallback((geoCode) => {
@@ -429,6 +470,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy }) => {
         onGeolocationFormChange={setGeolocationForm}
         availableContinents={availableContinents}
         availableCountries={availableCountries}
+        availableRegions={availableRegions}
         allowedLocations={allowedLocations}
         onAddLocation={handleAddLocation}
         onRemoveLocation={handleRemoveLocation}
