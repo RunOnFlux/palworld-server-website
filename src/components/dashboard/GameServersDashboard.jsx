@@ -22,6 +22,49 @@ const DEFAULT_EXPIRE_POST_FORK = 88_000; // blocks
 // high port (35000–65535); legacy servers fall back to the default 8211.
 const gamePortOf = (server) => server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211;
 // The address players enter in Palworld's "Join via IP" field: domain:port.
+// The domain is synced when FDM's healthy instances and the domain's A records OVERLAP.
+// Both sides are sets: FDM lists every healthy instance (22 for `explorer` today) and these
+// domains hand out rotating A records — 1.1.1.1 and 8.8.8.8 answer with different IPs for the
+// same name. Comparing the first of each turns a working domain into a coin flip.
+const domainMatchesFdm = (fdmIps, dnsData) => {
+  const dns = new Set([...(dnsData?.ips || []), dnsData?.ip].filter(Boolean));
+  return (fdmIps || []).some((ip) => dns.has(ip));
+};
+
+// Whether players can reach a server through its domain.
+//
+// Comparing the DNS record to FDM's master looks obvious but is not reliable on its own:
+// sampling one server every 9s for three minutes gave 4 mismatches out of 20 (twice in a
+// row) while FDM never moved and the domain kept answering the game port in ~160ms. The
+// record legitimately rotates. So a mismatch is not a verdict — it is a reason to ask the
+// domain directly, which is the thing we actually care about.
+//
+// Returns null when nothing can be concluded, and the caller then leaves the flag alone.
+const checkDomainReady = async (server, gamePort) => {
+  const domain = `${server.name.toLowerCase()}.app.runonflux.io`;
+  try {
+    const fdmData = await (await fetch(`/api/fdm/appips/${server.name}`)).json();
+    if (fdmData.status !== 'success' || !fdmData.data?.ips?.length) return null;
+
+    const dnsData = await (await fetch(`/api/dns-resolve/${domain}`)).json();
+    if (dnsData.status !== 'success') return null;
+    if (domainMatchesFdm(fdmData.data.ips, dnsData.data)) return true;
+
+    // Mismatch — only now spend a probe, and let the answer decide.
+    const probe = await fetch(`/api/palworld-status/${domain}?port=${gamePort}`);
+    if (!probe.ok) return null;
+    const data = await probe.json();
+    return data.online === true ? true : false;
+  } catch {
+    return null;
+  }
+};
+
+// Deploys randomize the external ports, and a queued deployment has no on-chain spec yet — so
+// its port is genuinely unknown. Showing the 8211 fallback there hands the player an address
+// that is wrong for almost every server.
+const gamePortKnown = (server) => Boolean(server?.ports?.[0] || server?.compose?.[0]?.ports?.[0]);
+
 const gameAddressOf = (server) => `${server.name.toLowerCase()}.app.runonflux.io:${gamePortOf(server)}`;
 
 /**
@@ -573,19 +616,16 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
   useEffect(() => {
     const domainIntervalId = setInterval(async () => {
       if (isDomainCheckingRef.current || showManagementRef.current) return;
-      const pending = serversRef.current.filter(s => s.status === 'running' && s.domainReady !== true);
+      // Every running server, not only those not yet marked ready: `domainReady` was a
+      // one-way latch, so a domain that broke AFTER it went green was never re-checked.
+      const pending = serversRef.current.filter(s => s.status === 'running');
       if (pending.length === 0) return;
       isDomainCheckingRef.current = true;
       try {
         await Promise.all(pending.map(async (server) => {
           try {
-            const fdmRes = await fetch(`/api/fdm/appips/${server.name}`);
-            const fdmData = await fdmRes.json();
-            if (fdmData.status !== 'success' || !fdmData.data?.ips?.length) return;
-            const masterIp = fdmData.data.ips[0];
-            const dnsRes = await fetch(`/api/dns-resolve/${server.name.toLowerCase()}.app.runonflux.io`);
-            const dnsData = await dnsRes.json();
-            const domainReady = dnsData.status === 'success' && dnsData.data?.ip === masterIp;
+            const domainReady = await checkDomainReady(server, gamePortOf(server));
+            if (domainReady === null) return; // inconclusive — keep whatever we had
             if (!isMountedRef.current) return;
             if (server.domainReady !== domainReady) {
               setServers(prev => prev.map(s => s.name === server.name ? { ...s, domainReady } : s));
@@ -627,25 +667,17 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
             // Check FDM for master IP, then verify domain DNS matches
             let domainReady = server.domainReady;
             let fdmMasterIp = null;
-            let shouldUpdateDomainReady = false;
             try {
               const fdmResponse = await fetch(`/api/fdm/appips/${server.name}`);
               const fdmData = await fdmResponse.json();
               if (fdmData.status === 'success' && fdmData.data?.ips?.length > 0) {
                 fdmMasterIp = fdmData.data.ips[0];
-                // Compare domain DNS to master IP — mismatch means domain not yet synced
-                try {
-                  const dnsRes = await fetch(`/api/dns-resolve/${server.name.toLowerCase()}.app.runonflux.io`);
-                  const dnsData = await dnsRes.json();
-                  domainReady = dnsData.status === 'success' && dnsData.data?.ip === fdmMasterIp;
-                  // console.log(`🌐 ${server.name} — FDM master: ${fdmMasterIp}, DNS: ${dnsData.data?.ip || 'failed'}, synced: ${domainReady}`);
-                } catch {
-                  domainReady = true; // DNS check failed — assume ready
-                }
-                shouldUpdateDomainReady = true;
               }
-              // FDM has no IPs — can't determine domain state, leave domainReady unchanged
-              if (shouldUpdateDomainReady && server.domainReady !== domainReady) {
+              // One method for the flag, shared with the 30s loop — two writers using
+              // different rules is how it ended up alternating in the first place.
+              const settled = await checkDomainReady(server, gamePortOf(server));
+              if (settled !== null) domainReady = settled;
+              if (settled !== null && server.domainReady !== domainReady) {
                 updateServerInList(server.name, { domainReady });
               }
             } catch {
@@ -809,8 +841,12 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
           }
         } catch { /* fall through */ }
         if (!skip) {
+          // Deliberately NOT touching domainReady here. One unanswered UDP probe means the
+          // game did not reply to THIS packet — it says nothing about whether the domain
+          // points at the right node. Writing `false` from here made the badge flap: the
+          // domain check set it true, a single dropped datagram set it false again, and the
+          // card alternated between "Running" and "Waiting for domain access" on every cycle.
           updateServerInList(server.name, {
-            domainReady: false,
             palworldOnline: null,
             palworldLastCheck: new Date().toISOString(),
             palworldLatency: null, palworldError: null,
@@ -897,16 +933,9 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
         const selected = serversRef.current.find(s => s.name === selectedServerNameRef.current);
         if (selected?.status === 'running') {
           try {
-            const fdmRes = await fetch(`/api/fdm/appips/${selected.name}`);
-            const fdmData = await fdmRes.json();
-            if (fdmData.status === 'success' && fdmData.data?.ips?.length) {
-              const masterIp = fdmData.data.ips[0];
-              const dnsRes = await fetch(`/api/dns-resolve/${selected.name.toLowerCase()}.app.runonflux.io`);
-              const dnsData = await dnsRes.json();
-              const domainReady = dnsData.status === 'success' && dnsData.data?.ip === masterIp;
-              if (selected.domainReady !== domainReady) {
-                updateServerInList(selected.name, { domainReady });
-              }
+            const domainReady = await checkDomainReady(selected, gamePortOf(selected));
+            if (domainReady !== null && selected.domainReady !== domainReady) {
+              updateServerInList(selected.name, { domainReady });
             }
           } catch { /* ignore */ }
         }
@@ -1104,6 +1133,9 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                 <p className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold mt-1.5">Server address · players connect here</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <Globe className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                  {!gamePortKnown(server) ? (
+                  <span className="text-xs text-gray-500 italic truncate flex-1">Available once the server is deployed</span>
+                  ) : (<>
                   <span className="font-mono text-xs text-gray-400 truncate flex-1" title="Players enter this in Palworld's Join via IP field">{gameAddressOf(server)}</span>
                   <button
                     onClick={() => handleCopyDomain(server.name, gameAddressOf(server))}
@@ -1120,6 +1152,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                       <Copy className="w-3.5 h-3.5" />
                     )}
                   </button>
+                  </>)}
                 </div>
                   </div>
                 </div>
@@ -1381,6 +1414,9 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                       <span className="block text-[9px] uppercase tracking-wider text-gray-500 font-semibold mb-0.5">Server address · players connect here</span>
                       <div className="flex items-center gap-2">
                         <Globe className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                        {!gamePortKnown(server) ? (
+                        <span className="text-xs text-gray-500 italic">Available once the server is deployed</span>
+                        ) : (<>
                         <span className="text-xs text-gray-400 font-mono" title="Players enter this in Palworld's Join via IP field">{gameAddressOf(server)}</span>
                         <button
                           onClick={() => handleCopyDomain(server.name, gameAddressOf(server))}
@@ -1397,6 +1433,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                             <Copy className="w-3.5 h-3.5" />
                           )}
                         </button>
+                        </>)}
                       </div>
 
                       {/* Pending Deployment Indicator */}

@@ -267,6 +267,10 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
   const serverRef = useRef(server);
   serverRef.current = server; // Always current
 
+  // false = the node was found by probing locations, not by FDM: management works, but the
+  // player-facing domain is not routing to it yet.
+  const [domainRouted, setDomainRouted] = useState(true);
+
   // Resolve master node via FDM API (same as FluxOS) - called on panel open and on error
   const resolveMaster = useCallback(async (signal) => {
     const srv = serverRef.current;
@@ -278,8 +282,10 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
 
     if (masterResolvingRef.current) return; // Prevent concurrent resolutions
     masterResolvingRef.current = true;
-    // Only show loading spinner if we currently have a master (re-resolving) — not during null→null checks
-    if (masterLocationRef.current !== null) setMasterLoading(true);
+    // Always, not just when re-resolving: when FDM has nothing this now probes every location
+    // for the container, which takes seconds. Without a loading state the panel would first
+    // claim "waiting for domain access" and only then find a perfectly reachable node.
+    setMasterLoading(true);
 
     try {
       console.log('📍 [Master] Locations:', srv.locations.map((l, i) => `${i}: ${l.ip}`));
@@ -297,6 +303,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
           const { host: locHost } = parseAddress(srv.locations[i].ip);
           if (locHost === masterIp) {
             console.log(`✅ [Master] Found at location ${i}:`, locHost);
+            setDomainRouted(true);
             setMasterLocationStable(srv.locations[i]);
             masterResolvingRef.current = false;
             setMasterLoading(false);
@@ -308,9 +315,53 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
         console.log('⚠️ [Master] FDM returned no IPs — domain access not yet configured');
       }
 
-      // No fallback — keep masterLocation null so UI shows "Waiting for domain access..."
+      // FDM answers "where do PLAYERS go", which is not the same question as "where can this
+      // app be MANAGED from". FDM drops an instance the moment the game stops answering, so
+      // deriving node access from it means a crashed game also takes away Console, Files and
+      // Server Settings — exactly the tools needed to fix it. The node API is addressed by
+      // node IP (from the on-chain locations), never by the app domain, so it stays reachable.
+      //
+      // Fall back to the location that is actually RUNNING the container: for a multi-instance
+      // app that is the instance worth talking to, and it is a stronger signal than FDM here,
+      // which only reports health as seen by the load balancer.
       if (signal?.aborted) { masterResolvingRef.current = false; return; }
-      setMasterLocationStable(null);
+
+      const zelidauth = await secureStorage.getItem('zelidauth');
+      let running = null;
+      let installed = null;
+      if (zelidauth) {
+        const authHeader = JSON.stringify(zelidauth);
+        const headers = { zelidauth: authHeader, 'x-apicache-bypass': true };
+        for (const loc of srv.locations) {
+          if (signal?.aborted) { masterResolvingRef.current = false; return; }
+          try {
+            const res = await fetch(`${nodeApiBase(loc.ip)}/apps/listrunningapps`, { headers, signal });
+            const body = await res.json();
+            if ((body?.data || []).some((c) => (c.Names || []).some((n) => String(n).includes(srv.name)))) {
+              running = loc;
+              break;
+            }
+            // Installed but not running is the crash case — the one where management matters
+            // most, and the one `listrunningapps` cannot see.
+            if (!installed) {
+              const inst = await fetch(`${nodeApiBase(loc.ip)}/apps/installedapps/${srv.name}`, { headers, signal });
+              const instBody = await inst.json();
+              if (instBody?.status === 'success' && (instBody.data || []).length > 0) installed = loc;
+            }
+          } catch { /* node unreachable — try the next location */ }
+        }
+      }
+
+      // Deliberately NO blind fallback to locations[0]: right after a deploy the locations
+      // exist while the image is still being pulled, and pointing the panel at a node with no
+      // container would replace the honest "still being set up" screen with a wall of errors
+      // from tabs that need it. Only take over once the app is actually there.
+      const resolved = running || installed;
+      if (resolved) {
+        console.log('📍 [Master] FDM unavailable — using node', resolved.ip, running ? '(container running)' : '(installed, not running)');
+        setDomainRouted(false);
+      }
+      setMasterLocationStable(resolved || null);
       masterResolvingRef.current = false;
       setMasterLoading(false);
     } catch (error) {
@@ -956,6 +1007,13 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
   if (!server) return null;
 
   const hasCompose = server.compose?.length > 0 && server.compose[0]?.name !== 'null';
+  // Tabs that talk to the Flux API instead of the server's node, so they keep working when
+  // the node can't be reached. That matters most exactly when it can't: a broken setting can
+  // stop the server from booting, FDM then reports no healthy instance, masterLocation stays
+  // null — and gating everything behind it would hide the very tabs that fix the cause.
+  const NODE_FREE_TABS = ['billing', 'environment', 'geolocation', 'hardware'];
+  const tabWorksOffline = NODE_FREE_TABS.includes(activeTab);
+
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'environment', label: 'Deployment Settings', icon: SlidersHorizontal },
@@ -1069,16 +1127,24 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
       }
     >
       {/* Clock skew warning — shown as full screen when node clock is out of sync */}
-      {clockSkewEndTime && activeTab !== 'billing' ? (
+      {clockSkewEndTime && !tabWorksOffline ? (
         <ClockSkewScreen endTime={clockSkewEndTime} onDismiss={() => { setClockSkewEndTime(null); retryResolveMaster(); }} />
-      ) : !masterLocation && activeTab !== 'billing' && (postReinstall || server?.domainReady === false) ? (
+      ) : !masterLocation && !tabWorksOffline && (postReinstall || server?.domainReady === false) ? (
         // After reinstall or domain syncing: show lightweight reconnecting spinner instead of full blocking screen
         <div className="flex flex-col items-center justify-center py-16 space-y-4">
           <div className="w-16 h-16 rounded-full border-2 border-transparent border-t-blue-400/70 animate-spin" style={{ animationDuration: '1.5s' }} />
           <p className="text-sm text-gray-400">Reconnecting to server...</p>
           <p className="text-xs text-gray-600">Retrying every 15 seconds</p>
         </div>
-      ) : !masterLocation && !masterLoading && activeTab !== 'billing' ? (
+      ) : !masterLocation && masterLoading && !tabWorksOffline ? (
+        // Still resolving — locating the node now includes probing each location, so this is a
+        // real wait rather than an instant lookup. Saying "waiting for the domain" here would
+        // be a guess at a conclusion we have not reached yet.
+        <div className="flex flex-col items-center justify-center py-16 space-y-4">
+          <div className="w-16 h-16 rounded-full border-2 border-transparent border-t-blue-400/70 animate-spin" style={{ animationDuration: '1.5s' }} />
+          <p className="text-sm text-gray-400">Locating your server...</p>
+        </div>
+      ) : !masterLocation && !tabWorksOffline ? (
         <div className="flex flex-col items-center justify-center py-16 space-y-4">
           <div className="w-24 h-24 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center relative">
             <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-400/50 animate-spin" style={{ animationDuration: '3s' }} />
@@ -1087,15 +1153,31 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
           <h3 className="text-lg font-semibold text-blue-300">Waiting for domain access<span className="inline-flex w-6"><span className="animate-[dots_1.5s_steps(3,start)_infinite]">...</span></span></h3>
           <style>{`.animate-\\[dots_1\\.5s_steps\\(4\\,end\\)_infinite\\]{display:inline-block;clip-path:inset(0 100% 0 0);animation:dots 1.5s steps(3,start) infinite}@keyframes dots{to{clip-path:inset(0 0 0 0)}}`}</style>
           <p className="text-sm text-gray-400 text-center px-4 max-w-md">
-            Your server is being configured on the Flux network. Server management will be available once domain access is ready.
+            Your server is being configured on the Flux network. Console, Files, Server Settings
+            and Remote Control become available once it answers.
           </p>
-          <button
-            onClick={retryResolveMaster}
-            className="mt-2 px-20 py-2 text-sm text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/30 rounded-lg transition-colors flex items-center gap-2"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Retry
-          </button>
+          {/* A server that keeps failing to boot never answers, so this screen would otherwise
+              be a dead end — and the setting that broke it is edited two tabs away. */}
+          <p className="text-xs text-gray-500 text-center px-4 max-w-md">
+            Taking unusually long? Deployment Settings, Location, Hardware and Billing keep
+            working — they don&apos;t need the server to be reachable.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+            <button
+              onClick={retryResolveMaster}
+              className="px-6 py-2 text-sm text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/30 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
+            <button
+              onClick={() => setActiveTab('environment')}
+              className="px-6 py-2 text-sm text-gray-200 hover:text-white border border-gray-600/50 hover:border-gray-500/60 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Open Deployment Settings
+            </button>
+          </div>
         </div>
       ) : (
         <>
@@ -1112,6 +1194,44 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
               </div>
             </div>
           )}
+          {/* Managing works (we reached the node directly), but the load balancer is not
+              routing the domain here — normally because the game itself stopped answering.
+              Said plainly, because players are affected even though this panel is not. */}
+          {masterLocation && !domainRouted && activeTab !== 'billing' && (
+            <div className="mx-1 mt-0.5 mb-3 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/15">
+                <Globe className="h-4 w-4 text-amber-400" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-amber-300">Players can&apos;t reach this server</p>
+                <p className="mt-0.5 truncate text-xs text-amber-200/80">
+                  The load balancer isn&apos;t routing{' '}
+                  <span className="font-mono">{server.name?.toLowerCase()}.app.runonflux.io</span> here.
+                </p>
+              </div>
+              <span className="hidden flex-shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200/90 sm:block">
+                Managing still works
+              </span>
+            </div>
+          )}
+          {/* Reached one of the node-free tabs while the server itself is unreachable. Say so,
+              rather than letting the settings look like they apply to a healthy server. */}
+          {!masterLocation && tabWorksOffline && activeTab !== 'billing' && (
+            <div className="mx-1 mt-0.5 mb-3 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/15">
+                <AlertTriangle className="h-4 w-4 text-amber-400" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-amber-300">Server isn&apos;t responding</p>
+                <p className="mt-0.5 text-xs text-amber-200/80">
+                  It may still be starting, or a setting may be keeping it from booting.
+                </p>
+              </div>
+              <span className="hidden flex-shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200/90 sm:block">
+                Changes apply on redeploy
+              </span>
+            </div>
+          )}
           {/* Tab Content - Only render active tab to prevent unnecessary API calls and memory leaks */}
           {activeTab === 'environment' && (
             <div key="environment" className="animate-fade-in">
@@ -1120,7 +1240,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
           )}
           {activeTab === 'geolocation' && (
             <div key="geolocation" className="animate-fade-in">
-              <GeolocationTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} />
+              <GeolocationTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} onSwitchTab={setActiveTab} />
             </div>
           )}
           {activeTab === 'hardware' && (

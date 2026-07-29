@@ -165,7 +165,11 @@ app.get('/api/fdm/appips/{:appName}', async (req, res) => {
 app.get('/api/dns-resolve/{:domain}', async (req, res) => {
   try {
     const addresses = await dnsResolve(req.params.domain, 'A');
-    res.json({ status: 'success', data: { ip: addresses[0] } });
+    // ALL A records, not just the first: an app with several healthy instances gets several
+    // records, and resolvers rotate their order between queries. Comparing one arbitrary
+    // record against one arbitrary FDM IP turns "is the domain synced" into a coin flip.
+    // `ip` stays for callers that only need one.
+    res.json({ status: 'success', data: { ip: addresses[0], ips: addresses } });
   } catch (e) {
     res.json({ status: 'error', data: { message: e.message } });
   }

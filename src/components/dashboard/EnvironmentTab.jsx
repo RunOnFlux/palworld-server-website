@@ -385,7 +385,7 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
           type="button"
           onClick={handleSave}
           disabled={saving || !dirty || !!(limitStatus && !limitStatus.free)}
-          className="btn-action w-full inline-flex items-center justify-center gap-2 disabled:opacity-60"
+          className="btn-primary w-full inline-flex items-center justify-center gap-2"
         >
           {saving ? (
             <><RefreshCw className="w-4 h-4 animate-spin" /> Saving…</>
