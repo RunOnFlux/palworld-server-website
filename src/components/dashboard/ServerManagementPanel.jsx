@@ -4889,6 +4889,15 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
 };
 
 // Backup Tab - Backup and restore functionality
+// The stamp on a parked save is the compact form the restore wrote (YYYYMMDDHHMMSS), not a
+// date the browser can parse — so turn it back into something readable.
+const formatStamp = (stamp) => {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(stamp || ''));
+  if (!m) return stamp || 'an earlier restore';
+  const [, y, mo, d, h, mi] = m;
+  return `${d}.${mo}.${y} ${h}:${mi}`;
+};
+
 const BackupTab = ({ server, masterLocation, onMasterError }) => {
   const [selectedComponents, setSelectedComponents] = useState([]);
   const [availableComponents, setAvailableComponents] = useState([]);
@@ -4917,6 +4926,246 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
   const fileInputRef = useRef(null);
   const activeStreamRef = useRef(null);
   const backupTimersRef = useRef([]);
+
+  // ── In-game snapshots ───────────────────────────────────────────────────────
+  // Palworld keeps its own rotating restore points in
+  //   Pal/Saved/SaveGames/0/<worldGuid>/backup/world/<YYYY.MM.DD-HH.MM.SS>/
+  // Each one holds Level.sav, LevelMeta.sav AND Players/, so restoring brings back a
+  // WORKING copy of a player's character instead of deleting it — the usual advice for
+  // a player stuck on the loading screen costs them everything.
+  //
+  // They are NOT a backup: the game rotates them and they live on the same node.
+  const [snapshots, setSnapshots] = useState([]);
+  const [worldGuid, setWorldGuid] = useState('');
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  const [restoringSnapshot, setRestoringSnapshot] = useState(null);
+  const [snapshotStep, setSnapshotStep] = useState('');
+  const [snapshotToRestore, setSnapshotToRestore] = useState(null);
+  const [snapshotError, setSnapshotError] = useState('');
+  const [undoStamp, setUndoStamp] = useState('');   // stamp of the save a restore replaced
+  const [undoing, setUndoing] = useState(false);
+
+  const snapshotComponent = server?.version >= 4 && server?.compose?.length > 0
+    ? server.compose[0].name
+    : 'null';
+
+  // Where the app volume is mounted INSIDE the container. Taken from containerData
+  // ("g:/palworld/Pal/Saved" -> "/palworld/Pal/Saved") rather than hardcoded, because that
+  // path belongs to the image, not to us: a marketplace image change would silently break
+  // every exec. Extra mounts are pipe-separated, so only the primary volume is used.
+  const containerBasePath = (() => {
+    const raw = String(server?.compose?.[0]?.containerData || '').split('|')[0].trim();
+    const path = raw.replace(/^[a-z]+:/i, '');
+    return path.startsWith('/') ? path : '/palworld/Pal/Saved';
+  })();
+
+  const nodeUrlFor = useCallback((path) => {
+    if (!masterLocation?.ip) return null;
+    const [host, port = 16127] = masterLocation.ip.split(':');
+    return `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io${path}`;
+  }, [masterLocation]);
+
+  const listFolder = useCallback(async (relPath) => {
+    const url = nodeUrlFor(`/apps/getfolderinfo/${server.name}/${snapshotComponent}/${encodeURIComponent(relPath)}`);
+    if (!url) return [];
+    const zelidauth = await secureStorage.getItem('zelidauth');
+    const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth), 'x-apicache-bypass': true } });
+    const data = await res.json();
+    return data.status === 'success' && Array.isArray(data.data) ? data.data : [];
+  }, [nodeUrlFor, server?.name, snapshotComponent]);
+
+  // Shared by restore and undo — a rename inside one directory, which is what makes both
+  // operations atomic. FluxOS rejects a new name containing "/", so this can only ever move
+  // a file within its own folder, which is exactly the guarantee we want here.
+  const renameInWorld = useCallback(async (relWorld, from, to) => {
+    const zelidauth = await secureStorage.getItem('zelidauth');
+    const url = nodeUrlFor(`/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`);
+    const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth) } });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.status === 'error') throw new Error(body?.data?.message || `rename ${from} failed`);
+  }, [nodeUrlFor, server?.name, snapshotComponent]);
+
+  const loadSnapshots = useCallback(async () => {
+    if (!masterLocation) return;
+    setLoadingSnapshots(true);
+    setSnapshotError('');
+    try {
+      // The world folder is a GUID the game picks, so it has to be discovered.
+      const worlds = await listFolder('appdata/SaveGames/0');
+      const guid = worlds.find((w) => w.isDirectory)?.name;
+      if (!guid) { setSnapshots([]); return; }
+      setWorldGuid(guid);
+
+      const list = await listFolder(`appdata/SaveGames/0/${guid}/backup/world`);
+      setSnapshots(
+        list.filter((f) => f.isDirectory)
+          .map((f) => ({ name: f.name, at: new Date(f.modifiedAt) }))
+          .sort((a, b) => b.at - a.at),
+      );
+
+      // A previous restore leaves the save it replaced as *.pre-restore-<stamp>. Finding one
+      // is what makes "undo" possible — otherwise the only way back is renaming files by hand.
+      const world = await listFolder(`appdata/SaveGames/0/${guid}`);
+      const parked = world.find((f) => /^Level\.sav\.pre-restore-\d+$/.test(f.name));
+      setUndoStamp(parked ? parked.name.split('pre-restore-')[1] : '');
+    } catch (e) {
+      setSnapshotError(e.message || 'Could not read in-game snapshots.');
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  }, [masterLocation, listFolder]);
+
+  useEffect(() => {
+    if (restoreTab === 'snapshots') loadSnapshots();
+  }, [restoreTab, loadSnapshots]);
+
+  /**
+   * Restore an in-game snapshot without ever leaving the world in a half-written state.
+   *
+   * The two primitives available have opposite constraints, and the whole sequence is
+   * built around that:
+   *   - `appexec` (cp) needs the container RUNNING — docker exec cannot touch a stopped one.
+   *   - `renameobject` (mv -T) works whatever the container is doing, because FluxOS runs it
+   *     on the host volume, but it refuses a name containing "/" so it can only rename
+   *     WITHIN a directory.
+   *
+   * So: copy while the server runs (into sibling names, originals untouched), then stop and
+   * swap by renaming only. A rename inside one directory is atomic — there is no instant
+   * where the old world is gone and the new one is not yet in place. Nothing is deleted:
+   * the previous save stays as *.pre-restore-<stamp> and the swap can be undone.
+   */
+  const restoreSnapshot = useCallback(async (snapshot) => {
+    if (!worldGuid || !masterLocation) return;
+    const stamp = snapshot.name.replace(/[^0-9]/g, '').slice(0, 14);
+    // The same files are addressed two different ways and mixing them up silently targets
+    // nothing: exec runs INSIDE the container and needs the absolute container path, while
+    // the file API runs on the HOST and takes a path relative to the volume root, where the
+    // primary volume is exposed as `appdata`. Verified live: exec on
+    // `<base>/SaveGames/0` and getfolderinfo on `appdata/SaveGames/0` list the same world.
+    const worldDir = `${containerBasePath}/SaveGames/0/${worldGuid}`;   // exec (container)
+    const snapDir = `${worldDir}/backup/world/${snapshot.name}`;        // exec (container)
+    const relWorld = `appdata/SaveGames/0/${worldGuid}`;                // file API (host)
+    const ITEMS = ['Level.sav', 'LevelMeta.sav', 'Players'];
+
+    setRestoringSnapshot(snapshot.name);
+    setSnapshotError('');
+    const zelidauth = await secureStorage.getItem('zelidauth');
+    const [host, port = 16127] = masterLocation.ip.split(':');
+
+    const exec = async (cmd) => {
+      const res = await fetch(`/api/appexec/${host}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ port, appname: `${snapshotComponent}_${server.name}`, cmd, zelidauth }),
+      });
+      const body = await res.json();
+      if (!res.ok || body.error) throw new Error(body.error || `exec failed (HTTP ${res.status})`);
+      return String(body.data || '');
+    };
+
+    const rename = async (from, to) => {
+      const url = nodeUrlFor(`/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`);
+      const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth) } });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.status === 'error') throw new Error(body?.data?.message || `rename ${from} failed`);
+    };
+
+    const swapped = [];
+    try {
+      // 1. Copy while the server is still up. Only *.restore-<stamp> siblings appear;
+      //    the live save is untouched, so a failure here changes nothing.
+      setSnapshotStep('Copying snapshot…');
+      const copies = ITEMS
+        .map((i) => `[ -e "${snapDir}/${i}" ] && cp -a "${snapDir}/${i}" "${worldDir}/${i}.restore-${stamp}" || true`)
+        .join('; ');
+      await exec(['sh', '-c', `set -e; ${copies}`]);
+
+      // 2. Verify the copies landed BEFORE stopping anything.
+      const staged = await exec(['sh', '-c', `ls -1 "${worldDir}" | grep -c ".restore-${stamp}$" || true`]);
+      if (!parseInt(staged, 10)) throw new Error('Snapshot could not be copied — nothing was changed.');
+
+      // 3. Stop, swap by rename, start. withAppStopped restarts the app in its finally,
+      //    so the server comes back even if the swap throws.
+      setSnapshotStep('Stopping server…');
+      await withAppStopped(
+        nodeApiBase(masterLocation.ip),
+        server.name,
+        JSON.stringify(zelidauth),
+        async () => {
+          setSnapshotStep('Swapping save files…');
+          const present = await listFolder(relWorld);
+          const names = present.map((f) => f.name);
+          for (const item of ITEMS) {
+            if (!names.includes(`${item}.restore-${stamp}`)) continue;
+            if (names.includes(item)) {
+              await rename(item, `${item}.pre-restore-${stamp}`);
+              swapped.push([`${item}.pre-restore-${stamp}`, item]);
+            }
+            await rename(`${item}.restore-${stamp}`, item);
+          }
+        },
+      );
+
+      setSnapshotStep('');
+      toast.success(`Restored the save from ${snapshot.at.toLocaleString()}`);
+      loadSnapshots();
+    } catch (e) {
+      // Put back whatever was already moved aside, so a partial swap cannot survive.
+      for (const [parked, original] of swapped.reverse()) {
+        try { await rename(parked, original); } catch { /* leave it for manual recovery */ }
+      }
+      setSnapshotError(e.message || 'Restore failed — the previous save was kept.');
+      toast.error(e.message || 'Restore failed');
+    } finally {
+      setRestoringSnapshot(null);
+      setSnapshotStep('');
+    }
+  }, [worldGuid, masterLocation, server?.name, snapshotComponent, nodeUrlFor, listFolder, loadSnapshots, containerBasePath]);
+
+  /**
+   * Put back the save a restore replaced.
+   *
+   * Implemented as a three-way SWAP rather than "move the parked file back": the current save
+   * takes the parked file's name, so exactly one spare copy exists no matter how many times
+   * this is used. Moving it back instead would either lose the current save or leave a new
+   * file behind on every undo.
+   *
+   * Renames only, and only inside the world folder — nothing is copied, nothing is deleted,
+   * and each step is atomic.
+   */
+  const undoRestore = useCallback(async () => {
+    if (!worldGuid || !undoStamp || !masterLocation) return;
+    const relWorld = `appdata/SaveGames/0/${worldGuid}`;
+    const zelidauth = await secureStorage.getItem('zelidauth');
+
+    setUndoing(true);
+    setSnapshotError('');
+    try {
+      await withAppStopped(
+        nodeApiBase(masterLocation.ip),
+        server.name,
+        JSON.stringify(zelidauth),
+        async () => {
+          const present = (await listFolder(relWorld)).map((f) => f.name);
+          for (const item of ['Level.sav', 'LevelMeta.sav', 'Players']) {
+            const parked = `${item}.pre-restore-${undoStamp}`;
+            if (!present.includes(parked)) continue;
+            const tmp = `${item}.swap-${undoStamp}`;
+            if (present.includes(item)) await renameInWorld(relWorld, item, tmp);
+            await renameInWorld(relWorld, parked, item);
+            if (present.includes(item)) await renameInWorld(relWorld, tmp, parked);
+          }
+        },
+      );
+      toast.success('Restore undone — the previous save is back');
+      loadSnapshots();
+    } catch (e) {
+      setSnapshotError(e.message || 'Undo failed.');
+      toast.error(e.message || 'Undo failed');
+    } finally {
+      setUndoing(false);
+    }
+  }, [worldGuid, undoStamp, masterLocation, server?.name, listFolder, renameInWorld, loadSnapshots]);
 
   // Cleanup streams and timers on unmount
   useEffect(() => {
@@ -6075,7 +6324,180 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400" />
             )}
           </button>
+          <button
+            onClick={() => setRestoreTab('snapshots')}
+            className={`px-4 py-2 font-medium transition-colors relative flex items-center gap-2 ${
+              restoreTab === 'snapshots' ? 'text-emerald-400' : 'text-gray-400 hover:text-gray-300'
+            }`}
+          >
+            <Clock className="w-5 h-5" />
+            In-game snapshots
+            {restoreTab === 'snapshots' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-400" />
+            )}
+          </button>
         </div>
+
+        {/* Rolling the world back affects every player, so it asks once and says what it costs */}
+        {snapshotToRestore && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSnapshotToRestore(null)} />
+            <div className="relative w-full max-w-md rounded-2xl border border-gray-700/60 bg-gradient-to-b from-gray-800/95 to-gray-900/95 p-5 shadow-2xl shadow-black/60">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-amber-400" />
+                </span>
+                <div className="min-w-0">
+                  <h4 className="text-base font-semibold text-white">Roll the world back?</h4>
+                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                    The save will be replaced with the one from{' '}
+                    <span className="text-gray-200 font-medium">{snapshotToRestore.at.toLocaleString()}</span>.
+                    Everything every player did since then — building, levels, caught Pals — is
+                    gone. The server stops for a moment and comes back on its own.
+                  </p>
+                  <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                    The current save is kept, and an <strong className="text-gray-300">Undo restore</strong>{' '}
+                    button appears here right after — no file juggling needed.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-5">
+                <button
+                  type="button"
+                  onClick={() => setSnapshotToRestore(null)}
+                  className="flex-1 h-9 rounded-lg text-sm font-medium text-gray-300 border border-gray-600/60 bg-gray-700/40 hover:bg-gray-600/50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { const s = snapshotToRestore; setSnapshotToRestore(null); restoreSnapshot(s); }}
+                  className="flex-1 h-9 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 inline-flex items-center justify-center gap-1.5"
+                >
+                  <MdRestore className="w-4 h-4" /> Restore
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* In-game snapshots */}
+        {restoreTab === 'snapshots' && (
+          <div className="p-4 bg-gray-900/50 rounded-lg border border-gray-700/50">
+            {/* Structured rather than one long paragraph: an admin scanning this needs four
+                separate facts, and a wall of text hides the one that decides the click. */}
+            <div className="mb-4 rounded-xl border border-gray-700/60 bg-gray-800/40 overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-3">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/15">
+                  <Clock className="h-4 w-4 text-emerald-400" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-white">Written by the game, not by us</p>
+                  <p className="mt-0.5 text-xs text-gray-400">
+                    Palworld saves a restore point about every hour and whenever it shuts down.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-px bg-gray-700/40 sm:grid-cols-2">
+                <div className="bg-gray-800/40 px-4 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-400/80">Not a backup</p>
+                  <p className="mt-0.5 text-xs text-gray-300">
+                    The game rotates them and they sit on this node — keep real backups as well.
+                  </p>
+                </div>
+                <div className="bg-gray-800/40 px-4 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-400/80">Stuck on loading?</p>
+                  <p className="mt-0.5 text-xs text-gray-300">
+                    This gives the player their character back, instead of deleting it.
+                  </p>
+                </div>
+                <div className="bg-gray-800/40 px-4 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">What is inside</p>
+                  <p className="mt-0.5 text-xs text-gray-300">
+                    The world and every player character — <span className="font-mono text-gray-400">Level.sav</span> plus <span className="font-mono text-gray-400">Players/</span>.
+                  </p>
+                </div>
+                <div className="bg-gray-800/40 px-4 py-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Restoring</p>
+                  <p className="mt-0.5 text-xs text-gray-300">
+                    Rolls the world back for everyone. The server restarts itself and the old save is kept.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* A restore parked the save it replaced, so it can still be put back. Without this
+                the only way back was renaming files by hand in the Files tab. */}
+            {undoStamp && (
+              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.07] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3 min-w-0">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/15">
+                    <MdRestore className="h-5 w-5 text-emerald-400" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-emerald-300">A restore can still be undone</p>
+                    <p className="mt-0.5 text-xs text-emerald-100/70">
+                      The save replaced on{' '}
+                      <span className="font-medium text-emerald-200">{formatStamp(undoStamp)}</span>{' '}
+                      is still on disk. Undoing swaps it back — the current one is kept, so you can
+                      redo this at any time.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={undoRestore}
+                  disabled={undoing || !!restoringSnapshot}
+                  className="flex-shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
+                >
+                  {undoing
+                    ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Undoing…</>
+                    : <><MdRestore className="h-4 w-4" /> Undo restore</>}
+                </button>
+              </div>
+            )}
+
+            {loadingSnapshots ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-400">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Reading snapshots…
+              </div>
+            ) : snapshotError ? (
+              <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">{snapshotError}</div>
+            ) : snapshots.length === 0 ? (
+              <div className="text-center text-sm text-gray-400 py-8 border border-dashed border-gray-700/60 rounded-md">
+                No in-game snapshots yet — the game writes the first one after it has been running a while.
+              </div>
+            ) : (
+              <ul className="space-y-2 max-h-96 overflow-y-auto">
+                {snapshots.map((snap) => {
+                  const mins = Math.max(0, Math.round((Date.now() - snap.at.getTime()) / 60000));
+                  const ago = mins < 60 ? `${mins} min` : mins < 1440 ? `${Math.round(mins / 60)} h` : `${Math.round(mins / 1440)} d`;
+                  const busy = restoringSnapshot === snap.name;
+                  return (
+                    <li key={snap.name} className="flex items-center gap-3 bg-gray-800/60 border border-gray-700/50 rounded-md p-2.5">
+                      <Clock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-white">{snap.at.toLocaleString()}</div>
+                        {/* The number that actually matters: how much play everyone loses. */}
+                        <div className="text-[11px] text-gray-400">rolls the server back {ago}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSnapshotToRestore(snap)}
+                        disabled={!!restoringSnapshot}
+                        className="shrink-0 h-8 px-3 rounded-md text-xs font-semibold border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-40 inline-flex items-center gap-1.5"
+                      >
+                        {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <MdRestore className="w-3.5 h-3.5" />}
+                        {busy ? (snapshotStep || 'Restoring…') : 'Restore'}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* Upload Files Tab */}
         {restoreTab === 'upload' && (

@@ -324,6 +324,55 @@ app.get('/api/mod-download', async (req, res) => {
 });
 
 /**
+ * POST /api/appexec/{host}
+ * Runs a command inside the app's container via FluxOS `appexec` (docker exec).
+ *
+ * ⚠️ DO NOT send `Content-Type: application/json` upstream. FluxOS reads this
+ * request body by hand (`req.on('data')` / `req.on('end')` in appInspector.appExec).
+ * When the header says JSON, its own body parser consumes the stream first, the
+ * manual reader never fires, and the request hangs until it times out — no status,
+ * no bytes, no error. Verified against a live node: with the JSON header the call
+ * sat for 90s and returned nothing; with a plain body it answered in 0.5s.
+ * `fetch` with a string body defaults to text/plain, which is exactly what we want,
+ * so this deliberately sets NO content type.
+ *
+ * The command runs as root inside the container.
+ */
+app.post('/api/appexec/{:host}', async (req, res) => {
+  const { host } = req.params;
+  const { port = 16127, appname, cmd, zelidauth } = req.body;
+
+  if (!appname || !cmd || !zelidauth) {
+    return res.status(400).json({ error: 'appname, cmd and zelidauth are required' });
+  }
+  if (!Array.isArray(cmd) || cmd.length === 0) {
+    return res.status(400).json({ error: 'cmd must be a non-empty array' });
+  }
+
+  try {
+    const nodeUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/appexec`;
+    const upstream = await fetch(nodeUrl, {
+      method: 'POST',
+      headers: {
+        zelidauth: typeof zelidauth === 'string' ? zelidauth : JSON.stringify(zelidauth),
+      },
+      body: JSON.stringify({ appname, cmd }),
+      signal: AbortSignal.timeout(60000),
+    });
+    const text = await upstream.text();
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ error: text || `HTTP ${upstream.status}` });
+    }
+    // Exec streams raw stdout/stderr; strip the NUL bytes Docker's multiplexed
+    // stream leaves behind so the caller gets plain text.
+    res.json({ status: 'success', data: text.replace(/\0/g, '').trim() });
+  } catch (error) {
+    console.log(`❌ appexec failed for ${host}: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Health check endpoint
  */
 app.get('/api/health', (req, res) => {

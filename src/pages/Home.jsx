@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { LoginModal } from '../components/auth';
 import { SEO } from '../components/common';
-import { Hero, Features, PricingPlans, ServerLocations, HomeContent, FAQ, GuideLinks } from '../components/sections';
+import { Hero, Features, PricingPlans, ServerLocations, HomeContent, FAQ, GuideLinks, ManageShowcase } from '../components/sections';
 import Header from '../components/layout/Header';
 import Footer from '../components/layout/Footer';
 import DeploymentDialog from '../components/dashboard/DeploymentDialog';
@@ -62,6 +62,10 @@ const Home = () => {
 
       {/* Hero Section */}
       <Hero onGetStarted={handleLoginClick} />
+
+      {/* What the management panel can do — carousel + capability tiles.
+          Ahead of the feature list: showing the product argues better than claiming it. */}
+      <ManageShowcase />
 
       {/* Features Section */}
       <Features />

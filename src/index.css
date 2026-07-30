@@ -334,6 +334,19 @@
     100% { transform: translateX(100%); }
   }
 
+  /* Screenshot carousel: each piece flies in from a scattered position and settles. */
+  @keyframes puzzle-in {
+    0% {
+      opacity: 0;
+      transform: translate3d(var(--tx, 0), var(--ty, 0), var(--tz, 0)) rotate(var(--rot, 0deg)) scale(0.5);
+    }
+    55% { opacity: 1; }
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    }
+  }
+
   @keyframes flicker {
     0% { transform: scale(1) rotate(-3deg); opacity: 0.9; }
     50% { transform: scale(1.15) rotate(3deg); opacity: 1; }

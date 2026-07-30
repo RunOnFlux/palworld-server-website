@@ -205,6 +205,52 @@ async function optimizeFeatureIcons() {
   }
 }
 
+/**
+ * Management-panel screenshots for the ManageShowcase carousel.
+ *
+ * Whatever manage-*.png files are dropped into the folder get converted — there is no fixed
+ * list, so adding a ninth screenshot needs no code change. They are only ever drawn inside a
+ * 1280x668 frame, so anything wider is wasted bytes; quality 82 keeps UI text crisp, which
+ * matters more here than for artwork.
+ */
+async function optimizeScreenshots() {
+  console.log('\nOptimizing panel screenshots...');
+
+  const dir = path.join(projectRoot, 'public/games/palworld/screenshots');
+  if (!fs.existsSync(dir)) {
+    console.log('No screenshots folder, skipping...');
+    return;
+  }
+
+  const files = fs.readdirSync(dir).filter((f) => /\.png$/i.test(f)).sort();
+  let totalInput = 0;
+  let totalOutput = 0;
+
+  for (const file of files) {
+    const inputPath = path.join(dir, file);
+    const outputPath = path.join(dir, file.replace(/\.png$/i, '.webp'));
+    try {
+      totalInput += fs.statSync(inputPath).size;
+      await sharp(inputPath)
+        .resize(1280, null, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 82 })
+        .toFile(outputPath);
+      const out = fs.statSync(outputPath).size;
+      totalOutput += out;
+      console.log(`OK ${file} -> ${path.basename(outputPath)} (${(out / 1024).toFixed(1)} KB)`);
+    } catch (error) {
+      console.error(`FAIL ${file}: ${error.message}`);
+    }
+  }
+
+  if (files.length) {
+    const reduction = ((1 - totalOutput / totalInput) * 100).toFixed(1);
+    console.log(`${files.length} screenshots: ${(totalInput / 1024 / 1024).toFixed(2)} MB -> ${(totalOutput / 1024).toFixed(1)} KB (${reduction}% reduction)`);
+  } else {
+    console.log('No PNG screenshots found, skipping...');
+  }
+}
+
 async function main() {
   console.log('🖼️  Starting image optimization...\n');
 
@@ -215,6 +261,9 @@ async function main() {
 
   // Optimize feature icons
   await optimizeFeatureIcons();
+
+  // Panel screenshots
+  await optimizeScreenshots();
 
   console.log('\n✨ Image optimization complete!');
   console.log('\n💡 Tips:');

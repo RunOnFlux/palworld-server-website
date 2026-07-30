@@ -6,3 +6,4 @@ export { default as FAQ } from './FAQ';
 export { default as ServerLocations } from './ServerLocations';
 export { default as HomeContent } from './HomeContent';
 export { default as GuideLinks } from './GuideLinks';
+export { default as ManageShowcase } from './ManageShowcase';
