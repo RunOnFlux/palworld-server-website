@@ -4,7 +4,8 @@ import { renderToString } from 'react-dom/server';
 // now lives in the `react-router` package.
 import { StaticRouter } from 'react-router';
 import { HelmetProvider } from 'react-helmet-async';
-import { AppProviders, AppRoutes, preloadRoute } from './App.jsx';
+import { AppProviders, AppRoutes } from './App.jsx';
+import { preloadRoute } from './routes.jsx';
 import './index.css';
 
 /**

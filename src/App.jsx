@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,65 +6,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { CookieConsent, hasGAConsent, ErrorBoundary } from './components/common';
 import ScrollToTop from './components/ScrollToTop';
-
-// Lazy load pages for code splitting.
-//
-// `lazyPage` adds a preload() step on top of React.lazy. It matters because
-// renderToString() is synchronous: a plain React.lazy component would suspend and
-// the SSR prerender would emit the <Suspense> fallback instead of the page. Once
-// preload() has resolved, the wrapper renders the module synchronously — so the
-// server emits real markup, and the client (which preloads the same route before
-// hydrating) produces an identical first render. See src/entry-server.jsx.
-const lazyPage = (factory) => {
-  const Lazy = lazy(factory);
-  let Loaded = null;
-  const Page = (props) => (Loaded ? <Loaded {...props} /> : <Lazy {...props} />);
-  Page.preload = () => Promise.resolve(factory()).then((m) => { Loaded = m.default; });
-  Page.displayName = 'LazyPage';
-  return Page;
-};
-
-const Home = lazyPage(() => import('./pages/Home'));
-const Dashboard = lazyPage(() => import('./pages/Dashboard'));
-const Success = lazyPage(() => import('./pages/Success'));
-const Cancel = lazyPage(() => import('./pages/Cancel'));
-const NotFound = lazyPage(() => import('./pages/NotFound'));
-const Support = lazyPage(() => import('./pages/Support'));
-const RentServer = lazyPage(() => import('./pages/RentServer'));
-const SetupGuide = lazyPage(() => import('./pages/SetupGuide'));
-const ServerRequirements = lazyPage(() => import('./pages/ServerRequirements'));
-const Pricing = lazyPage(() => import('./pages/Pricing'));
-const GuideJoinServer = lazyPage(() => import('./pages/GuideJoinServer'));
-const GuideServerSettings = lazyPage(() => import('./pages/GuideServerSettings'));
-const Comparison = lazyPage(() => import('./pages/Comparison'));
-const NitradoAlternative = lazyPage(() => import('./pages/NitradoAlternative'));
-const GportalAlternative = lazyPage(() => import('./pages/GportalAlternative'));
-
-// Which page component serves each path. Used to preload exactly the one route
-// being rendered (server) or hydrated (client) — never the whole app.
-const ROUTE_PAGES = {
-  '/': Home,
-  '/dashboard': Dashboard,
-  '/success': Success,
-  '/cancel': Cancel,
-  '/support': Support,
-  '/rent-palworld-server': RentServer,
-  '/setup-guide': SetupGuide,
-  '/server-requirements': ServerRequirements,
-  '/pricing': Pricing,
-  '/guides/join-server': GuideJoinServer,
-  '/guides/server-settings': GuideServerSettings,
-  '/decentralized-palworld-hosting': Comparison,
-  '/nitrado-alternative': NitradoAlternative,
-  '/gportal-alternative': GportalAlternative,
-};
-
-/** Load the chunk for `pathname` (falling back to NotFound) before render/hydrate. */
-export const preloadRoute = (pathname) => {
-  const clean = pathname.replace(/\/+$/, '') || '/';
-  const Page = ROUTE_PAGES[clean] || NotFound;
-  return Page.preload();
-};
+import { ROUTE_PAGES } from './routes';
 
 // Loading component
 const PageLoader = () => (
@@ -121,21 +63,10 @@ export function AppRoutes() {
       <div className="min-h-screen bg-background text-text">
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/success" element={<Success />} />
-            <Route path="/cancel" element={<Cancel />} />
-            <Route path="/support" element={<Support />} />
-            <Route path="/rent-palworld-server" element={<RentServer />} />
-            <Route path="/setup-guide" element={<SetupGuide />} />
-            <Route path="/server-requirements" element={<ServerRequirements />} />
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/guides/join-server" element={<GuideJoinServer />} />
-            <Route path="/guides/server-settings" element={<GuideServerSettings />} />
-            <Route path="/decentralized-palworld-hosting" element={<Comparison />} />
-            <Route path="/nitrado-alternative" element={<NitradoAlternative />} />
-            <Route path="/gportal-alternative" element={<GportalAlternative />} />
-            <Route path="*" element={<NotFound />} />
+            {Object.keys(ROUTE_PAGES).map((path) => {
+              const Page = ROUTE_PAGES[path];
+              return <Route key={path} path={path} element={<Page />} />;
+            })}
           </Routes>
         </Suspense>
 

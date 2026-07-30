@@ -5,7 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'trash']),
+  // dist/ and .ssr/ are build output (minified bundles); trash/ is archived code.
+  globalIgnores(['dist', '.ssr', 'trash']),
   // Node.js server files
   {
     files: ['server.js', 'vite.config.js'],

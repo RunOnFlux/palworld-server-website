@@ -2,7 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot, hydrateRoot } from 'react-dom/client'
 import { HelmetProvider } from 'react-helmet-async'
 import './index.css'
-import App, { preloadRoute } from './App.jsx'
+import App from './App.jsx'
+import { preloadRoute } from './routes.jsx'
 
 const container = document.getElementById('root')
 
