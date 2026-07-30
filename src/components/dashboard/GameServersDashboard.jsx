@@ -2,14 +2,19 @@ import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useSearchParams } from 'react-router-dom';
  
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server, Activity, Copy, Check, Globe, Settings, Users, Package, Clock, DatabaseBackup } from 'lucide-react';
+import { Server, Activity, Copy, Check, Globe, Settings, Users, Package, Clock, DatabaseBackup, AlertTriangle } from 'lucide-react';
 import { MdMemory, MdSpeed, MdStorage } from 'react-icons/md';
 import ServerManagementPanel from './ServerManagementPanel';
 import apiService, { parseAddress } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
 import secureStorage from '../../utils/secureStorage';
 import { recoverPendingRestores } from '../../utils/appPower';
+import { diagnosePlacement } from '../../utils/nodeCapacity';
 import toast from 'react-hot-toast';
+
+// How often a stuck server is re-diagnosed for a placement problem. Node capacity moves
+// on the scale of hours, and the check costs one request per candidate node.
+const PLACEMENT_RECHECK_MS = 5 * 60 * 1000;
 
 // Flux blockchain fork constants (from FluxOS)
 const FORK_BLOCK_HEIGHT = 2_020_000; // Block where time changed from 2min to 0.5min
@@ -79,9 +84,13 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
   const [loading, setLoading] = useState(true);
   const [selectedServerName, setSelectedServerName] = useState(null);
   const [showManagement, setShowManagement] = useState(false);
+  // Tab the panel should land on when opened from a card action ("Add locations").
+  const [managementTab, setManagementTab] = useState(null);
   const [currentBlockHeight, setCurrentBlockHeight] = useState(null);
   const [copiedServerId, setCopiedServerId] = useState(null);
   const [pendingRenewals, setPendingRenewals] = useState([]); // Track pending renewals (array)
+  // name → last placement diagnosis timestamp (see checkPlacement).
+  const placementCheckedRef = useRef(new Map());
   const serversRef = useRef(servers);
   const initialLoadRef = useRef(true); // Track if this is the first load
   const currentBlockHeightRef = useRef(null);
@@ -709,10 +718,44 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
     }
   };
 
+  /**
+   * An app that never gets placed sits on "Installing on network" forever, with nothing
+   * saying why. The usual cause is a geolocation narrow enough that its handful of nodes
+   * are full — a configuration problem the customer can fix themselves, but only if we
+   * tell them. Throttled per server: the answer changes on the scale of hours.
+   */
+  const checkPlacement = async (server) => {
+    const last = placementCheckedRef.current.get(server.name) || 0;
+    if (Date.now() - last < PLACEMENT_RECHECK_MS) return;
+    placementCheckedRef.current.set(server.name, Date.now());
+    try {
+      const spec = await apiService.getAppSpecs(server.name);
+      if (!spec?.name) return;
+      const issue = await diagnosePlacement({
+        geolocation: spec.geolocation,
+        compose: spec.compose,
+        instances: spec.instances || 1,
+        isEnterprise: !!spec.enterprise,
+        running: 0,
+      });
+      // 'waiting' means there IS room and it is simply not placed yet — that is what
+      // "Installing on network" already says, so it stays as is.
+      updateServerInList(server.name, {
+        placementIssue: issue && issue.severity !== 'waiting' ? issue : null,
+      });
+    } catch { /* diagnosis is advisory — never disturb the status loop */ }
+  };
+
   const checkInstallationStatus = async (server) => {
     try {
       // Check 1: Flux API - Is the app installed and running on Flux nodes?
       const locations = await apiService.getAppLocations(server.name);
+
+      if (!Array.isArray(locations) || locations.length === 0) {
+        await checkPlacement(server);
+      } else if (server.placementIssue) {
+        updateServerInList(server.name, { placementIssue: null });
+      }
 
       if (Array.isArray(locations) && locations.length > 0) {
         console.log(`✅ ${server.name} is installed on Flux nodes:`, locations.length);
@@ -916,8 +959,9 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
     localStorage.setItem('deployedServers', JSON.stringify(filtered));
   };
 
-  const handleManage = useCallback((server) => {
+  const handleManage = useCallback((server, tab = null) => {
     setSelectedServerName(server.name);
+    setManagementTab(tab);
     setShowManagement(true);
   }, []);
 
@@ -1174,16 +1218,37 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
 
               {/* Installing Banner */}
               {server.status === 'installing' && (
-                <div className="px-4 py-2.5 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border-y border-blue-500/30">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2 flex-1">
-                      <DatabaseBackup className="w-3.5 h-3.5 text-blue-400 animate-pulse flex-shrink-0" />
-                      <span className="text-xs font-medium text-blue-300">
-                        Installing on Flux network...
-                      </span>
+                server.placementIssue ? (
+                  <div className="px-4 py-2.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-y border-amber-500/30">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-amber-300">{server.placementIssue.title}</p>
+                        <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                          {server.placementIssue.message}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleManage(server, 'geolocation'); }}
+                          className="mt-1.5 text-[11px] font-semibold text-amber-200 underline underline-offset-2 hover:text-white"
+                        >
+                          Add more locations
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="px-4 py-2.5 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border-y border-blue-500/30">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-1">
+                        <DatabaseBackup className="w-3.5 h-3.5 text-blue-400 animate-pulse flex-shrink-0" />
+                        <span className="text-xs font-medium text-blue-300">
+                          Installing on Flux network...
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
               )}
 
               {/* Cancelling Banner */}
@@ -1446,14 +1511,30 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                         </div>
                       )}
 
-                      {/* Installing Indicator */}
+                      {/* Installing Indicator — replaced by the real reason when the app
+                          cannot be placed at all, so the customer is not left watching a
+                          spinner that will never finish. */}
                       {server.status === 'installing' && (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/30 rounded-md w-fit">
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
-                          <span className="text-xs font-medium text-blue-300 whitespace-nowrap">
-                            Installing on network
-                          </span>
-                        </div>
+                        server.placementIssue ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleManage(server, 'geolocation'); }}
+                            className="inline-flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded-md w-fit hover:bg-amber-500/20 transition-colors"
+                            title={server.placementIssue.message}
+                          >
+                            <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                            <span className="text-xs font-medium text-amber-300 whitespace-nowrap">
+                              No node available — add locations
+                            </span>
+                          </button>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/30 rounded-md w-fit">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+                            <span className="text-xs font-medium text-blue-300 whitespace-nowrap">
+                              Installing on network
+                            </span>
+                          </div>
+                        )
                       )}
 
                       {/* Cancelling Indicator */}
@@ -1589,10 +1670,12 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
         key={selectedServer?.name}
         server={selectedServer}
         isOpen={showManagement}
+        initialTab={managementTab}
         onClose={() => {
           setShowManagement(false);
           showManagementRef.current = false;
           setSelectedServerName(null);
+          setManagementTab(null);
           handleUpdate();
         }}
         onUpdate={handleUpdate}

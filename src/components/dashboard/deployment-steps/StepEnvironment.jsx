@@ -1,6 +1,7 @@
 import { memo, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CustomSelect from '../../common/CustomSelect';
+import AutoRestartFields from '../AutoRestartFields';
 
 const stepVariants = {
   enter: (d) => ({ opacity: 0, x: d > 0 ? 20 : -20 }),
@@ -57,6 +58,8 @@ const StepEnvironment = memo(({
   selectedPlan,
   environmentParams,
   onEnvironmentParamsChange,
+  rebootSettings,
+  onRebootSettingsChange,
   showAdvanced,
   onShowAdvancedToggle,
   onBack,
@@ -82,6 +85,12 @@ const StepEnvironment = memo(({
         </h3>
         <p className="text-sm text-gray-400">Configure your server environment settings</p>
       </div>
+
+      {rebootSettings && onRebootSettingsChange && (
+        <div className="pb-4">
+          <AutoRestartFields settings={rebootSettings} onChange={onRebootSettingsChange} />
+        </div>
+      )}
 
       {userEnvParams ? (
         <div className="space-y-4">

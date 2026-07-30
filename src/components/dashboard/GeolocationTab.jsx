@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { Save, AlertTriangle, RefreshCw, CheckCircle, Database } from 'lucide-react';
+import { Save, AlertTriangle, RefreshCw, CheckCircle, Database, MapPin } from 'lucide-react';
 import apiService from '../../services/apiService';
 import geolocationData from '../../utils/geolocation';
 import StepLocation from './deployment-steps/StepLocation';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import { encryptAppSpec, computeRemainingExpire } from '../../utils/appSpecHelpers';
+import { capacityForGeolocation, fetchFluxNodes, OS_RESERVE, IP_HEADROOM, REGION_IP_HEADROOM } from '../../utils/nodeCapacity';
 
 // Flux free-update rate limits — mirror of EnvironmentTab / backend checkFreeAppUpdate.
 // Windows are in blocks; post-PON-fork the target block time is 30s.
@@ -46,8 +47,6 @@ const computeFreeUpdateStatus = (messages, height) => {
   return { free, waitBlocks: Math.max(0, waitBlocks), remaining: Math.max(0, remaining === Infinity ? 0 : remaining) };
 };
 
-// Resources reserved for the node OS/FluxOS — an app can only use what's left.
-const OS_RESERVE = { cores: 1, ram: 2, ssd: 80 };
 const CONTINENT_NAMES = {
   AF: 'Africa', AS: 'Asia', EU: 'Europe',
   NA: 'North America', OC: 'Oceania', SA: 'South America',
@@ -56,9 +55,8 @@ const CONTINENT_NAMES = {
 // it is where distance inside one country actually costs the player latency
 // (coast to coast is ~60-80ms). Elsewhere the country is a precise enough choice.
 const REGION_PICKER_COUNTRIES = new Set(['US']);
-// Mirrors DeploymentDialog: a region needs spare IPs beyond the instance count,
-// and the country needs several viable regions before the picker is worth showing.
-const REGION_IP_HEADROOM = 2;
+// Mirrors DeploymentDialog: the country needs several viable regions before the
+// picker is worth showing (the IP headroom itself lives in nodeCapacity).
 const MIN_REGIONS_TO_OFFER = 2;
 
 const sortedKey = (arr) => [...arr].sort().join('|');
@@ -69,7 +67,7 @@ const sortedKey = (arr) => [...arr].sort().join('|');
  * enterprise apps), reusing EnvironmentTab's free-update + propagation machinery.
  * The picker offers only locations that can host THIS app: nodes are filtered by the
  * spec's summed component hardware (after the OS reserve) and arcaneVersion (enterprise),
- * and gated on unique public IPs >= instances. Changes apply after a redeploy.
+ * and gated on unique public IPs >= instances + IP_HEADROOM. Changes apply after a redeploy.
  */
 const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
   const [loading, setLoading] = useState(true);
@@ -144,32 +142,9 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
       setOriginalGeo(sortedKey(current));
       setAllowedLocations(current);
 
-      // Fetch nodes for the picker (enterprise apps need arcaneVersion → include flux, last).
-      const projection = isEnterprise ? 'geolocation,benchmark,flux' : 'geolocation,benchmark';
-      const resp = await fetch(`https://stats.runonflux.io/fluxinfo?projection=${projection}`);
-      const result = await resp.json();
-      if (result.status === 'success' && Array.isArray(result.data) && result.data.length > 5000) {
-        const list = [];
-        result.data.forEach((n) => {
-          const g = n.geolocation;
-          if (!g?.continentCode || !g?.countryCode) return;
-          const b = n.benchmark?.bench || {};
-          if (!b.cores) return;
-          const rawIp = n.flux?.ip || g.ip || '';
-          list.push({
-            cont: g.continentCode,
-            country: g.countryCode,
-            // Matched verbatim by FluxOS as the third geolocation level.
-            region: g.regionName || '',
-            ip: rawIp.split(':')[0],
-            cores: b.cores,
-            ram: b.ram || 0,
-            ssd: b.ssd || 0,
-            arcane: !!n.flux?.arcaneVersion,
-          });
-        });
-        setNodes(list);
-      }
+      // Nodes for the picker (enterprise apps need arcaneVersion → the flux projection).
+      // Shared, session-cached fetch: the placement diagnosis pulls the same multi-MB list.
+      setNodes(await fetchFluxNodes());
 
       // Free-update rate-limit status — non-fatal.
       try {
@@ -189,7 +164,9 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
   useEffect(() => { load(); }, [load]);
 
   // Build the selectable continents/countries: filter nodes by hardware + arcane, then
-  // count nodes + unique IPs and gate on unique IPs >= instances (same as the deploy dialog).
+  // count nodes + unique IPs and gate on unique IPs >= instances + headroom (same rule as
+  // the deploy dialog — a location sized exactly to the instance count has no room for a
+  // node that is already full).
   useEffect(() => {
     const { cpu, ramGB, hddGB } = hardwareRef.current;
     const inst = instancesRef.current;
@@ -222,7 +199,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
     const continents = [];
     contAgg.forEach((v, code) => {
       const ipCount = v.ips.size;
-      if (ipCount >= inst && CONTINENT_NAMES[code]) {
+      if (ipCount >= inst + IP_HEADROOM && CONTINENT_NAMES[code]) {
         continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount });
       }
     });
@@ -235,7 +212,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
         const [cont, code] = key.split('_');
         if (cont !== geolocationForm.continent) return;
         const ipCount = v.ips.size;
-        if (ipCount >= inst) countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount });
+        if (ipCount >= inst + IP_HEADROOM) countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount });
       });
       countries.sort((a, b) => b.ipCount - a.ipCount);
       setAvailableCountries(countries);
@@ -329,6 +306,20 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
 
   const dirty = useMemo(() => sortedKey(allowedLocations) !== originalGeo, [allowedLocations, originalGeo]);
 
+  /**
+   * How much room the CURRENT selection leaves — recomputed as the customer edits, so
+   * adding a location visibly moves the number. Compared against the instance count
+   * because FluxOS places one instance per unique public IP.
+   */
+  const selectionCapacity = useMemo(() => {
+    if (!nodes.length) return null;
+    const inst = instancesRef.current;
+    const { nodeCount, ipCount } = capacityForGeolocation(
+      nodes, allowedLocations, hardwareRef.current, isEnterpriseRef.current,
+    );
+    return { nodeCount, ipCount, instances: inst, tight: ipCount < inst + IP_HEADROOM };
+  }, [nodes, allowedLocations]);
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -394,6 +385,31 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
 
   return (
     <div className="p-4 space-y-4">
+      {selectionCapacity && allowedLocations.length > 0 && (
+        <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
+          selectionCapacity.tight
+            ? 'border-amber-500/30 bg-amber-500/[0.08]'
+            : 'border-gray-700/50 bg-gray-800/40'
+        }`}>
+          <MapPin className={`w-4 h-4 mt-0.5 flex-shrink-0 ${selectionCapacity.tight ? 'text-amber-400' : 'text-gray-400'}`} />
+          <div className="min-w-0 text-xs leading-relaxed">
+            <p className={selectionCapacity.tight ? 'text-amber-200/90' : 'text-slate-300'}>
+              These locations match <span className="font-semibold text-white">{selectionCapacity.nodeCount}</span>{' '}
+              {selectionCapacity.nodeCount === 1 ? 'node' : 'nodes'} able to run your plan
+              ({selectionCapacity.ipCount} unique {selectionCapacity.ipCount === 1 ? 'IP' : 'IPs'}),
+              and your server needs <span className="font-semibold text-white">{selectionCapacity.instances}</span>.
+            </p>
+            {selectionCapacity.tight && (
+              <p className="text-amber-200/70 mt-1">
+                That leaves no spare capacity: when those nodes fill up with other apps, your
+                server has nowhere to run. Add another country or continent below — your world
+                and settings are not affected.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {limitStatus && (limitStatus.free ? (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-2.5">
           <div className="flex items-center gap-2.5 min-w-0">

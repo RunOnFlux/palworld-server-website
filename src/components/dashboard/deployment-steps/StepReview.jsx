@@ -9,6 +9,7 @@ const stepVariants = {
 };
 import { MdSpeed } from 'react-icons/md';
 import { Server, Package, ChevronDown } from 'lucide-react';
+import { formatHour } from '../../../config/serverMaintenance';
 
 // Spec icons
 const SpecIcon = ({ type }) => {
@@ -57,6 +58,7 @@ const StepReview = memo(({
   totalCost,
   currentDiscount,
   environmentParams,
+  rebootSettings,
   allowedLocations,
   formatLocationLabel,
   getFlagIcon,
@@ -144,6 +146,20 @@ const StepReview = memo(({
                   </div>
                 )
               ))}
+            </div>
+          </div>
+        )}
+
+        {rebootSettings && (
+          <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border-2 border-gray-700/50 rounded-2xl p-3 sm:p-4 shadow-lg shadow-black/20">
+            <h4 className="font-bold text-white mb-3 text-sm sm:text-base">Automatic Restarts</h4>
+            <div className="flex justify-between items-center gap-2 bg-gray-900/40 rounded-lg px-3 py-2">
+              <span className="text-gray-400 text-xs font-medium">Schedule:</span>
+              <span className="text-white text-sm font-semibold text-right">
+                {rebootSettings.enabled
+                  ? `Daily at ${formatHour(rebootSettings.hour)} (${rebootSettings.timeZone})`
+                  : 'Off'}
+              </span>
             </div>
           </div>
         )}

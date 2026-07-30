@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { Save, AlertTriangle, RefreshCw, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Save, AlertTriangle, RefreshCw, CheckCircle, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import apiService from '../../services/apiService';
 import marketplaceService from '../../services/marketplaceService';
 import CustomSelect from '../common/CustomSelect';
+import AutoRestartFields from './AutoRestartFields';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import { encryptAppSpec, mergeInlineEnv, parseEnvArray, computeRemainingExpire } from '../../utils/appSpecHelpers';
+import { parseRebootEnv, buildRebootEnv, findMissingStandardEnv, standardEnvPatch } from '../../config/serverMaintenance';
 
 // Flux free-update rate limits — mirror of backend checkFreeAppUpdate. Windows are in
 // blocks; post-PON-fork the target block time is 30s.
@@ -72,7 +74,7 @@ const valuesKey = (obj) => JSON.stringify(obj);
  * current spec → merge edits → re-encrypt; for standard apps the compose stays plain.
  * Changes apply after a redeploy.
  */
-const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
+const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -86,6 +88,18 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
   const [fields, setFields] = useState([]);
   const [values, setValues] = useState({});
   const [originalValues, setOriginalValues] = useState('');
+
+  // Scheduled restarts (env vars read by the container's cron) and the list of
+  // standard settings this server was deployed before we started shipping.
+  const [rebootSettings, setRebootSettings] = useState(null);
+  const [originalReboot, setOriginalReboot] = useState('');
+  const [missingStandard, setMissingStandard] = useState([]);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
+
+  // Held in a ref so a parent that re-creates the callback each render can't
+  // retrigger load() (which would refetch the spec in a loop).
+  const standardEnvCbRef = useRef(onStandardEnvChange);
+  useEffect(() => { standardEnvCbRef.current = onStandardEnvChange; }, [onStandardEnvChange]);
 
   const specRef = useRef(null);
   const composeRef = useRef(null);
@@ -137,6 +151,14 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
       setValues(initial);
       setOriginalValues(valuesKey(initial));
 
+      const reboot = parseRebootEnv(currentEnv);
+      setRebootSettings(reboot);
+      setOriginalReboot(valuesKey(reboot));
+
+      const missing = findMissingStandardEnv(currentEnv);
+      setMissingStandard(missing);
+      standardEnvCbRef.current?.(missing.length);
+
       // Free-update rate-limit status — non-fatal.
       try {
         const [msgs, h] = await Promise.all([
@@ -186,9 +208,27 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
     setValues((prev) => ({ ...prev, [name]: value }));
   };
 
-  const dirty = useMemo(() => valuesKey(values) !== originalValues, [values, originalValues]);
+  const onRebootChange = (next) => {
+    setSavedOk(false);
+    setRebootSettings(next);
+  };
 
-  const handleSave = async () => {
+  const rebootDirty = useMemo(
+    () => !!rebootSettings && valuesKey(rebootSettings) !== originalReboot,
+    [rebootSettings, originalReboot],
+  );
+  const dirty = useMemo(
+    () => valuesKey(values) !== originalValues || rebootDirty,
+    [values, originalValues, rebootDirty],
+  );
+
+  /**
+   * Push the env to the chain. `extraEnv` carries the standard-settings patch when the
+   * customer accepts the update banner. The restart vars are only written when they were
+   * actually touched (or patched), so saving an unrelated field never quietly adds
+   * settings to a server the customer never configured.
+   */
+  const handleSave = async (extraEnv = null) => {
     setSaving(true);
     setError(null);
     setSavedOk(false);
@@ -199,7 +239,14 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
 
       // Merge edits over the existing env (preserves fixed params like PORT/SERVERNAME).
       const currentEnvArray = compose[0].environmentParameters || [];
-      const mergedEnv = mergeInlineEnv(currentEnvArray, values);
+      // Restart edits come last: if the customer tweaked the schedule and then accepted
+      // the update banner in the same visit, their hour must win over the patch default.
+      const edits = {
+        ...values,
+        ...(extraEnv || {}),
+        ...(rebootDirty && rebootSettings ? buildRebootEnv(rebootSettings) : {}),
+      };
+      const mergedEnv = mergeInlineEnv(currentEnvArray, edits);
       const newCompose = compose.map((c, i) => (i === 0 ? { ...c, environmentParameters: mergedEnv } : c));
 
       // Recompute expire = remaining blocks so this change doesn't extend (and thus charge for)
@@ -225,6 +272,17 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
       const finalSpec = await encryptAppSpec(plainSpec, isEnterpriseRef.current);
       const newHash = await apiService.updateAppSpecification(finalSpec);
 
+      // The saved spec is the new baseline: a second save must merge on top of what we
+      // just wrote, and the "update available" banner must reflect it without a reload.
+      composeRef.current = newCompose;
+      const savedEnv = parseEnvArray(mergedEnv);
+      const stillMissing = findMissingStandardEnv(savedEnv);
+      setMissingStandard(stillMissing);
+      standardEnvCbRef.current?.(stillMissing.length);
+      const savedReboot = parseRebootEnv(savedEnv);
+      setRebootSettings(savedReboot);
+      setOriginalReboot(valuesKey(savedReboot));
+
       setOriginalValues(valuesKey(values));
       setSavedOk(true);
       setApplyOpen(true);
@@ -235,6 +293,22 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
       toast.error(e.message || 'Failed to update environment');
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * One-click "bring this server up to date": writes only the standard settings this
+   * server is missing (or has at a stale value) and leaves everything else alone.
+   */
+  const handleApplyUpdate = async () => {
+    const currentEnv = parseEnvArray(composeRef.current?.[0]?.environmentParameters);
+    const patch = standardEnvPatch(currentEnv);
+    if (!Object.keys(patch).length) return;
+    setApplyingUpdate(true);
+    try {
+      await handleSave(patch);
+    } finally {
+      setApplyingUpdate(false);
     }
   };
 
@@ -358,6 +432,54 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
         </button>
       )}
 
+      {missingStandard.length > 0 && (
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/[0.07] p-4">
+          <div className="flex items-start gap-3">
+            <div className="bg-blue-500/10 border border-blue-500/25 rounded-lg p-2 flex-shrink-0">
+              <Sparkles className="w-4 h-4 text-blue-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-blue-200">Server update available</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Your server was created before we added {missingStandard.length}{' '}
+                {missingStandard.length === 1 ? 'setting' : 'settings'} that keep Palworld servers
+                healthy. Applying them changes nothing about your world or your own settings.
+              </p>
+              <ul className="mt-3 space-y-1.5">
+                {missingStandard.map((item) => (
+                  <li key={item.key} className="text-xs text-gray-300 flex items-start gap-2">
+                    <span className="text-blue-400 mt-[3px]">•</span>
+                    <span>
+                      <span className="font-semibold text-white">{item.label}</span>
+                      {item.reason === 'outdated' && (
+                        <span className="ml-1.5 text-[10px] uppercase tracking-wide text-amber-300">needs update</span>
+                      )}
+                      <span className="block text-gray-400">{item.description}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={handleApplyUpdate}
+                disabled={saving || applyingUpdate || !!(limitStatus && !limitStatus.free)}
+                className="btn-primary mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {applyingUpdate ? (
+                  <><RefreshCw className="w-4 h-4 animate-spin" /> Updating…</>
+                ) : (
+                  <><Sparkles className="w-4 h-4" /> Update my server</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rebootSettings && (
+        <AutoRestartFields settings={rebootSettings} onChange={onRebootChange} />
+      )}
+
       <div className="space-y-3">
         {regular.map(renderField)}
       </div>
@@ -376,14 +498,14 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy }) => {
         </div>
       )}
 
-      {fields.length === 0 && (
+      {fields.length === 0 && !rebootSettings && (
         <p className="text-sm text-slate-400 text-center py-6">This server has no user-configurable environment variables.</p>
       )}
 
-      {fields.length > 0 && (
+      {(fields.length > 0 || rebootSettings) && (
         <button
           type="button"
-          onClick={handleSave}
+          onClick={() => handleSave()}
           disabled={saving || !dirty || !!(limitStatus && !limitStatus.free)}
           className="btn-primary w-full inline-flex items-center justify-center gap-2"
         >

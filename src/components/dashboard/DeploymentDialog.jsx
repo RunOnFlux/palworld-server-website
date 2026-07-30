@@ -9,6 +9,8 @@ import storageService from '../../services/storageService';
 import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walletService';
 import marketplaceService from '../../services/marketplaceService';
 import { withModsMount } from '../../config/modsConfig';
+import { defaultRebootSettings, buildRebootEnv } from '../../config/serverMaintenance';
+import { OS_RESERVE, IP_HEADROOM, REGION_IP_HEADROOM } from '../../utils/nodeCapacity';
 import { applyRandomExternalPorts, registerAppSpecWithPortRetry, palworldGamePort } from '../../utils/appSpecHelpers';
 import geolocationData from '../../utils/geolocation';
 import toast from 'react-hot-toast';
@@ -94,8 +96,6 @@ const mergeEnvParams = (...envArrays) => {
  * DeploymentDialog Component
  * Multi-step wizard for deploying a new game server
  */
-// Resources reserved for the node's OS/FluxOS — the app can only use what's left.
-const OS_RESERVE = { cores: 1, ram: 2, ssd: 80 };
 const CONTINENT_NAMES = {
   AF: 'Africa', AS: 'Asia', EU: 'Europe',
   NA: 'North America', OC: 'Oceania', SA: 'South America',
@@ -104,10 +104,6 @@ const CONTINENT_NAMES = {
 // it is where distance inside one country actually costs the player latency
 // (coast to coast is ~60-80ms). Elsewhere the country is a precise enough choice.
 const REGION_PICKER_COUNTRIES = new Set(['US']);
-// Extra unique IPs a region must have beyond the instance count before we offer it.
-// Pinning to a single region shrinks the host pool hard, so we only surface regions
-// that keep spare hosts for a failed placement or a later relocation.
-const REGION_IP_HEADROOM = 2;
 // Several viable regions or none at all — one qualifying region is the same as
 // picking the country, so the extra dropdown would only add a dead choice.
 const MIN_REGIONS_TO_OFFER = 2;
@@ -130,6 +126,10 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const [apiPricing, setApiPricing] = useState({ usd: 0, flux: 0, fluxDiscount: 0 });
   const [loadingPricing, setLoadingPricing] = useState(false);
   const [environmentParams, setEnvironmentParams] = useState({});
+  // Scheduled-restart settings, prefilled with the buyer's own time zone. Merged
+  // into the env params on deploy (see deployEnvParams) so the container's cron
+  // runs at the hour the customer picked, not at 05:00 UTC.
+  const [rebootSettings, setRebootSettings] = useState(defaultRebootSettings);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [geolocationForm, setGeolocationForm] = useState({
@@ -448,8 +448,10 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   //   1. hardware — node's usable resources (after OS reserve) must fit the plan
   //   2. enterprise — node must report an arcaneVersion when the app is enterprise
   //   3. availability gate — a location only qualifies if it has enough UNIQUE public
-  //      IPs (not nodes) to place every instance, since Flux spreads instances across
-  //      distinct IPs. We surface both counts so the user sees real redundancy.
+  //      IPs (not nodes) to place every instance WITH SPARE (see IP_HEADROOM): the
+  //      node list tells us a node is big enough, never whether it is already full,
+  //      and a location sized exactly to the instance count leaves no room for that.
+  //      We surface both counts so the user sees real redundancy.
   const computeAvailability = useCallback((locationData, requiredInstances) => {
     const nodes = locationData?.nodes;
     if (!nodes) return;
@@ -482,11 +484,11 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       rr.nodeCount++; if (n.ip) rr.ips.add(n.ip);
     });
 
-    // Continents — gate on unique IPs >= instances
+    // Continents — gate on unique IPs >= instances + headroom
     const continents = [];
     contAgg.forEach((v, code) => {
       const ipCount = v.ips.size;
-      if (ipCount >= requiredInstances && CONTINENT_NAMES[code]) {
+      if (ipCount >= requiredInstances + IP_HEADROOM && CONTINENT_NAMES[code]) {
         continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount });
       }
     });
@@ -500,7 +502,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         const [cont, code] = key.split('_');
         if (cont !== geolocationForm.continent) return;
         const ipCount = v.ips.size;
-        if (ipCount >= requiredInstances) {
+        if (ipCount >= requiredInstances + IP_HEADROOM) {
           countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount });
         }
       });
@@ -716,6 +718,14 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     return userParams && userParams.length > 0;
   }, [selectedPlan]);
 
+  // Everything the deploy writes into environmentParameters: the wizard's fields plus
+  // the scheduled-restart settings. Kept together so all three deploy paths (fiat,
+  // crypto, free first month) send an identical env.
+  const deployEnvParams = useMemo(
+    () => ({ ...environmentParams, ...buildRebootEnv(rebootSettings) }),
+    [environmentParams, rebootSettings],
+  );
+
   // Memoized step navigation handlers to prevent child re-renders
   const handleBackToStep1 = useCallback(() => {
     stepDirectionRef.current = -1;
@@ -799,13 +809,13 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
       // Build environment parameters array (FluxOS format: ["KEY=value"])
       const envParamsArray = [];
-      Object.entries(environmentParams).forEach(([key, value]) => {
+      Object.entries(deployEnvParams).forEach(([key, value]) => {
         if (value) {
           envParamsArray.push(`${key}=${value}`);
         }
       });
       console.log('⚙️ Environment Parameters:', {
-        object: environmentParams,
+        object: deployEnvParams,
         array: envParamsArray
       });
 
@@ -1017,7 +1027,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
       // Environment params — written INLINE into the spec (no Flux Storage / F_S_ENV)
       const envParamsArray = [];
-      Object.entries(environmentParams).forEach(([key, value]) => {
+      Object.entries(deployEnvParams).forEach(([key, value]) => {
         if (value) envParamsArray.push(`${key}=${value}`);
       });
 
@@ -1187,7 +1197,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
         const environmentParameters = mergeEnvParams(
           parentCompose[componentIndex]?.environmentParameters,
           component.environmentParameters,
-          Object.entries(environmentParams).map(([key, value]) => `${key}=${value}`)
+          Object.entries(deployEnvParams).map(([key, value]) => `${key}=${value}`)
         );
 
         return {
@@ -1479,6 +1489,8 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
             selectedPlan={selectedPlan}
             environmentParams={environmentParams}
             onEnvironmentParamsChange={(val) => { setEnvironmentParams(val); setPaymentHash(null); }}
+            rebootSettings={rebootSettings}
+            onRebootSettingsChange={(val) => { setRebootSettings(val); setPaymentHash(null); }}
             showAdvanced={showAdvanced}
             onShowAdvancedToggle={handleShowAdvancedToggle}
             onBack={handleBackToStep2}
@@ -1535,6 +1547,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
                 totalCost={totalCost}
                 currentDiscount={currentDiscount}
                 environmentParams={environmentParams}
+                rebootSettings={rebootSettings}
                 allowedLocations={allowedLocations}
                 formatLocationLabel={formatLocationLabel}
                 getFlagIcon={getFlagIcon}

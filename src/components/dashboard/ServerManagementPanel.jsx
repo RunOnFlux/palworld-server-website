@@ -2,11 +2,11 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom';
 import Modal from '../common/Modal';
 import CustomSelect from '../common/CustomSelect';
-import { MdMemory, MdSpeed, MdStorage, MdFolder, MdDownload, MdEdit, MdDelete, MdDriveFileRenameOutline, MdUpload, MdFileUpload, MdCheckCircle, MdMoreVert, MdDns, MdPeople, MdLocalOffer, MdAccessTime, MdTimerOff, MdRestore, MdLink, MdCloudUpload, MdInsertDriveFile, MdAttachMoney, MdMonetizationOn, MdCardMembership } from 'react-icons/md';
+import { MdMemory, MdSpeed, MdStorage, MdFolder, MdDownload, MdEdit, MdDelete, MdDriveFileRenameOutline, MdFileUpload, MdCheckCircle, MdMoreVert, MdAccessTime, MdTimerOff, MdRestore, MdLink, MdCloudUpload, MdInsertDriveFile, MdMonetizationOn } from 'react-icons/md';
 import { RiFolderReceivedFill } from 'react-icons/ri';
 import { GrPlan } from 'react-icons/gr';
 import { FaFileImage, FaFileVideo, FaFileAudio, FaFileArchive, FaFileAlt, FaFileCode, FaFilePdf, FaFile } from 'react-icons/fa';
-import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, Plus, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package } from 'lucide-react';
+import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package } from 'lucide-react';
 import EnvironmentTab from './EnvironmentTab';
 import GeolocationTab from './GeolocationTab';
 import HardwareTab from './HardwareTab';
@@ -25,6 +25,9 @@ import secureStorage from '../../utils/secureStorage';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
 import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore, recoverPendingRestores } from '../../utils/appPower';
+import { parseEnvArray } from '../../utils/appSpecHelpers';
+import { findMissingStandardEnv } from '../../config/serverMaintenance';
+import { diagnosePlacement } from '../../utils/nodeCapacity';
 
 // Helper functions for expiration display
 const formatExpiration = (expiresAt) => {
@@ -237,17 +240,58 @@ const ClockSkewScreen = ({ endTime, onDismiss }) => {
  * Management panel for game servers with tabs
  * Simpler version of FluxOS app management
  */
-const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
+const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab = null }) => {
   const { loginTime } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [clockSkewEndTime, setClockSkewEndTime] = useState(null);
 
-  // Reset to overview tab when modal opens
+  // Reset to overview tab when modal opens — unless the caller opened it for a specific
+  // job (e.g. the card's "Add locations" action).
   useEffect(() => {
     if (isOpen) {
-      setActiveTab('overview');
+      setActiveTab(initialTab || 'overview');
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
+
+  // Standard settings this server is missing (servers bought before we started shipping
+  // them). Surfaced as a dot on the Deployment Settings tab so a customer who never opens
+  // that tab still sees there is something to apply. EnvironmentTab refreshes the count
+  // once it has the (possibly decrypted) spec in hand.
+  const [pendingEnvUpdates, setPendingEnvUpdates] = useState(0);
+  // Why the app is running on fewer nodes than it should — almost always a geolocation
+  // narrow enough that the matching nodes are full. Null when locations aren't the problem.
+  const [placementIssue, setPlacementIssue] = useState(null);
+  useEffect(() => {
+    if (!isOpen || !server?.name) return undefined;
+    let cancelled = false;
+    (async () => {
+      let spec = null;
+      try {
+        spec = await apiService.getAppSpecs(server.name);
+        // Enterprise specs ship an empty compose until decrypted — no compose means no
+        // opinion, not "everything is missing".
+        const env = spec?.compose?.[0]?.environmentParameters;
+        if (!cancelled && Array.isArray(env)) {
+          setPendingEnvUpdates(findMissingStandardEnv(parseEnvArray(env)).length);
+        }
+      } catch { /* non-fatal: the tab itself reports the real state */ }
+
+      if (cancelled || !spec?.name) return;
+      try {
+        const locations = await apiService.getAppLocations(server.name).catch(() => []);
+        const running = Array.isArray(locations) ? locations.length : 0;
+        const diagnosis = await diagnosePlacement({
+          geolocation: spec.geolocation,
+          compose: spec.compose,
+          instances: spec.instances || 1,
+          isEnterprise: !!spec.enterprise,
+          running,
+        });
+        if (!cancelled) setPlacementIssue(diagnosis);
+      } catch { /* diagnosis is a bonus — never break the panel over it */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, server?.name]);
 
   // Master Resolution via FDM - Single source of truth for all tabs
   // Uses the same FDM /appips/ endpoint that FluxOS uses for master selection
@@ -1120,6 +1164,15 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
               >
                 <Icon className="w-4 h-4" />
                 {tab.label}
+                {tab.id === 'environment' && pendingEnvUpdates > 0 && (
+                  <span
+                    className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"
+                    title={`${pendingEnvUpdates} recommended ${pendingEnvUpdates === 1 ? 'setting' : 'settings'} available`}
+                  />
+                )}
+                {tab.id === 'geolocation' && placementIssue && placementIssue.severity !== 'waiting' && (
+                  <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title={placementIssue.title} />
+                )}
               </button>
             );
           })}
@@ -1143,6 +1196,40 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
         <div className="flex flex-col items-center justify-center py-16 space-y-4">
           <div className="w-16 h-16 rounded-full border-2 border-transparent border-t-blue-400/70 animate-spin" style={{ animationDuration: '1.5s' }} />
           <p className="text-sm text-gray-400">Locating your server...</p>
+        </div>
+      ) : !masterLocation && !tabWorksOffline && placementIssue && placementIssue.severity !== 'waiting' ? (
+        // The app is not merely slow to answer: it has nowhere to run. Saying "waiting for
+        // domain access" here would be a lie the customer could stare at forever, when the
+        // fix is one tab away.
+        <div className="flex flex-col items-center justify-center py-16 space-y-4">
+          <div className="w-24 h-24 rounded-full bg-amber-500/10 border border-amber-500/25 flex items-center justify-center">
+            <MapPin className="w-12 h-12 text-amber-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-amber-300">{placementIssue.title}</h3>
+          <p className="text-sm text-gray-300 text-center px-4 max-w-lg leading-relaxed">
+            {placementIssue.message}
+          </p>
+          <p className="text-xs text-gray-500 text-center px-4 max-w-lg">
+            Adding a location never moves an existing world — it only widens where your server
+            is allowed to run. Your subscription and settings stay exactly as they are.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+            <button
+              onClick={() => setActiveTab('geolocation')}
+              className="px-6 py-2 text-sm font-semibold text-white rounded-lg transition-colors flex items-center gap-2"
+              style={{ background: 'linear-gradient(90deg,#2196F3,#1B7AC7)', boxShadow: '0 4px 12px rgba(33,150,243,0.3)' }}
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              Add more locations
+            </button>
+            <button
+              onClick={retryResolveMaster}
+              className="px-6 py-2 text-sm text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/30 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
+          </div>
         </div>
       ) : !masterLocation && !tabWorksOffline ? (
         <div className="flex flex-col items-center justify-center py-16 space-y-4">
@@ -1181,6 +1268,27 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
         </div>
       ) : (
         <>
+          {/* Reachable, but running on fewer nodes than it was paid for — the redundancy the
+              customer bought is silently missing, and the cause is the location selection. */}
+          {placementIssue && placementIssue.severity !== 'waiting' && activeTab !== 'geolocation' && activeTab !== 'billing' && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('geolocation')}
+              className="mx-1 mt-0.5 mb-3 w-[calc(100%-0.5rem)] flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 text-left hover:bg-amber-500/[0.12] transition-colors"
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/15">
+                <MapPin className="h-4 w-4 text-amber-400" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-amber-300">{placementIssue.title}</span>
+                <span className="block mt-0.5 text-xs text-amber-200/80">
+                  Running on {placementIssue.running} of {placementIssue.instances} nodes — tap to add more locations.
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-amber-400/70" />
+            </button>
+          )}
+
           {/* Domain sync banner — masterLocation found but domain DNS hasn't propagated yet */}
           {masterLocation && server?.domainReady === false && activeTab !== 'billing' && (
             <div className="mx-1 mt-0.5 mb-3 px-4 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-center gap-3">
@@ -1235,7 +1343,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
           {/* Tab Content - Only render active tab to prevent unnecessary API calls and memory leaks */}
           {activeTab === 'environment' && (
             <div key="environment" className="animate-fade-in">
-              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} />
+              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} onStandardEnvChange={setPendingEnvUpdates} />
             </div>
           )}
           {activeTab === 'geolocation' && (
@@ -1265,7 +1373,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate }) => {
           )}
           {activeTab === 'remote' && (
             <div key="remote" className="animate-fade-in">
-              <RemoteControlTab server={server} masterLocation={masterLocation} onMasterError={retryResolveMaster} />
+              <RemoteControlTab server={server} masterLocation={masterLocation} />
             </div>
           )}
           {/* Terminal stays mounted (WebSocket connection) — hidden via CSS */}
@@ -2193,7 +2301,7 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
 };
 
 // Remote Control Tab - Palworld REST API actions
-const RemoteControlTab = ({ server, masterLocation, onMasterError }) => {
+const RemoteControlTab = ({ server, masterLocation }) => {
   const [adminPassword, setAdminPassword] = useState('');
   const [configLoading, setConfigLoading] = useState(true);
   const [configHasPassword, setConfigHasPassword] = useState(null); // null=loading, true/false
@@ -2325,7 +2433,7 @@ const RemoteControlTab = ({ server, masterLocation, onMasterError }) => {
       setMetrics(m);
       const p = await apiCall('players');
       setPlayers(p.players || []);
-    } catch {} finally {
+    } catch { /* a failed poll keeps the last known values — apiCall surfaces real errors */ } finally {
       setTimeout(() => setIsRefreshing(false), 600);
     }
   };
@@ -2342,7 +2450,8 @@ const RemoteControlTab = ({ server, masterLocation, onMasterError }) => {
   // Cleanup timers on unmount
   const actionTimersRef = useRef([]);
   useEffect(() => {
-    return () => actionTimersRef.current.forEach(t => clearTimeout(t));
+    const timers = actionTimersRef.current;
+    return () => timers.forEach(t => clearTimeout(t));
   }, []);
 
   const doAction = async (action, body = null) => {
