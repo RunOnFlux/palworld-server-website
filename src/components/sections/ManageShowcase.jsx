@@ -81,16 +81,18 @@ const ManageShowcase = () => {
 
   useEffect(() => { start(); return stop; }, [start, stop]);
 
-  // A missing screenshot must not render as an empty frame, and preloading is the only way to
-  // find out — the puzzle grid paints the image as a CSS background, which fails silently.
+  // Probe every screenshot once, up front. Doing it per slide meant the state was still
+  // unknown at the moment the slide appeared, so the placeholder flashed before the image —
+  // and the browser had not cached the file yet either.
   useEffect(() => {
-    const shot = SCREENSHOTS[index];
-    if (!shot.src || failed[shot.src] !== undefined) return;
-    const probe = new Image();
-    probe.onload = () => setFailed((f) => ({ ...f, [shot.src]: false }));
-    probe.onerror = () => setFailed((f) => ({ ...f, [shot.src]: true }));
-    probe.src = shot.src;
-  }, [index, failed]);
+    SCREENSHOTS.forEach(({ src }) => {
+      if (!src) return;
+      const probe = new Image();
+      probe.onload = () => setFailed((f) => (f[src] === false ? f : { ...f, [src]: false }));
+      probe.onerror = () => setFailed((f) => (f[src] === true ? f : { ...f, [src]: true }));
+      probe.src = src;
+    });
+  }, []);
 
   const shot = SCREENSHOTS[index];
   const hasImage = shot.src && failed[shot.src] === false;
