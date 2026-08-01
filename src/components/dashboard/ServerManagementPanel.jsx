@@ -584,10 +584,11 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // (PublicPort=8211) and DISABLE_GENERATE_SETTINGS=true means env vars never
   // rewrite it. A stale PublicPort makes the in-game community browser hand out
   // IP:8211 (unreachable) instead of IP:<externalPort>, so joining fails.
-  // Direct-connect is unaffected either way. On first panel open we patch the
-  // ini's PublicPort to the external game port (ports[0]) on the master (Syncthing
-  // replicates to the slaves) and restart. This runs for EVERY server — NOT gated
-  // on COMMUNITY — so the advertised address is always correct.
+  // Direct-connect is unaffected either way. On EVERY panel open we compare the
+  // ini's PublicPort against the external game port (ports[0]) and, when they differ,
+  // patch it on the master (Syncthing replicates to the slaves) and restart. This runs
+  // for EVERY server — NOT gated on COMMUNITY, and NOT gated on the port being a
+  // randomized one — so the advertised address is always correct.
   //
   // ONLY PublicPort is touched. RCONPort / RESTAPIPort in the ini are the
   // container's INTERNAL bind ports — Flux maps the external ports onto them
@@ -597,8 +598,10 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // Two safeguards, because this stops a container the user did not ask to stop:
   //  - The restart is guaranteed by withAppStopped (finally + retries + unload rescue),
   //    so an unmount, a failed upload or a network blip can never strand the app `exited`.
-  //  - The "done" marker is persisted (localStorage) and attempt-capped, so a server that
+  //  - WRITES are attempt-capped via a persisted (localStorage) marker, so a server that
   //    keeps rewriting its ini gets a bounded number of restarts instead of one per visit.
+  //    Reads are never gated: the comparison must happen on every open, or a port that
+  //    drifts after a successful fix goes unnoticed forever.
   useEffect(() => {
     if (!isOpen || !masterLocation || !server?.name) return;
     const appName = server.name;
@@ -610,9 +613,12 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 
     const reconcile = async () => {
       // 1. Expected PublicPort = the external game port (index 0) actually in use.
-      //    Skip legacy/default apps whose external port is still 8211 (nothing to fix).
+      //    The only reason to skip is not knowing the port: a queued deploy has no on-chain
+      //    spec yet. Emphatically NOT skipped when that port is 8211 — an app deployed
+      //    before port randomization is served on 8211 and its ini still has to say 8211,
+      //    which is exactly the case an earlier "nothing to fix" shortcut here missed.
       const expected = String(externalGamePort(server) || '');
-      if (!expected || expected === '8211') return;
+      if (!expected) return;
 
       // 2. Retried too often? A server that keeps rewriting its ini must not earn a restart
       //    on every visit, so writes stay capped. This deliberately no longer short-circuits
