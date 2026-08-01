@@ -83,6 +83,24 @@ const patchPublicPort = (ini, port) => (
     : ini.replace(/OptionSettings=\(/, `OptionSettings=(PublicPort=${port},`)
 );
 
+// The external game port Flux registered for this app (index 0 of the game component).
+// PublicPort in the ini MUST equal this: it is the address the server hands out to the
+// in-game community browser, and the node only forwards this port to the container's 8211.
+const externalGamePort = (server) => server?.ports?.[0] || server?.compose?.[0]?.ports?.[0];
+
+// Read the live PalWorldSettings.ini off a node. Cache-bypassed on purpose — the node API
+// caches downloads, and acting on a stale copy is exactly how one writer silently reverts
+// another. Returns null (never throws) when the file is missing or not yet generated.
+const fetchIniText = async (nodeBase, appName, component, authHeader) => {
+  try {
+    const url = `${nodeBase}/apps/downloadfile/${appName}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
+    const res = await fetch(url, { headers: { zelidauth: authHeader, 'x-apicache-bypass': true } });
+    if (!res.ok) return null;
+    const text = await res.text();
+    return text && text.includes('OptionSettings=') ? text : null;
+  } catch { return null; }
+};
+
 // Persisted so the marker survives page reloads and panel remounts — the previous
 // in-memory guard reset on every close, which is how one server could be restarted
 // repeatedly across a session. Keyed by port so a redeploy (new random port) re-runs.
@@ -593,12 +611,17 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
     const reconcile = async () => {
       // 1. Expected PublicPort = the external game port (index 0) actually in use.
       //    Skip legacy/default apps whose external port is still 8211 (nothing to fix).
-      const expected = String(server.ports?.[0] || server.compose?.[0]?.ports?.[0] || '');
+      const expected = String(externalGamePort(server) || '');
       if (!expected || expected === '8211') return;
 
-      // 2. Already reconciled, or already retried too often? Never touch the container.
+      // 2. Retried too often? A server that keeps rewriting its ini must not earn a restart
+      //    on every visit, so writes stay capped. This deliberately no longer short-circuits
+      //    on `done`: the ini is re-read every time instead. A sticky "done" flag (a) lives
+      //    in this browser's localStorage only, and (b) hid the case that produced this
+      //    check — a later config save putting the stale PublicPort back — forever.
+      //    Reading is one cache-bypassed GET; only the write stops the container.
       const mark = readPortReconcileMark(appName, expected);
-      if (mark.done || mark.attempts >= PORT_RECONCILE_MAX_ATTEMPTS) return;
+      if (mark.attempts >= PORT_RECONCILE_MAX_ATTEMPTS) return;
 
       // 3. Node + paths (master node; Syncthing replicates the write to the slaves).
       const zelidauth = await secureStorage.getItem('zelidauth');
@@ -612,15 +635,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       await recoverPendingRestores(authHeader, { appName });
 
       const component = server?.version >= 4 && server?.compose?.length > 0 ? server.compose[0].name : 'null';
-      const dlUrl = `${nodeBase}/apps/downloadfile/${appName}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
-      const readIni = async () => {
-        try {
-          const res = await fetch(dlUrl, { headers: { zelidauth: authHeader, 'x-apicache-bypass': true } });
-          if (!res.ok) return null;
-          const text = await res.text();
-          return text && text.includes('OptionSettings=') ? text : null;
-        } catch { return null; }
-      };
+      const readIni = () => fetchIniText(nodeBase, appName, component, authHeader);
 
       // 4. Read the persisted ini — retry a few times in case the container's first
       //    boot is still generating the default config, so it works on first open.
@@ -1850,6 +1865,9 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
     ? server.compose[0].name
     : 'null';
 
+  // Stamped onto PublicPort on every save — see buildFrom in saveConfig.
+  const gamePort = externalGamePort(server);
+
   // Load config file
   useEffect(() => {
     const loadConfig = async () => {
@@ -1924,15 +1942,26 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
       if (!zelidauth) throw new Error('Not authenticated');
       const authHeader = JSON.stringify(zelidauth);
 
-      // Build the file first — a formatting error must never cost the user a stopped server.
-      let content;
-      if (showAdvanced) {
-        content = advancedContent.replace(/OptionSettings=\(\n([\s\S]+?)\n\)/, (_, inner) => {
-          return 'OptionSettings=(' + inner.split('\n').map(l => l.trim()).filter(Boolean).join('') + ')';
-        });
-      } else {
-        content = buildIniContent(settings, originalContent);
-      }
+      // Build against `base` (the ini as it exists on disk) and stamp the port.
+      //
+      // The stamp is not belt-and-braces: `settings` comes from parseIniSettings, which
+      // parses EVERY key in the file — PublicPort included — and buildIniContent writes
+      // every one of them back. So a save doesn't merely carry the editor's snapshot along,
+      // it actively writes that snapshot's PublicPort over whatever is on disk, undoing the
+      // reconcile above. PublicPort is not a user setting: it must equal the external port
+      // Flux registered, or the community browser advertises an address nothing listens on.
+      const buildFrom = (base) => {
+        const built = showAdvanced
+          ? advancedContent.replace(/OptionSettings=\(\n([\s\S]+?)\n\)/, (_, inner) => {
+            return 'OptionSettings=(' + inner.split('\n').map(l => l.trim()).filter(Boolean).join('') + ')';
+          })
+          : buildIniContent(settings, base);
+        return gamePort ? patchPublicPort(built, String(gamePort)) : built;
+      };
+
+      // Build once up front — a formatting error must never cost the user a stopped server.
+      // This copy is only the validation probe; the one actually written is rebuilt below.
+      let content = buildFrom(originalContent);
 
       const uploadPath = encodeURIComponent('appdata/Config/LinuxServer');
       const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${server.name}/${selectedComponent}/${uploadPath}`;
@@ -1945,6 +1974,17 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
         server.name,
         authHeader,
         async () => {
+          // Rebuild on the file as it is with the container down. The editor's snapshot was
+          // taken when the panel opened; the port reconcile, another tab, or Palworld's own
+          // flush on shutdown may have rewritten it since, and keys the snapshot never had
+          // (a game update adding settings) would be dropped by building on the stale copy.
+          // Advanced mode is exempt: there the user is editing the whole file by hand, so
+          // their text is the intent — only the port stamp still applies.
+          if (!showAdvanced) {
+            const fresh = await fetchIniText(nodeBase, server.name, selectedComponent, authHeader);
+            if (fresh) content = buildFrom(fresh);
+          }
+
           const blob = new Blob([content], { type: 'text/plain' });
           const formData = new FormData();
           formData.append('PalWorldSettings.ini', blob);
