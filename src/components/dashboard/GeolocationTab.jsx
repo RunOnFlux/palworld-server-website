@@ -486,33 +486,29 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
         showNav={false}
       />
 
-      {/* Backup reminder — only once there is an actual relocation pending, and right above the
-          button that commits it. Shown permanently it was just noise on a tab people open to
-          look at their locations. */}
-      {dirty && !savedOk && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-start gap-2.5 min-w-0">
-            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-400" />
-            <div className="text-xs leading-relaxed text-amber-200/90">
-              <p className="font-semibold text-amber-300">Back up your server before changing location</p>
-              <p>
-                Moving to a new region redeploys your server on different Flux nodes, so any data
-                that isn’t backed up may be permanently lost. Create a backup and{' '}
-                <strong>download it to your device</strong> first.
-              </p>
-            </div>
+      {/* Backup reminder — always visible, right above the button that commits a relocation. */}
+      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-400" />
+          <div className="text-xs leading-relaxed text-amber-200/90">
+            <p className="font-semibold text-amber-300">Back up your server before changing location</p>
+            <p>
+              Moving to a new region redeploys your server on different Flux nodes, so any data
+              that isn’t backed up may be permanently lost. Create a backup and{' '}
+              <strong>download it to your device</strong> first.
+            </p>
           </div>
-          {onSwitchTab && (
-            <button
-              type="button"
-              onClick={() => onSwitchTab('backup')}
-              className="shrink-0 self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 transition-colors cursor-pointer"
-            >
-              <Database className="w-3.5 h-3.5" /> Open Backup
-            </button>
-          )}
         </div>
-      )}
+        {onSwitchTab && (
+          <button
+            type="button"
+            onClick={() => onSwitchTab('backup')}
+            className="shrink-0 self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 transition-colors cursor-pointer"
+          >
+            <Database className="w-3.5 h-3.5" /> Open Backup
+          </button>
+        )}
+      </div>
 
       <button
         type="button"
