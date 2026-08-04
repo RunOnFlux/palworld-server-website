@@ -2966,6 +2966,161 @@ const TerminalTab = ({ server, isVisible, masterLocation, onMasterError, isPause
 };
 
 // Files Tab - FluxDrive-styled file browser
+// Palworld records the world it boots here, as a bare GUID matching a folder under
+// SaveGames/0/. It lives in GameUserSettings.ini, not PalWorldSettings.ini.
+const GAMEUSER_PATH = 'appdata/Config/LinuxServer/GameUserSettings.ini';
+
+// \h matches horizontal whitespace only. Using \s here would let the pattern cross line
+// breaks: with an empty "DedicatedServerName=" the \s* after "=" swallows the newline and
+// (\S+) captures the *next* key, reporting a world that does not exist and raising a
+// mismatch warning over nothing.
+const H = '[^\\S\\r\\n]';
+const ACTIVE_WORLD_RE = new RegExp(`^${H}*DedicatedServerName${H}*=${H}*(\\S*)${H}*$`, 'm');
+
+const parseActiveWorld = (ini) => {
+  const m = ACTIVE_WORLD_RE.exec(String(ini || ''));
+  return m && m[1] ? m[1] : '';
+};
+
+// Replace the key in place when present. When it is absent the game is running on its
+// implicit default, so the key has to be introduced under the section that owns it —
+// appending to the end of the file would put it in whatever section came last.
+const patchActiveWorld = (ini, guid) => {
+  const text = String(ini || '');
+  if (ACTIVE_WORLD_RE.test(text)) {
+    return text.replace(ACTIVE_WORLD_RE, `DedicatedServerName=${guid}`);
+  }
+  const section = '[/Script/Pal.PalGameLocalSettings]';
+  if (text.includes(section)) {
+    return text.replace(section, `${section}\nDedicatedServerName=${guid}`);
+  }
+  return `${text.replace(/\s*$/, '')}\n\n${section}\nDedicatedServerName=${guid}\n`;
+};
+
+/**
+ * Which world the server actually loads, and the ability to change it.
+ *
+ * Palworld stores every world under SaveGames/0/<GUID>/ and picks one by name from
+ * GameUserSettings.ini. A save brought in from another server keeps its original folder
+ * name, so it lands beside the world the ini points at and the server keeps booting the
+ * original — the classic "restore worked but my world is gone" report.
+ *
+ * Shared by the file browser (which shows the warning, because that is where the folders
+ * are visible and where manual uploads happen) and the backup tab (which only needs to
+ * know which world to read snapshots from).
+ */
+const useWorldAudit = (server, masterLocation, { auto = true } = {}) => {
+  const [worldAudit, setWorldAudit] = useState({ worlds: [], names: [], active: '', mismatch: false });
+  const [activatingWorld, setActivatingWorld] = useState('');
+
+  const component = server?.version >= 4 && server?.compose?.length > 0
+    ? server.compose[0].name
+    : 'null';
+
+  const nodeUrlFor = useCallback((path) => {
+    if (!masterLocation?.ip) return null;
+    const [host, port = 16127] = masterLocation.ip.split(':');
+    return `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io${path}`;
+  }, [masterLocation]);
+
+  const listWorlds = useCallback(async () => {
+    const url = nodeUrlFor(`/apps/getfolderinfo/${server?.name}/${component}/${encodeURIComponent('appdata/SaveGames/0')}`);
+    if (!url) return [];
+    const zelidauth = await secureStorage.getItem('zelidauth');
+    const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth), 'x-apicache-bypass': true } });
+    const data = await res.json();
+    // The GUID alone is unusable for choosing between worlds — they are random hex. The
+    // modified time is what actually tells the owner which one is theirs.
+    return data.status === 'success' && Array.isArray(data.data)
+      ? data.data.filter((w) => w.isDirectory).map((w) => ({ name: w.name, modifiedAt: w.modifiedAt }))
+      : [];
+  }, [nodeUrlFor, server?.name, component]);
+
+  const readActiveWorld = useCallback(async () => {
+    const url = nodeUrlFor(`/apps/downloadfile/${server?.name}/${component}/${encodeURIComponent(GAMEUSER_PATH)}`);
+    if (!url) return { ini: null, active: '' };
+    try {
+      const zelidauth = await secureStorage.getItem('zelidauth');
+      const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth), 'x-apicache-bypass': true } });
+      if (!res.ok) return { ini: null, active: '' };
+      const ini = await res.text();
+      return { ini, active: parseActiveWorld(ini) };
+    } catch { return { ini: null, active: '' }; }
+  }, [nodeUrlFor, server?.name, component]);
+
+  const auditWorlds = useCallback(async () => {
+    if (!masterLocation) return null;
+    const dirs = await listWorlds();
+    const names = dirs.map((d) => d.name);
+    const { active } = await readActiveWorld();
+    // Only worth surfacing when the choice is ambiguous or plainly broken. A single world
+    // the ini does not name is normal — Palworld falls back to it.
+    const mismatch = dirs.length > 1 || (Boolean(active) && dirs.length > 0 && !names.includes(active));
+    // Newest first: after copying a save in, the one you just brought over is usually the
+    // one you want, and it sorts to the top.
+    const worlds = [...dirs].sort((a, b) => new Date(b.modifiedAt || 0) - new Date(a.modifiedAt || 0));
+    const audit = { worlds, names, active, mismatch };
+    setWorldAudit(audit);
+    return audit;
+  }, [masterLocation, listWorlds, readActiveWorld]);
+
+  /**
+   * Point GameUserSettings.ini at a world and bring the server back on it.
+   *
+   * Written while stopped for the same reason the public-port reconciler does it: Palworld
+   * flushes its own settings on shutdown and would overwrite a patch applied to a running
+   * server. The ini is re-read inside the stopped window so the patch lands on whatever the
+   * game just wrote. Save files are never touched — only the ini.
+   */
+  const activateWorld = useCallback(async (guid) => {
+    if (!masterLocation) return;
+    setActivatingWorld(guid);
+    try {
+      const zelidauth = await secureStorage.getItem('zelidauth');
+      const authHeader = JSON.stringify(zelidauth);
+      const nodeBase = nodeApiBase(masterLocation.ip);
+      let persisted = false;
+
+      await withAppStopped(nodeBase, server.name, authHeader, async () => {
+        const { ini } = await readActiveWorld();
+        if (!ini) throw new Error('GameUserSettings.ini could not be read');
+
+        const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${server.name}/${component}/${encodeURIComponent('appdata/Config/LinuxServer')}`;
+        const fd = new FormData();
+        fd.append('GameUserSettings.ini', new Blob([patchActiveWorld(ini, guid)], { type: 'text/plain' }));
+        const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
+        if (!up.ok) throw new Error(`Upload failed: HTTP ${up.status}`);
+
+        const verify = await readActiveWorld();
+        persisted = verify.active === guid;
+      }, {
+        onPhase: (phase) => {
+          if (phase === 'stopping') toast('Switching active world — restarting your server…', { icon: '🌍', duration: 6000 });
+        },
+      });
+
+      if (!persisted) throw new Error('The change did not stick — the server may have rewritten the file');
+      toast.success('Active world switched');
+      await auditWorlds();
+    } catch (e) {
+      toast.error(e?.name === 'AppBusyError'
+        ? 'Another operation is running on this server — try again in a moment'
+        : (e.message || 'Could not switch the active world'));
+    } finally {
+      setActivatingWorld('');
+    }
+  }, [masterLocation, server?.name, component, readActiveWorld, auditWorlds]);
+
+  // Consumers that only call auditWorlds() themselves (the backup tab, which reads
+  // audit.active to pick a world) opt out, so opening that tab does not fire two extra
+  // requests whose result nothing renders.
+  useEffect(() => {
+    if (auto) auditWorlds().catch(() => {});
+  }, [auto, auditWorlds]);
+
+  return { worldAudit, auditWorlds, activateWorld, activatingWorld };
+};
+
 const FilesTab = ({ server, masterLocation, onMasterError }) => {
   const [currentPath, setCurrentPath] = useState('appdata');
   const [files, setFiles] = useState([]);
@@ -3003,6 +3158,10 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
     return localStorage.getItem('fileViewMode') || 'grid';
   });
   // masterLocation is passed down from parent - no DNS resolution needed
+
+  // The file browser is where save folders are visible and where a manual restore happens,
+  // so both the multi-world warning and the switch live here rather than in the backup tab.
+  const { worldAudit, activateWorld, activatingWorld } = useWorldAudit(server, masterLocation);
 
   // Helper function to check for unauthorized errors
   const checkAuthError = (response, errorMsg = '') => {
@@ -3890,6 +4049,93 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
           background: #059669;
         }
       `}</style>
+
+      {/* Palworld holds the world in memory and flushes it on shutdown, so anything written
+          to a save folder while the server runs is overwritten at the next autosave. */}
+      <div className="px-3 sm:px-6 py-2.5 bg-gradient-to-r from-blue-500/10 to-transparent border-b border-blue-500/20">
+        <div className="flex items-center gap-3">
+          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/25 shrink-0">
+            <Info className="w-4 h-4 text-blue-300" />
+          </span>
+          <div className="min-w-0 leading-snug">
+            <p className="text-xs font-semibold text-blue-200">
+              Stop the server before restoring saves by hand
+            </p>
+            <p className="text-[11px] text-blue-300/70">
+              Uploads to <code className="text-blue-200/90">SaveGames</code> are overwritten by the game&apos;s next autosave.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* A save brought in from another server keeps its own world GUID, so it lands beside
+          the world the server boots instead of replacing it. */}
+      {worldAudit.mismatch && (
+        <div className="px-3 sm:px-6 py-3 bg-gradient-to-r from-amber-500/10 to-transparent border-b border-amber-500/20">
+          <div className="flex items-start gap-3">
+            <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/25 shrink-0">
+              <AlertTriangle className="w-4 h-4 text-amber-300" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="leading-snug">
+                <p className="text-xs font-semibold text-amber-200">
+                  {worldAudit.worlds.length > 1
+                    ? `${worldAudit.worlds.length} worlds found — the server loads only one`
+                    : 'The configured world does not exist on disk'}
+                </p>
+                <p className="text-[11px] text-amber-300/70">
+                  A save copied from another server keeps its own folder name, so it sits beside the active world instead of replacing it.
+                </p>
+              </div>
+
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {worldAudit.worlds.map(({ name: guid, modifiedAt }) => {
+                  const isActive = guid === worldAudit.active;
+                  return (
+                    <div
+                      key={guid}
+                      className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${
+                        isActive
+                          ? 'border-emerald-500/30 bg-emerald-500/10'
+                          : 'border-gray-600/50 bg-black/25'
+                      }`}
+                    >
+                      {isActive && <MdCheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />}
+                      <div className="min-w-0 leading-snug">
+                        {/* Full GUID: two random hex names are impossible to tell apart once
+                            truncated, and this is the field the choice is made on. */}
+                        <p className="font-mono text-[11px] text-gray-200 break-all">{guid}</p>
+                        <p className="text-[10px] text-gray-500">
+                          {modifiedAt
+                            ? `last saved ${new Date(modifiedAt).toLocaleString()}`
+                            : 'no save date'}
+                        </p>
+                      </div>
+                      {!isActive && (
+                        <button
+                          type="button"
+                          onClick={() => activateWorld(guid)}
+                          disabled={Boolean(activatingWorld)}
+                          className="shrink-0 px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-black text-[11px] font-semibold transition-colors cursor-pointer"
+                        >
+                          {activatingWorld === guid ? 'Switching…' : 'Load'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!worldAudit.names.includes(worldAudit.active) && worldAudit.active && (
+                <p className="text-[11px] text-amber-300/70 mt-2">
+                  The config points at <code className="text-amber-200/90">{worldAudit.active}</code> — no such folder, so the server starts an empty world.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-3 sm:px-6 py-2 bg-gray-700/50 border-b border-gray-700">
         <div className="flex items-center gap-2 min-w-0">
@@ -5100,6 +5346,11 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
   const [undoStamp, setUndoStamp] = useState('');   // stamp of the save a restore replaced
   const [undoing, setUndoing] = useState(false);
 
+  // Snapshots must be read from the world the server actually boots, not whichever folder
+  // happens to be listed first. The warning UI lives in the file browser, where the folders
+  // are visible — this tab only consumes the audit.
+  const { auditWorlds } = useWorldAudit(server, masterLocation, { auto: false });
+
   const snapshotComponent = server?.version >= 4 && server?.compose?.length > 0
     ? server.compose[0].name
     : 'null';
@@ -5147,7 +5398,12 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
     try {
       // The world folder is a GUID the game picks, so it has to be discovered.
       const worlds = await listFolder('appdata/SaveGames/0');
-      const guid = worlds.find((w) => w.isDirectory)?.name;
+      // Prefer the world the server actually boots. Taking the first directory silently
+      // operated on an arbitrary world once a second one existed — exactly the state a
+      // cross-server restore leaves behind.
+      const audit = await auditWorlds();
+      const dirs = worlds.filter((w) => w.isDirectory).map((w) => w.name);
+      const guid = (audit?.active && dirs.includes(audit.active)) ? audit.active : dirs[0];
       if (!guid) { setSnapshots([]); return; }
       setWorldGuid(guid);
 
@@ -5168,7 +5424,7 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
     } finally {
       setLoadingSnapshots(false);
     }
-  }, [masterLocation, listFolder]);
+  }, [masterLocation, listFolder, auditWorlds]);
 
   useEffect(() => {
     if (restoreTab === 'snapshots') loadSnapshots();
@@ -5403,7 +5659,10 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
               create: +backupItem.create,
               file_size: backupItem.size,
               file: `${backupPath}/${backupItem.name}`,
-              file_name: `${component}_${backupItem.create}.tar.gz`,
+              // The archive's real name on disk, matching fluxos-frontend's
+              // `file.split('/').pop()`. A timestamped name here meant a downloaded
+              // backup could never be uploaded back — the restore reads a fixed path.
+              file_name: backupItem.name,
             });
             console.log(`📝 Backup item stored:`, {
               component,
@@ -5458,7 +5717,10 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
                 create: checkpoint.timestamp,
                 file_size: comp.file_size,
                 file: comp.file_url, // Use file_url for FluxDrive backups
-                file_name: `${comp.component}_${checkpoint.timestamp}.tar.gz`,
+                // Same scheme as fluxos-frontend: the archive's real name, not a
+                // timestamped one. Keeping it means a downloaded file can be handed
+                // straight back to the Upload tab.
+                file_name: `backup_${String(comp.component || '').toLowerCase()}.tar.gz`,
                 source: 'fluxdrive', // Mark as FluxDrive backup
                 file_url: comp.file_url, // Keep the download URL
                 checkpoint_id: checkpoint.timestamp, // For deletion
@@ -5776,18 +6038,42 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
       const compList = server.compose?.length > 0
         ? server.compose.map(comp => comp.name)
         : availableComponents;
+
+      // FluxDrive reports a component name that does not match the app spec — its inventory
+      // returns "palworldpalworld" for a component the spec calls "palworld", and the
+      // official fluxos-frontend renders the same string, so it originates in the backend.
+      // Comparing it literally left every entry restore:false, and appendRestoreTask then
+      // rejects the whole job with "No restore jobs..." before it does anything.
+      const targetComponent = (() => {
+        const reported = backupFile.component || '';
+        if (compList.includes(reported)) return reported;
+        // Longest prefix wins. With components like ["web", "webapi"] a first-match rule
+        // would resolve "webapi…" to "web" and restore the wrong volume — Palworld has a
+        // single component, but this block gets copied between the game panels.
+        const prefixed = compList
+          .filter((name) => name && reported.startsWith(name))
+          .sort((a, b) => b.length - a.length)[0];
+        if (prefixed) return prefixed;
+        // Single-component apps (Palworld is one) have no ambiguity left to resolve.
+        return compList.length === 1 ? compList[0] : '';
+      })();
+
+      if (!targetComponent) {
+        throw new Error(`Could not match backup component "${backupFile.component}" to this app`);
+      }
+
       const postBody = {
         appname: server.name,
         type: isFluxDrive ? 'remote' : 'local',
         restore: compList.map(name => ({
           component: name,
-          restore: name === backupFile.component,
+          restore: name === targetComponent,
           // For FluxDrive, use URL; for local, use filepath
           ...(isFluxDrive
-            ? { url: name === backupFile.component ? backupFile.file_url : '' }
-            : { filepath: name === backupFile.component ? backupFile.file : '' }
+            ? { url: name === targetComponent ? backupFile.file_url : '' }
+            : { filepath: name === targetComponent ? backupFile.file : '' }
           ),
-          file_size: name === backupFile.component ? backupFile.file_size : 0
+          file_size: name === targetComponent ? backupFile.file_size : 0
         }))
       };
 
@@ -5861,10 +6147,14 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
     const firstComponent = availableComponents[0] || server.compose?.[0]?.name || server.name;
+    // Resolve the upload name at selection, the way fluxos-frontend does, so the queue
+    // shows what will actually be written. Deciding it inside the upload loop meant the
+    // list said "mysave.tar.gz" while the node received "backup_palworld.tar.gz".
     const newFiles = files.map(file => ({
       file,
       component: firstComponent,
-      name: file.name,
+      name: `backup_${String(firstComponent).toLowerCase()}.tar.gz`,
+      originalName: file.name,
       size: file.size
     }));
     setUploadFiles(prev => [...prev, ...newFiles]);
@@ -5887,6 +6177,32 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
     if (uploadFiles.length === 0) {
       setRestoreProgress('⚠️ Please select files to upload');
       setTimeout(() => setRestoreProgress(''), 3000);
+      return;
+    }
+
+    // Every archive for a component is uploaded under the same fixed name, so a second
+    // file for the same component would silently overwrite the first. The restore list
+    // below picks a component's file with .find(), which would then point at a different
+    // archive than the one actually on disk. Refuse instead of restoring the wrong world.
+    const perComponent = uploadFiles.reduce((acc, f) => {
+      acc[f.component] = (acc[f.component] || 0) + 1;
+      return acc;
+    }, {});
+    const duplicated = Object.keys(perComponent).filter((c) => perComponent[c] > 1);
+    if (duplicated.length) {
+      setRestoreProgress(`⚠️ Select only one archive per component — ${duplicated.join(', ')} has more than one`);
+      setTimeout(() => setRestoreProgress(''), 6000);
+      return;
+    }
+
+    // The picker filters on .tar.gz, but drag-and-drop and "All files" bypass it. FluxOS
+    // deletes appdata before it ever looks at the archive, so a wrong file type costs the
+    // user their world rather than producing an error.
+    // Checked against the file the user picked, not the name it will be sent under.
+    const badType = uploadFiles.find((f) => !/\.tar\.gz$/i.test(f.originalName || f.name));
+    if (badType) {
+      setRestoreProgress(`⚠️ "${badType.originalName || badType.name}" is not a .tar.gz archive`);
+      setTimeout(() => setRestoreProgress(''), 6000);
       return;
     }
 
@@ -5922,7 +6238,12 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
         formData.append('file', fileItem.file);
 
         const [host, port = 16127] = masterLocation.ip.split(':');
-        const filename = encodeURIComponent(fileItem.name);
+        // Fixed at selection (see handleFileSelect) — appendRestoreTask reads
+        // <mount>/backup/upload/backup_<component>.tar.gz and nothing rewrites the name on
+        // the way in, unlike the remote branch which passes rename=true to
+        // downloadFileFromUrl. Sending the user's own filename put the archive beside the
+        // name the restore looks for, and the restore then failed *after* deleting appdata.
+        const filename = fileItem.name;
         const uploadUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/ioutils/fileupload/backup/${server.name}/${fileItem.component}/null/${filename}`;
 
         await new Promise((resolve, reject) => {
@@ -6674,8 +6995,15 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
               {uploadFiles.map((file, index) => (
                 <div key={index} className="p-3 bg-gray-800/50 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex-1">
-                      <p className="text-sm text-white">{file.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white truncate">{file.originalName || file.name}</p>
+                      {/* The archive is written under a fixed name the restore reads, so
+                          show it rather than letting the upload rename things silently. */}
+                      {file.originalName && file.originalName !== file.name && (
+                        <p className="text-xs text-gray-500 truncate">
+                          uploads as <span className="font-mono text-gray-400">{file.name}</span>
+                        </p>
+                      )}
                       <p className="text-xs text-gray-400">{file.component} - {formatFileSize(file.size)}</p>
                     </div>
                     <button
