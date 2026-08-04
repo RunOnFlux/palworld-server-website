@@ -6,7 +6,7 @@ import { MdMemory, MdSpeed, MdStorage, MdFolder, MdDownload, MdEdit, MdDelete, M
 import { RiFolderReceivedFill } from 'react-icons/ri';
 import { GrPlan } from 'react-icons/gr';
 import { FaFileImage, FaFileVideo, FaFileAudio, FaFileArchive, FaFileAlt, FaFileCode, FaFilePdf, FaFile } from 'react-icons/fa';
-import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package } from 'lucide-react';
+import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package } from 'lucide-react';
 import EnvironmentTab from './EnvironmentTab';
 import GeolocationTab from './GeolocationTab';
 import HardwareTab from './HardwareTab';
