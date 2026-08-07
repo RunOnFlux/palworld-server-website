@@ -507,13 +507,20 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
     if (masterLocation && postReinstall) setPostReinstall(false);
   }, [masterLocation, postReinstall]);
 
-  // Auto-retry master resolution every 15s while in postReinstall or domain not ready
+  // Auto-retry master resolution every 15s whenever the panel is working from a degraded
+  // answer: no master at all, or a master that came only from the container probe because FDM
+  // had nothing to say. That second case cannot key on `masterLocation` — it is always set
+  // there, by construction — and FDM drops an app for the couple of minutes a restart takes,
+  // so without a retry the "load balancer isn't routing here" banner outlives the outage that
+  // raised it for as long as the panel stays open.
   useEffect(() => {
-    if (masterLocation || !isOpen) return;
-    if (!postReinstall && server?.domainReady !== false) return;
+    if (!isOpen) return;
+    const noMaster = !masterLocation && (postReinstall || server?.domainReady === false);
+    const staleRouting = !!masterLocation && !domainRouted;
+    if (!noMaster && !staleRouting) return;
     const id = setInterval(retryResolveMaster, 15000);
     return () => clearInterval(id);
-  }, [postReinstall, masterLocation, isOpen, retryResolveMaster, server?.domainReady]);
+  }, [postReinstall, masterLocation, domainRouted, isOpen, retryResolveMaster, server?.domainReady]);
 
   // Clear postReinstall when panel closes
   useEffect(() => {
@@ -1785,7 +1792,7 @@ const PALWORLD_SETTINGS = [
   { key: 'DropItemMaxNum', label: 'Max Dropped Items', type: 'number', default: '3000', description: 'Maximum dropped items in world' },
   { key: 'DropItemAliveMaxHours', label: 'Drop Item Hours', type: 'number', default: '1.000000', step: '0.5', description: 'Hours dropped items persist' },
   { key: 'PalEggDefaultHatchingTime', label: 'Egg Hatch Time', type: 'number', default: '72.000000', step: '1', description: 'Default egg hatching time (hours)' },
-  { key: 'AutoSaveSpan', label: 'Auto Save Interval', type: 'number', default: '30.000000', step: '5', description: 'Auto save interval (minutes)' },
+  { key: 'AutoSaveSpan', label: 'Auto Save Interval', type: 'number', default: '30.000000', step: '5', description: 'Auto save interval (seconds)' },
   { key: 'bIsUseBackupSaveData', label: 'Backup Save Data', type: 'toggle', default: 'True', description: 'Enable backup save data' },
   { key: 'SupplyDropSpan', label: 'Supply Drop Interval', type: 'number', default: '180', description: 'Supply drop interval (seconds)' },
   { key: 'bEnableDefenseOtherGuildPlayer', label: 'Defense Other Guild', type: 'toggle', default: 'False', description: 'Defend against other guild players' },
