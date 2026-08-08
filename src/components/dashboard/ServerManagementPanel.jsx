@@ -450,6 +450,15 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 
   // Resolve master when panel opens or server locations change
   // Don't depend on full `server` — it changes on every status update and would abort in-flight resolves
+  //
+  // Keyed on the location IPs rather than how many there are: when FluxOS relocates the app
+  // or the load balancer promotes a different instance, the count is unchanged, so the panel
+  // would keep managing the node it resolved on open. Silently — a node that still answers
+  // never raises the TypeError that onMasterError depends on, so config saves, uploads and
+  // backups would land on the instance that is no longer serving players.
+  // Sorted: the API does not promise a stable order, and an order flip would otherwise read
+  // as a location change and abort an in-flight resolve on every status poll.
+  const locationKey = (server?.locations || []).map((l) => l?.ip).sort().join(',');
   useEffect(() => {
     if (isOpen) {
       masterAbortRef.current?.abort();
@@ -460,7 +469,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
     }
     return () => masterAbortRef.current?.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, server?.name, server?.locations?.length]);
+  }, [isOpen, server?.name, locationKey]);
 
   const [isRestarting, setIsRestarting] = useState(false);
   const [isReinstalling, setIsReinstalling] = useState(false);
@@ -515,12 +524,20 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // raised it for as long as the panel stays open.
   useEffect(() => {
     if (!isOpen) return;
-    const noMaster = !masterLocation && (postReinstall || server?.domainReady === false);
     const staleRouting = !!masterLocation && !domainRouted;
-    if (!noMaster && !staleRouting) return;
-    const id = setInterval(retryResolveMaster, 15000);
+    // Nothing resolved at all — deploying, relocating, or every location is down. Retry
+    // regardless of postReinstall/domainReady: those only narrowed which outages recovered
+    // on their own, and the panel is unusable until one does.
+    if (masterLocation && !staleRouting) return;
+    const id = setInterval(() => {
+      // Never restart a resolve that is still running. Probing the locations is sequential and
+      // can outlast the 15s tick, and retryResolveMaster aborts whatever is in flight — so a
+      // slow set of nodes would be cancelled and restarted forever, never reaching an answer.
+      if (masterResolvingRef.current) return;
+      retryResolveMaster();
+    }, 15000);
     return () => clearInterval(id);
-  }, [postReinstall, masterLocation, domainRouted, isOpen, retryResolveMaster, server?.domainReady]);
+  }, [masterLocation, domainRouted, isOpen, retryResolveMaster]);
 
   // Clear postReinstall when panel closes
   useEffect(() => {
