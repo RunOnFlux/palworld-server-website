@@ -164,27 +164,38 @@ export const pagesContent = {
     title: 'Palworld Dedicated Server Requirements (CPU, RAM, Ports)',
     metaTitle: 'Palworld 1.0 Dedicated Server Requirements (CPU, RAM, Ports)',
     description:
-      'Palworld 1.0 dedicated server requirements: RAM and CPU by player count (up to 32), ports 8211 UDP and 8212 TCP, disk space. Skip setup — deploy from $2.61/mo.',
+      'Palworld dedicated server requirements: Pocketpair officially requires 8GB RAM and 4+ cores, recommends 16GB. Real sizing by player count, ports 8211 UDP / 8212 TCP, and the SSD warning most guides miss.',
     h1: 'Palworld Dedicated Server Requirements',
     lead:
-      'A Palworld dedicated server is CPU- and RAM-hungry, and its footprint grows as players build bases and capture Pals. This page covers exactly how much RAM and CPU you need for your player count, the ports you must open, and how much disk space to plan for.',
+      'Pocketpair officially requires 8GB of RAM and four CPU cores for a Palworld dedicated server, and recommends 16GB. But a four-player co-op world and a 32-player community server are not the same machine, so this page gives both: the official specification, and what each player count actually needs in practice — plus the ports to open, the disk warning most guides skip, and how the footprint grows as bases and Pals accumulate.',
     breadcrumbs: [
       { name: 'Home', url: '/' },
       { name: 'Server Requirements', url: '/server-requirements' },
     ],
     body: [
-      { type: 'h2', text: 'How much RAM does a Palworld server need?' },
-      { type: 'p', text: 'RAM is the most important resource for a Palworld dedicated server, and requirements went up with the 1.0 release: worlds are bigger (Sky Islands, 70+ new Pals) and Pocketpair now recommends 16GB for a full server. Real-world usage also climbs as more players join and as bases, captured Pals, and world objects accumulate, so a long-running world uses noticeably more memory than a freshly created one.' },
-      { type: 'table', head: ['Plan / RAM', 'Recommended players', 'Best for'], rows: [
-        ['5GB RAM', 'Up to 4 players', 'Small co-op group, casual play'],
-        ['8GB RAM', 'Up to 8 players', 'Friends group, regular sessions'],
-        ['12GB RAM', 'Up to 16 players', 'Medium group, active base building'],
-        ['16GB RAM', 'Up to 32 players', 'Full-size community server (max players)'],
+      { type: 'h2', text: 'The official Palworld server requirements' },
+      { type: 'p', text: 'Start with what Pocketpair publishes, because it is the number the game is tested against and it is stricter than most hosting pages admit:' },
+      { type: 'table', head: ['Resource', 'Pocketpair\'s official requirement'], rows: [
+        ['RAM', '8GB required; 16GB recommended, and more than 32GB preferred for larger servers'],
+        ['CPU', '4 cores or more'],
+        ['Storage', 'An SSD is strongly recommended — Pocketpair warns that low-performance storage can corrupt save data'],
+        ['Ports', 'UDP 8211 (default, changeable)'],
+        ['OS', 'Windows 64-bit, or Linux 64-bit (Ubuntu, AlmaLinux and similar)'],
       ] },
-      { type: 'p', text: 'These tiers map directly to the Flux hosting plans. If you are self-hosting, treat them as a guide: 5GB is a practical floor for a small co-op world on 1.0, and you should provision 16GB or more before opening a public 32-player server.' },
+      { type: 'p', text: 'The 8GB figure is a floor rather than a target. Pocketpair notes that a server will boot below it but becomes more likely to run out of memory, and memory use climbs steadily as players build bases, capture Pals, and fill the world with objects — a long-running 1.0 world uses noticeably more than a freshly created one.' },
+
+      { type: 'h2', text: 'How much RAM does a Palworld server need in practice?' },
+      { type: 'p', text: 'Official minimums are written for a single spec that has to cover every case. Sizing by player count is more useful, so the table below is how we allocate memory across our own hosting plans — our operational sizing, not Pocketpair\'s specification:' },
+      { type: 'table', head: ['RAM', 'Players it comfortably supports', 'Best for'], rows: [
+        ['5GB', 'Up to 4 players', 'Small co-op group, casual play'],
+        ['8GB', 'Up to 8 players', 'Friends group, regular sessions'],
+        ['12GB', 'Up to 16 players', 'Medium group, active base building'],
+        ['16GB', 'Up to 32 players', 'Full-size community server (max players)'],
+      ] },
+      { type: 'p', text: 'The 5GB tier sits below the official 8GB requirement deliberately: a four-player co-op world on a managed instance with dedicated memory runs comfortably there, which is why the entry plan exists. If you are opening a public server, or you expect the world to run for months, take Pocketpair\'s advice over ours and start at 16GB. Self-hosting on a shared machine, where other processes compete for memory, is also a good reason to stick to the official floor.' },
 
       { type: 'h2', text: 'CPU requirements' },
-      { type: 'p', text: 'Palworld\'s server process benefits from strong single-thread performance. The simulation — Pal AI, base automation, and world physics — is sensitive to per-core speed, so a modern CPU with good single-core throughput matters more than a high core count. On a managed Flux plan the vCPU allocation scales with the plan tier, so a larger player cap comes with more CPU headroom automatically.' },
+      { type: 'p', text: 'Pocketpair asks for four cores or more. Beyond that count, per-core speed is what you feel: the simulation — Pal AI, base automation, and world physics — is sensitive to single-thread performance, so a modern CPU with good per-core throughput does more for tick rate than a high core count does. On a managed Flux plan the vCPU allocation scales with the plan tier, so a larger player cap comes with more CPU headroom automatically.' },
 
       { type: 'h2', text: 'Which ports does a Palworld dedicated server use?' },
       { type: 'p', text: 'Two ports matter. Get these wrong and players cannot connect — this is the single most common reason a Palworld server does not show up.' },
@@ -195,17 +206,18 @@ export const pagesContent = {
       { type: 'p', text: 'On a Flux-hosted server these ports are exposed for you at deploy time, so there is no router or firewall configuration to do. If you self-host, forward UDP 8211 (and TCP 8212 if you want the admin API) on both your router and OS firewall.' },
 
       { type: 'h2', text: 'Disk space and saves' },
-      { type: 'p', text: 'The Palworld dedicated server files are a few gigabytes, and the save data grows with world size, base count, and player activity. Plan for enough SSD/NVMe headroom to hold the server build plus a growing world and a couple of backups. Managed Flux plans include SSD/NVMe storage sized to the plan, and you can take on-demand backups and restore them with one click from the dashboard.' },
+      { type: 'p', text: 'The Palworld dedicated server files are a few gigabytes, and the save data grows with world size, base count, and player activity. Plan for enough headroom to hold the server build plus a growing world and a couple of backups. What matters more than capacity is the kind of disk: Pocketpair explicitly warns that low-performance storage can corrupt save data, which makes an SSD a correctness requirement here rather than a speed upgrade. Managed Flux plans include SSD/NVMe storage sized to the plan, and you can take on-demand backups and restore them with one click from the dashboard.' },
 
       { type: 'h2', text: 'Network and uptime' },
       { type: 'p', text: 'A public server needs stable bandwidth and, ideally, DDoS protection — a real concern for any exposed game server. Self-hosting from a home connection exposes your IP and offers no protection. Every Palworld server on Flux includes DDoS protection at no extra cost and runs on a distributed network for 99.9% uptime, so the world stays online without tying up your own machine.' },
       { type: 'cta', text: 'See Palworld hosting plans and pricing →', href: '/pricing' },
     ],
     faq: [
-      { question: 'How much RAM do I need for a Palworld dedicated server?', answer: 'Since the 1.0 update: at least 5GB for small co-op groups up to 4 players, 8GB for up to 8, 12GB for up to 16, and 16GB or more for a full 32-player server. Memory use grows as bases and captured Pals accumulate, so size up for long-running worlds.' },
+      { question: 'How much RAM do I need for a Palworld dedicated server?', answer: 'Pocketpair officially requires 8GB and recommends 16GB, with more than 32GB preferred for larger servers. By player count in practice: 5GB is enough for a small co-op group of up to 4 on a managed instance, 8GB for up to 8, 12GB for up to 16, and 16GB or more for a full 32-player server. Memory use grows as bases and captured Pals accumulate, so size up for long-running worlds.' },
       { question: 'What ports does a Palworld server need?', answer: 'UDP port 8211 for game traffic (required) and TCP port 8212 for the optional REST admin API.' },
-      { question: 'How many CPU cores does a Palworld server need?', answer: 'Palworld favors strong single-core performance over many cores. A modern CPU with good per-core speed handles the Pal AI and base simulation best; managed plans scale vCPU with the player tier.' },
-      { question: 'How much disk space does a Palworld server use?', answer: 'The server build is a few gigabytes and the save grows with world size and base count. Allow headroom for the build plus a growing world and backups.' },
+      { question: 'What operating system does a Palworld dedicated server need?', answer: 'Pocketpair supports 64-bit Windows and 64-bit Linux (Ubuntu, AlmaLinux and similar). On managed hosting the OS is not something you choose or maintain — the server runs in a prepared Linux container.' },
+      { question: 'How many CPU cores does a Palworld server need?', answer: 'Pocketpair asks for four cores or more. Past that, Palworld favors strong single-core performance over extra cores — a modern CPU with good per-core speed handles the Pal AI and base simulation best. Managed plans scale vCPU with the player tier.' },
+      { question: 'How much disk space does a Palworld server use?', answer: 'The server build is a few gigabytes and the save grows with world size and base count. Allow headroom for the build plus a growing world and backups. Use an SSD: Pocketpair warns that low-performance storage can corrupt save data.' },
     ],
     related: ['setup-guide', 'pricing', 'server-settings', 'join-server'],
   },
