@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Rocket, XCircle } from 'lucide-react';
+import { Rocket, XCircle, AlertTriangle } from 'lucide-react';
 import Modal from '../common/Modal';
 import { useAuth } from '../../context/AuthContext';
 import stripeService from '../../services/stripeService';
@@ -10,7 +10,7 @@ import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walle
 import marketplaceService from '../../services/marketplaceService';
 import { withModsMount } from '../../config/modsConfig';
 import { defaultRebootSettings, buildRebootEnv } from '../../config/serverMaintenance';
-import { OS_RESERVE, IP_HEADROOM, REGION_IP_HEADROOM, capacityForGeolocation, probeFreeIpCount } from '../../utils/nodeCapacity';
+import { OS_RESERVE, capacityForGeolocation, probeFreeIpCount } from '../../utils/nodeCapacity';
 import { applyRandomExternalPorts, registerAppSpecWithPortRetry, palworldGamePort } from '../../utils/appSpecHelpers';
 import geolocationData from '../../utils/geolocation';
 import toast from 'react-hot-toast';
@@ -455,12 +455,17 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   // Build the selectable continents/countries from the raw node list, filtered by:
   //   1. hardware — node's usable resources (after OS reserve) must fit the plan
   //   2. enterprise — node must report an arcaneVersion when the app is enterprise
-  //   3. availability gate — a location only qualifies if it has enough UNIQUE public
-  //      IPs (not nodes) to place every instance WITH SPARE (see IP_HEADROOM): the
-  //      node list tells us a node is big enough, never whether it is already full,
-  //      and a location sized exactly to the instance count leaves no room for that.
-  //      We surface both counts so the user sees real redundancy.
-  const computeAvailability = useCallback((locationData, requiredInstances) => {
+  //
+  // And by nothing else. A location used to be hidden unless it alone held enough unique
+  // IPs for every instance with spare, which asks the wrong question: FluxOS places into
+  // the POOL of allowed locations, so Portugal's 2 IPs plus Spain's 20 are 22 candidates
+  // and the app places fine. Judging each location in isolation hid perfectly good
+  // selections — and made "prefer Iberia" impossible to express at all.
+  //
+  // The judgement now lives where placement actually happens: on the selection as a whole
+  // (see `capacity` below), inline while picking and again as a confirmation on Continue.
+  // Each option still carries its node and IP counts, so a thin one shows as thin.
+  const computeAvailability = useCallback((locationData) => {
     const nodes = locationData?.nodes;
     if (!nodes) return;
 
@@ -492,27 +497,24 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       rr.nodeCount++; if (n.ip) rr.ips.add(n.ip);
     });
 
-    // Continents — gate on unique IPs >= instances + headroom
+    // Every continent with at least one node that fits — the aggregates are built from
+    // fitting nodes only, so being in the map is the whole qualification.
     const continents = [];
     contAgg.forEach((v, code) => {
-      const ipCount = v.ips.size;
-      if (ipCount >= requiredInstances + IP_HEADROOM && CONTINENT_NAMES[code]) {
-        continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount });
+      if (CONTINENT_NAMES[code]) {
+        continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount: v.ips.size });
       }
     });
     continents.sort((a, b) => b.ipCount - a.ipCount);
     setAvailableContinents(continents);
 
-    // Countries for the selected continent — same IP gate
+    // Countries for the selected continent
     if (geolocationForm.continent) {
       const countries = [];
       ctryAgg.forEach((v, key) => {
         const [cont, code] = key.split('_');
         if (cont !== geolocationForm.continent) return;
-        const ipCount = v.ips.size;
-        if (ipCount >= requiredInstances + IP_HEADROOM) {
-          countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount });
-        }
+        countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount: v.ips.size });
       });
       countries.sort((a, b) => b.ipCount - a.ipCount);
       setAvailableCountries(countries);
@@ -527,11 +529,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       const regions = [];
       regAgg.forEach((v, key) => {
         if (!key.startsWith(prefix)) return;
-        const ipCount = v.ips.size;
-        // Stricter than the country gate — see REGION_IP_HEADROOM.
-        if (ipCount >= requiredInstances + REGION_IP_HEADROOM) {
-          regions.push({ code: key.slice(prefix.length), name: key.slice(prefix.length), nodeCount: v.nodeCount, ipCount });
-        }
+        regions.push({ code: key.slice(prefix.length), name: key.slice(prefix.length), nodeCount: v.nodeCount, ipCount: v.ips.size });
       });
       regions.sort((a, b) => b.ipCount - a.ipCount);
       setAvailableRegions(regions.length >= MIN_REGIONS_TO_OFFER ? regions : []);
@@ -540,47 +538,65 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     }
   }, [planHardware, isEnterprise, geolocationForm.continent, geolocationForm.country, getCountryName]);
 
-  // Recompute whenever the node list, instance count, plan hardware, enterprise flag
-  // or selected continent changes (all captured via computeAvailability's identity).
+  // Recompute whenever the node list, plan hardware, enterprise flag or selected
+  // continent changes (all captured via computeAvailability's identity). The instance
+  // count no longer belongs here: it is judged against the whole selection, not against
+  // each option in the list.
   useEffect(() => {
-    computeAvailability(availableLocations, serverConfig.instances);
-  }, [serverConfig.instances, availableLocations, computeAvailability]);
+    computeAvailability(availableLocations);
+  }, [availableLocations, computeAvailability]);
 
   /**
-   * Free capacity of the CURRENT selection, measured rather than assumed.
+   * Capacity of the CURRENT selection, in two halves.
    *
-   * The location picker only knows a node is big ENOUGH; it cannot know it is already
-   * full, which is why the selectable list is gated on a spare-IP heuristic (IP_HEADROOM)
-   * instead of a fact. This asks the candidate nodes directly, and it does it here — on
-   * the last step before payment — because that is the last moment the customer can fix
-   * it for free.
+   * `ipCount` is arithmetic over the already-fetched node list: how many unique public IPs
+   * the whole selection matches. It needs no network, so it is always available, and on
+   * its own it settles the one question that has a certain answer — whether the selection
+   * could EVER hold the instance count. Locations are pooled, so this is a property of the
+   * selection, never of any single location in it.
    *
-   * Deliberately advisory: probes that fail count as "not free", so an unreachable node
-   * or two would otherwise talk somebody out of a perfectly good purchase. It never
-   * blocks Continue.
+   * `freeIpCount` is measured, by asking those nodes what they already run. It stays null
+   * when we cannot tell (too many candidates to probe politely, or every probe failed);
+   * null must read as "no opinion", never as "full", because everything downstream turns
+   * it into something the customer acts on.
    *
-   * Runs in the background while the customer is still picking, debounced, so the answer
-   * is already on screen by the time they reach for the button — a probe hung on the
-   * click would hold a purchase hostage for PROBE_TIMEOUT_MS.
+   * The arithmetic half lands immediately so the confirmation on Continue never depends on
+   * the network. The probe follows debounced, while the customer is still picking, so its
+   * answer is on screen before they reach the button.
    */
-  const [freeCapacity, setFreeCapacity] = useState(null);
+  const [capacity, setCapacity] = useState(null);
   useEffect(() => {
     if (currentStep !== 4 || !availableLocations?.nodes?.length) return undefined;
+    const instances = serverConfig.instances;
+    const { candidates, nodeCount, ipCount } = capacityForGeolocation(
+      availableLocations.nodes, allowedLocations, planHardware, isEnterprise,
+    );
+    setCapacity({ nodeCount, ipCount, instances, freeIpCount: null });
+
     let cancelled = false;
-    setFreeCapacity(null);
     const timer = setTimeout(async () => {
-      const instances = serverConfig.instances;
-      const { candidates, ipCount } = capacityForGeolocation(
-        availableLocations.nodes, allowedLocations, planHardware, isEnterprise,
-      );
       const freeIpCount = await probeFreeIpCount(candidates, planHardware);
-      // null = too many candidates to probe, or every probe failed. Say nothing.
       if (!cancelled && freeIpCount !== null) {
-        setFreeCapacity({ ipCount, freeIpCount, instances });
+        setCapacity((prev) => (prev ? { ...prev, freeIpCount } : prev));
       }
     }, PROBE_DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [currentStep, availableLocations, allowedLocations, planHardware, isEnterprise, serverConfig.instances]);
+
+  /**
+   * The part of that worth stopping someone on the way to payment — and only the part we
+   * actually know. 'short' is arithmetic and permanent; 'full' is measured and about right
+   * now. A selection we could not measure produces nothing: a confirmation built on a
+   * guess is one customers learn to click through, which costs us the ones that are real.
+   */
+  const capacityBlocker = useMemo(() => {
+    if (!capacity) return null;
+    if (capacity.ipCount < capacity.instances) return { kind: 'short', ...capacity };
+    if (capacity.freeIpCount !== null && capacity.freeIpCount < capacity.instances) {
+      return { kind: 'full', ...capacity };
+    }
+    return null;
+  }, [capacity]);
 
   // Build geolocation codes array for Flux app spec (FluxOS format)
   const getGeolocationCodes = () => {
@@ -780,7 +796,36 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const handleBackToStep3OrSkip = useCallback(() => { stepDirectionRef.current = -1; setCurrentStep(hasEnvironmentStep ? 3 : 2); }, [hasEnvironmentStep]);
   const handleBackToStep4 = useCallback(() => { stepDirectionRef.current = -1; setCurrentStep(4); }, []);
   const handleContinueToStep4 = useCallback(() => { stepDirectionRef.current = 1; setCurrentStep(4); }, []);
-  const handleContinueToStep5 = useCallback(() => { stepDirectionRef.current = 1; setCurrentStep(5); }, []);
+  /**
+   * Selections the customer has already been warned about and accepted, keyed by the
+   * locations AND the verdict: a modal that reappears on every Back/Continue is one people
+   * learn to dismiss without reading. Changing the selection, or the verdict changing
+   * under it, earns a fresh ask.
+   */
+  const acceptedCapacityRef = useRef(new Set());
+  const [capacityPrompt, setCapacityPrompt] = useState(null);
+  const capacityKey = useCallback(
+    (kind) => `${[...allowedLocations].sort().join('|') || '*'}::${kind}`,
+    [allowedLocations],
+  );
+
+  const goToStep5 = useCallback(() => { stepDirectionRef.current = 1; setCurrentStep(5); }, []);
+
+  // The inline notice on the location step is easy to walk past; this is the same fact
+  // where it cannot be. Still not a block — the customer can say yes and go on.
+  const handleContinueToStep5 = useCallback(() => {
+    if (capacityBlocker && !acceptedCapacityRef.current.has(capacityKey(capacityBlocker.kind))) {
+      setCapacityPrompt(capacityBlocker);
+      return;
+    }
+    goToStep5();
+  }, [capacityBlocker, capacityKey, goToStep5]);
+
+  const acceptCapacityWarning = useCallback(() => {
+    if (capacityPrompt) acceptedCapacityRef.current.add(capacityKey(capacityPrompt.kind));
+    setCapacityPrompt(null);
+    goToStep5();
+  }, [capacityPrompt, capacityKey, goToStep5]);
 
   // Use function form of setState to avoid dependency on showAdvanced
   const handleShowAdvancedToggle = useCallback(() => {
@@ -1555,7 +1600,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
             onRemoveLocation={handleRemoveLocation}
             formatLocationLabel={formatLocationLabel}
             getFlagIcon={getFlagIcon}
-            freeCapacity={freeCapacity}
+            capacity={capacity}
             onBack={handleBackToStep3OrSkip}
             onContinue={handleContinueToStep5}
           />
@@ -1627,6 +1672,66 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
           />
         )}
       </AnimatePresence>
+
+      {/* Capacity confirmation — the last thing between a selection we know is short and
+          a payment. Two different facts, two different messages: 'short' is arithmetic and
+          does not improve on its own; 'full' is a measurement of right now. */}
+      {capacityPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-amber-500/40 shadow-xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-7 h-7 text-amber-400 flex-shrink-0" />
+              <div className="min-w-0">
+                {capacityPrompt.kind === 'short' ? (
+                  <>
+                    <h4 className="text-lg font-semibold text-amber-300 mb-2">
+                      These locations cannot fit your server
+                    </h4>
+                    <p className="text-sm text-gray-300 leading-relaxed">
+                      They match {capacityPrompt.ipCount} {capacityPrompt.ipCount === 1 ? 'node' : 'nodes'} able
+                      to run this plan, and your server runs on {capacityPrompt.instances} copies. At least{' '}
+                      {capacityPrompt.instances - capacityPrompt.ipCount}{' '}
+                      {capacityPrompt.instances - capacityPrompt.ipCount === 1 ? 'copy' : 'copies'} will have
+                      nowhere to go for as long as this selection stands — this does not resolve itself with time.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h4 className="text-lg font-semibold text-amber-300 mb-2">
+                      The nodes in your locations are full right now
+                    </h4>
+                    <p className="text-sm text-gray-300 leading-relaxed">
+                      {capacityPrompt.freeIpCount === 0
+                        ? `None of the ${capacityPrompt.ipCount} nodes matching your locations has room for this plan at the moment.`
+                        : `Only ${capacityPrompt.freeIpCount} of the ${capacityPrompt.ipCount} nodes matching your locations has room for this plan, and your server runs on ${capacityPrompt.instances} copies.`}{' '}
+                      Your server may sit waiting to deploy until one frees up.
+                    </p>
+                  </>
+                )}
+                <p className="text-sm text-gray-400 mt-3">
+                  Adding another location gives it somewhere to go.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 mt-5">
+              <button
+                type="button"
+                onClick={acceptCapacityWarning}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-gray-600 text-sm text-gray-300 hover:bg-gray-700/60 transition-colors"
+              >
+                Deploy anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => setCapacityPrompt(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-gray-900 hover:bg-amber-400 transition-colors"
+              >
+                Add another location
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Waiting for Payment Overlay */}
       {waitingForPayment && !paymentResult && currentStep === 5 && (

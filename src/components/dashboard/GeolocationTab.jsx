@@ -6,7 +6,7 @@ import geolocationData from '../../utils/geolocation';
 import StepLocation from './deployment-steps/StepLocation';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import { encryptAppSpec, computeRemainingExpire } from '../../utils/appSpecHelpers';
-import { capacityForGeolocation, fetchFluxNodes, OS_RESERVE, IP_HEADROOM, REGION_IP_HEADROOM } from '../../utils/nodeCapacity';
+import { capacityForGeolocation, fetchFluxNodes, OS_RESERVE, IP_HEADROOM } from '../../utils/nodeCapacity';
 
 // Flux free-update rate limits — mirror of EnvironmentTab / backend checkFreeAppUpdate.
 // Windows are in blocks; post-PON-fork the target block time is 30s.
@@ -67,7 +67,7 @@ const sortedKey = (arr) => [...arr].sort().join('|');
  * enterprise apps), reusing EnvironmentTab's free-update + propagation machinery.
  * The picker offers only locations that can host THIS app: nodes are filtered by the
  * spec's summed component hardware (after the OS reserve) and arcaneVersion (enterprise),
- * and gated on unique public IPs >= instances + IP_HEADROOM. Changes apply after a redeploy.
+ * with the whole selection judged against the instance count. Changes apply after a redeploy.
  */
 const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
   const [loading, setLoading] = useState(true);
@@ -164,12 +164,11 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
   useEffect(() => { load(); }, [load]);
 
   // Build the selectable continents/countries: filter nodes by hardware + arcane, then
-  // count nodes + unique IPs and gate on unique IPs >= instances + headroom (same rule as
-  // the deploy dialog — a location sized exactly to the instance count has no room for a
-  // node that is already full).
+  // count nodes + unique IPs. No per-location gate, same reasoning as the deploy dialog:
+  // FluxOS places into the pool of allowed locations, so a location's own IP count says
+  // nothing on its own. The judgement is on the selection as a whole, below.
   useEffect(() => {
     const { cpu, ramGB, hddGB } = hardwareRef.current;
-    const inst = instancesRef.current;
     const isEnt = isEnterpriseRef.current;
     const fits = (n) =>
       (n.cores - OS_RESERVE.cores) >= cpu &&
@@ -199,7 +198,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
     const continents = [];
     contAgg.forEach((v, code) => {
       const ipCount = v.ips.size;
-      if (ipCount >= inst + IP_HEADROOM && CONTINENT_NAMES[code]) {
+      if (CONTINENT_NAMES[code]) {
         continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount });
       }
     });
@@ -212,7 +211,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
         const [cont, code] = key.split('_');
         if (cont !== geolocationForm.continent) return;
         const ipCount = v.ips.size;
-        if (ipCount >= inst + IP_HEADROOM) countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount });
+        countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount });
       });
       countries.sort((a, b) => b.ipCount - a.ipCount);
       setAvailableCountries(countries);
@@ -220,17 +219,14 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
       setAvailableCountries([]);
     }
 
-    // Regions — same US-only rule and IP headroom as the deploy dialog.
+    // Regions — same US-only rule as the deploy dialog.
     if (geolocationForm.continent && REGION_PICKER_COUNTRIES.has(geolocationForm.country)) {
       const prefix = `${geolocationForm.continent}_${geolocationForm.country}_`;
       const regions = [];
       regAgg.forEach((v, key) => {
         if (!key.startsWith(prefix)) return;
-        const ipCount = v.ips.size;
-        if (ipCount >= inst + REGION_IP_HEADROOM) {
-          const name = key.slice(prefix.length);
-          regions.push({ code: name, name, nodeCount: v.nodeCount, ipCount });
-        }
+        const name = key.slice(prefix.length);
+        regions.push({ code: name, name, nodeCount: v.nodeCount, ipCount: v.ips.size });
       });
       regions.sort((a, b) => b.ipCount - a.ipCount);
       setAvailableRegions(regions.length >= MIN_REGIONS_TO_OFFER ? regions : []);
@@ -323,10 +319,23 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
     const { nodeCount, ipCount } = capacityForGeolocation(
       nodes, allowedLocations, hardwareRef.current, isEnterpriseRef.current,
     );
-    setSelectionCapacity({ nodeCount, ipCount, instances: inst, tight: ipCount < inst + IP_HEADROOM });
+    setSelectionCapacity({
+      nodeCount, ipCount, instances: inst,
+      // Cannot fit at all vs fits with nothing to spare — a certainty and a warning.
+      short: ipCount < inst,
+      tight: ipCount < inst + IP_HEADROOM,
+    });
   }, [nodes, allowedLocations]);
 
+  /**
+   * Saving a selection too small for the instance count takes a RUNNING server apart, so
+   * this screen gets the same confirmation the deploy wizard puts on Continue. Only for
+   * the arithmetic case: it is certain, and it needs no probe.
+   */
+  const [saveConfirm, setSaveConfirm] = useState(false);
+
   const handleSave = async () => {
+    setSaveConfirm(false);
     setSaving(true);
     setError(null);
     setSavedOk(false);
@@ -372,6 +381,11 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
     }
   };
 
+
+  const requestSave = () => {
+    if (selectionCapacity?.short && allowedLocations.length > 0) { setSaveConfirm(true); return; }
+    handleSave();
+  };
   const handleRedeployClick = () => {
     if (propagating || !onRedeploy) return;
     setApplyOpen(false);
@@ -405,13 +419,19 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
               ({selectionCapacity.ipCount} unique {selectionCapacity.ipCount === 1 ? 'IP' : 'IPs'}),
               and your server needs <span className="font-semibold text-white">{selectionCapacity.instances}</span>.
             </p>
-            {selectionCapacity.tight && (
+            {selectionCapacity.short ? (
+              <p className="text-amber-200/70 mt-1">
+                That is not enough to run every copy: {selectionCapacity.instances - selectionCapacity.ipCount}{' '}
+                {selectionCapacity.instances - selectionCapacity.ipCount === 1 ? 'copy has' : 'copies have'} nowhere
+                to go. Add another country or continent below — your world and settings are not affected.
+              </p>
+            ) : selectionCapacity.tight ? (
               <p className="text-amber-200/70 mt-1">
                 That leaves no spare capacity: when those nodes fill up with other apps, your
                 server has nowhere to run. Add another country or continent below — your world
                 and settings are not affected.
               </p>
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -518,7 +538,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
 
       <button
         type="button"
-        onClick={handleSave}
+        onClick={requestSave}
         disabled={saving || !dirty || !!(limitStatus && !limitStatus.free)}
         className="btn-primary w-full inline-flex items-center justify-center gap-2"
       >
@@ -530,6 +550,48 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
           <><Save className="w-4 h-4" /> Save Locations</>
         )}
       </button>
+
+      {saveConfirm && selectionCapacity && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setSaveConfirm(false)} />
+          <div className="relative bg-gray-800 rounded-xl p-6 max-w-md w-full border border-amber-500/40 shadow-xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-7 h-7 text-amber-400 flex-shrink-0" />
+              <div className="min-w-0">
+                <h4 className="text-lg font-semibold text-amber-300 mb-2">
+                  These locations cannot fit your server
+                </h4>
+                <p className="text-sm text-gray-300 leading-relaxed">
+                  They match {selectionCapacity.ipCount} {selectionCapacity.ipCount === 1 ? 'node' : 'nodes'} able
+                  to run your plan, and your server runs on {selectionCapacity.instances} copies. Saving this and
+                  redeploying leaves {selectionCapacity.instances - selectionCapacity.ipCount}{' '}
+                  {selectionCapacity.instances - selectionCapacity.ipCount === 1 ? 'copy' : 'copies'} with nowhere
+                  to go — this does not resolve itself with time.
+                </p>
+                <p className="text-sm text-gray-400 mt-3">
+                  Adding another location gives it somewhere to go.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 mt-5">
+              <button
+                type="button"
+                onClick={handleSave}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-gray-600 text-sm text-gray-300 hover:bg-gray-700/60 transition-colors"
+              >
+                Save anyway
+              </button>
+              <button
+                type="button"
+                onClick={() => setSaveConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-gray-900 hover:bg-amber-400 transition-colors"
+              >
+                Add another location
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {applyOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
