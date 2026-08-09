@@ -83,10 +83,81 @@ const patchPublicPort = (ini, port) => (
     : ini.replace(/OptionSettings=\(/, `OptionSettings=(PublicPort=${port},`)
 );
 
+// ── REST API + AdminPassword ────────────────────────────────────────────────────────
+// The ini the server boots with is the GAME's DefaultPalWorldSettings.ini (start.sh copies
+// it verbatim, because DISABLE_GENERATE_SETTINGS=true stops compile-settings.sh running),
+// which ships RESTAPIEnabled=False and an empty AdminPassword. So every server we sell
+// starts with no admin API at all, and the Remote Control tab is dead until the customer
+// finds the two fields — in different sections of the Server Settings tab — and sets both.
+// Reconciling them costs nothing extra: the port pass already has the file open.
+//
+// Booleans are written `True`/`False` to match what the Config tab's toggles write
+// (see the toggle handler in ConfigTab) and what the game's own default file uses.
+// Values are matched as "anything up to the next , or )" rather than \w+ / a quoted string,
+// so a key that is present but malformed (`RESTAPIEnabled=`, an unquoted password) is still
+// recognised as PRESENT and gets replaced in place. Matching narrowly would fall through to
+// the insert branch and leave the same key in the line twice.
+const REST_ENABLED_RE = /RESTAPIEnabled=[^,)]*/;
+const ADMIN_PASSWORD_RE = /AdminPassword=(?:"([^"]*)"|([^,)]*))/;
+
+const readRestApiEnabled = (ini) => /RESTAPIEnabled=([^,)]*)/.exec(ini)?.[1];
+const patchRestApiEnabled = (ini) => (
+  REST_ENABLED_RE.test(ini)
+    ? ini.replace(REST_ENABLED_RE, 'RESTAPIEnabled=True')
+    : ini.replace(/OptionSettings=\(/, 'OptionSettings=(RESTAPIEnabled=True,')
+);
+
+// Unquoted values count too: a hand-edited `AdminPassword=hunter2` is a real password, and
+// reading it as absent would overwrite it — the one thing this must never do.
+const readAdminPassword = (ini) => {
+  const m = ADMIN_PASSWORD_RE.exec(ini);
+  return m ? (m[1] !== undefined ? m[1] : m[2]) : undefined;
+};
+// Present AND non-blank. `AdminPassword=""` is the game's default and counts as absent.
+const hasAdminPassword = (ini) => !!readAdminPassword(ini)?.trim();
+// Only ever fills a BLANK password. A customer who set their own keeps it — this must not
+// be able to lock someone out of their own admin API, or invalidate a password they wrote
+// down. Written quoted, like every string in the ini.
+const patchAdminPassword = (ini, password) => (
+  ADMIN_PASSWORD_RE.test(ini)
+    ? ini.replace(ADMIN_PASSWORD_RE, `AdminPassword="${password}"`)
+    : ini.replace(/OptionSettings=\(/, `OptionSettings=(AdminPassword="${password}",`)
+);
+
+// 24 chars of crypto-random base58-ish alphabet (no look-alikes). The customer never has to
+// type it — the Remote Control tab reads it straight out of the ini — but it is visible and
+// editable in Server Settings, so it stays readable.
+const generateAdminPassword = () => {
+  const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint32Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+};
+
 // The external game port Flux registered for this app (index 0 of the game component).
 // PublicPort in the ini MUST equal this: it is the address the server hands out to the
 // in-game community browser, and the node only forwards this port to the container's 8211.
 const externalGamePort = (server) => server?.ports?.[0] || server?.compose?.[0]?.ports?.[0];
+
+// Everything the reconcile owns, in one predicate and one patch so they can never drift:
+// the write is verified by re-running the predicate, not by re-checking a subset.
+// RESTAPIPort is deliberately absent — it is the container's INTERNAL bind port (Flux maps
+// the external port onto 8212), so it must keep its default or the REST proxy breaks.
+const iniNeedsReconcile = (ini, expectedPort) => (
+  readPublicPort(ini) !== expectedPort
+  || String(readRestApiEnabled(ini)).toLowerCase() !== 'true'
+  || !hasAdminPassword(ini)
+);
+
+// `password` is generated once per reconcile run, not per call: this runs twice (before the
+// stop, then again on the copy re-read while stopped) and both must agree on the value.
+const reconcileIni = (ini, expectedPort, password) => {
+  let out = ini;
+  if (readPublicPort(out) !== expectedPort) out = patchPublicPort(out, expectedPort);
+  if (String(readRestApiEnabled(out)).toLowerCase() !== 'true') out = patchRestApiEnabled(out);
+  if (!hasAdminPassword(out)) out = patchAdminPassword(out, password);
+  return out;
+};
 
 // Read the live PalWorldSettings.ini off a node. Cache-bypassed on purpose — the node API
 // caches downloads, and acting on a stale copy is exactly how one writer silently reverts
@@ -602,22 +673,27 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
     fetchState();
   }, [masterLocation, server?.name]);
 
-  // ── Auto-reconcile Palworld PublicPort to the actual external game port ───────
-  // Randomized deploys expose a high external game port (e.g. 57356), but the
-  // persisted PalWorldSettings.ini is seeded from the image default
-  // (PublicPort=8211) and DISABLE_GENERATE_SETTINGS=true means env vars never
-  // rewrite it. A stale PublicPort makes the in-game community browser hand out
-  // IP:8211 (unreachable) instead of IP:<externalPort>, so joining fails.
-  // Direct-connect is unaffected either way. On EVERY panel open we compare the
-  // ini's PublicPort against the external game port (ports[0]) and, when they differ,
-  // patch it on the master (Syncthing replicates to the slaves) and restart. This runs
-  // for EVERY server — NOT gated on COMMUNITY, and NOT gated on the port being a
-  // randomized one — so the advertised address is always correct.
+  // ── Auto-reconcile the ini to what this deploy actually needs ─────────────────
+  // Three fields, one pass, because they all need the same expensive thing: the file
+  // read, the container stopped, and a restart.
   //
-  // ONLY PublicPort is touched. RCONPort / RESTAPIPort in the ini are the
+  //  - PublicPort. Randomized deploys expose a high external game port (e.g. 57356), but
+  //    the persisted PalWorldSettings.ini is seeded from the image default
+  //    (PublicPort=8211) and DISABLE_GENERATE_SETTINGS=true means env vars never
+  //    rewrite it. A stale PublicPort makes the in-game community browser hand out
+  //    IP:8211 (unreachable) instead of IP:<externalPort>, so joining fails.
+  //    Direct-connect is unaffected either way.
+  //  - RESTAPIEnabled + AdminPassword. Both ship off/blank in the game's default file, and
+  //    the Remote Control tab needs both. See the helpers at the top of this file.
+  //
+  // Runs on EVERY panel open, for EVERY server — NOT gated on COMMUNITY, and NOT gated on
+  // the port being a randomized one — so the advertised address is always correct.
+  //
+  // ONLY these three are touched. RCONPort / RESTAPIPort in the ini are the
   // container's INTERNAL bind ports — Flux maps the external ports onto them
   // (e.g. 59025→8212), so the server must keep listening on the defaults; changing
   // them would break the REST proxy. Same reason PORT/QUERY_PORT are never set.
+  // ServerPassword is never touched either: writing one would lock existing players out.
   //
   // Two safeguards, because this stops a container the user did not ask to stop:
   //  - The restart is guaranteed by withAppStopped (finally + retries + unload rescue),
@@ -677,15 +753,28 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       // Nothing has been touched yet, so bailing out here is free — retry on next open.
       if (cancelled || !ini) return;
 
-      // 5. Compare current PublicPort — the common case, no restart needed.
-      if (readPublicPort(ini) === expected) {
+      // 5. Already correct on all three? The common case after the first fix — no restart.
+      //    Generated once here and reused below, so the value written while stopped is the
+      //    same one this comparison was made against.
+      const password = generateAdminPassword();
+      if (!iniNeedsReconcile(ini, expected)) {
         writePortReconcileMark(appName, expected, { done: true });
         return;
       }
-      if (patchPublicPort(ini, expected) === ini) {
+      if (reconcileIni(ini, expected, password) === ini) {
         writePortReconcileMark(appName, expected, { done: true }); // nothing patchable
         return;
       }
+
+      // What we are about to change, for the toasts. Read off the pre-stop copy: the write
+      // uses the copy re-read while stopped, but for telling the customer why their server
+      // is restarting this is the honest answer.
+      const changes = [
+        readPublicPort(ini) !== expected && 'public port',
+        String(readRestApiEnabled(ini)).toLowerCase() !== 'true' && 'admin API',
+        !hasAdminPassword(ini) && 'admin password',
+      ].filter(Boolean);
+      const summary = changes.join(', ');
 
       // 6. Write while stopped so the running game can't clobber the file. Past this point
       //    `cancelled` is deliberately ignored: the work must finish even if the panel is
@@ -703,23 +792,23 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           // Re-read while stopped: Palworld flushes its own settings on shutdown, so
           // patching the copy read before the stop would revert whatever it just wrote.
           const fresh = (await readIni()) || ini;
-          if (readPublicPort(fresh) === expected) { persisted = true; return; }
+          if (!iniNeedsReconcile(fresh, expected)) { persisted = true; return; }
 
           const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${appName}/${component}/${encodeURIComponent('appdata/Config/LinuxServer')}`;
           const fd = new FormData();
-          fd.append('PalWorldSettings.ini', new Blob([patchPublicPort(fresh, expected)], { type: 'text/plain' }));
+          fd.append('PalWorldSettings.ini', new Blob([reconcileIni(fresh, expected, password)], { type: 'text/plain' }));
           const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
           if (!up.ok) throw new Error(`Upload failed: HTTP ${up.status}`);
 
           // Confirm the write landed before marking this server done (anti-loop).
           const verify = await readIni();
-          persisted = verify ? readPublicPort(verify) === expected : false;
+          persisted = verify ? !iniNeedsReconcile(verify, expected) : false;
         }, {
           // Announce the restart exactly when the stop is issued — never when the lock was
           // taken by another operation, nor when the server was already down.
           onPhase: (phase) => {
             if (phase === 'stopping') {
-              toast('Applying an automatic config change (public port) — restarting your server…', { icon: '🔧', duration: 6000 });
+              toast(`Applying ${changes.length > 1 ? 'automatic config changes' : 'an automatic config change'} (${summary}) — restarting your server…`, { icon: '🔧', duration: 6000 });
             }
           },
         }));
@@ -739,12 +828,12 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 
       if (persisted) {
         writePortReconcileMark(appName, expected, { done: true });
-        toast.success('Server public address updated — server restarting.');
+        toast.success(`Server settings updated automatically (${summary}) — server restarting.`);
         if (onUpdate) onUpdate();
       } else if (readPortReconcileMark(appName, expected).attempts >= PORT_RECONCILE_MAX_ATTEMPTS) {
-        toast.error('Could not set the server public port automatically. Direct connect still works — contact support for the community browser.');
+        toast.error(`Could not update your server settings automatically (${summary}). Your server still runs — contact support if the community browser or the Remote Control tab misbehaves.`);
       } else {
-        toast.error('Public port change did not persist — will retry.');
+        toast.error('Automatic config change did not persist — will retry.');
       }
     };
 
