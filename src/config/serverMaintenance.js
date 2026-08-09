@@ -209,6 +209,21 @@ export const STANDARD_ENV = [
     description: 'Enables the game\'s own recovery for the negative delta-time bug that terminates 1.0 servers when the host clock jumps.',
   },
   {
+    // The container ships a player-tracking loop that polls its own REST API every
+    // PLAYER_LOGGING_POLL_PERIOD (5s) to announce joins and leaves. It authenticates with
+    // admin:${ADMIN_PASSWORD} — the ENV VAR, which we never set — while the password the
+    // customer types in the Server Settings tab lands in PalWorldSettings.ini. The image has
+    // no ini→env path (upstream issue #886), so the loop can never authenticate and every
+    // poll writes two lines into the console. We don't use join/leave announcements, so the
+    // loop is switched off rather than fed a password: putting ADMIN_PASSWORD in the spec
+    // would publish it on-chain, and these apps deploy non-enterprise (unencrypted compose).
+    key: 'ENABLE_PLAYER_LOGGING',
+    value: 'false',
+    enforce: true,
+    label: 'Quieter server logs',
+    description: 'Stops the container\'s player-tracking loop, which polls the admin API every 5 seconds and fills the console with "Unauthorized" errors. Join and leave announcements are turned off; nothing else changes.',
+  },
+  {
     key: REBOOT_ENV_KEYS.enabled,
     value: 'true',
     enforce: false,
