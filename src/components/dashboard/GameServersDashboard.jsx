@@ -673,6 +673,18 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
               locations = await fetchAppLocations(server);
             }
 
+            // A server can be reachable and still be running on fewer nodes than it was
+            // paid for — the redundancy is silently missing, with the same cause and the
+            // same fix as one that never got placed at all. Only diagnosed once we have
+            // seen at least one real location: an empty list here is more likely a failed
+            // lookup than a server that lost every node, and guessing would cry wolf.
+            const placed = Array.isArray(locations) ? locations.length : 0;
+            if (placed > 0 && placed < (server.instances || 1)) {
+              await checkPlacement(server, placed);
+            } else if (server.placementIssue) {
+              updateServerInList(server.name, { placementIssue: null });
+            }
+
             // Check FDM for master IP, then verify domain DNS matches
             let domainReady = server.domainReady;
             let fdmMasterIp = null;
@@ -723,8 +735,12 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
    * saying why. The usual cause is a geolocation narrow enough that its handful of nodes
    * are full — a configuration problem the customer can fix themselves, but only if we
    * tell them. Throttled per server: the answer changes on the scale of hours.
+   *
+   * The same cause also produces a quieter failure: a server that DID come up, but on
+   * fewer nodes than it was paid for. Pass the real placed count as `running` so the
+   * diagnosis can tell the two apart (0 = never placed, 1-of-3 = short on redundancy).
    */
-  const checkPlacement = async (server) => {
+  const checkPlacement = async (server, running = 0) => {
     const last = placementCheckedRef.current.get(server.name) || 0;
     if (Date.now() - last < PLACEMENT_RECHECK_MS) return;
     placementCheckedRef.current.set(server.name, Date.now());
@@ -736,7 +752,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
         compose: spec.compose,
         instances: spec.instances || 1,
         isEnterprise: !!spec.enterprise,
-        running: 0,
+        running,
       });
       // 'waiting' means there IS room and it is simply not placed yet — that is what
       // "Installing on network" already says, so it stays as is.
@@ -752,7 +768,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
       const locations = await apiService.getAppLocations(server.name);
 
       if (!Array.isArray(locations) || locations.length === 0) {
-        await checkPlacement(server);
+        await checkPlacement(server, 0);
       } else if (server.placementIssue) {
         updateServerInList(server.name, { placementIssue: null });
       }
@@ -1309,6 +1325,31 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                 ) : null
               )}
 
+              {/* Degraded redundancy — the server works, so this sits below the Running
+                  banner rather than replacing it, and stays informative in tone. */}
+              {server.status === 'running' && server.placementIssue && (
+                <div className="px-4 py-2.5 bg-amber-500/[0.08] border-y border-amber-500/30">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-amber-300">
+                        Running on {server.placementIssue.running} of {server.placementIssue.instances} nodes
+                      </p>
+                      <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                        {server.placementIssue.message}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleManage(server, 'geolocation'); }}
+                        className="mt-1.5 text-[11px] font-semibold text-amber-200 underline underline-offset-2 hover:text-white"
+                      >
+                        Add more locations
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Divider */}
               <div className="h-px bg-gray-700" />
 
@@ -1577,6 +1618,21 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                             </span>
                           </div>
                         ) : null
+                      )}
+
+                      {/* Degraded redundancy — shown next to Running, not instead of it. */}
+                      {server.status === 'running' && server.placementIssue && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleManage(server, 'geolocation'); }}
+                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded-md w-fit hover:bg-amber-500/20 transition-colors"
+                          title={server.placementIssue.message}
+                        >
+                          <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                          <span className="text-xs font-medium text-amber-300 whitespace-nowrap">
+                            Running on {server.placementIssue.running} of {server.placementIssue.instances} nodes — add locations
+                          </span>
+                        </button>
                       )}
                     </div>
                     </div>
