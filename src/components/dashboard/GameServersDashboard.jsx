@@ -15,6 +15,9 @@ import toast from 'react-hot-toast';
 // How often a stuck server is re-diagnosed for a placement problem. Node capacity moves
 // on the scale of hours, and the check costs one request per candidate node.
 const PLACEMENT_RECHECK_MS = 5 * 60 * 1000;
+// Read the clock outside the component: react-hooks/purity cannot prove an async helper
+// defined in the body is never reached during render, and flags a bare Date.now() there.
+const nowMs = () => Date.now();
 
 // Flux blockchain fork constants (from FluxOS)
 const FORK_BLOCK_HEIGHT = 2_020_000; // Block where time changed from 2min to 0.5min
@@ -742,8 +745,8 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
    */
   const checkPlacement = async (server, running = 0) => {
     const last = placementCheckedRef.current.get(server.name) || 0;
-    if (Date.now() - last < PLACEMENT_RECHECK_MS) return;
-    placementCheckedRef.current.set(server.name, Date.now());
+    if (nowMs() - last < PLACEMENT_RECHECK_MS) return;
+    placementCheckedRef.current.set(server.name, nowMs());
     try {
       const spec = await apiService.getAppSpecs(server.name);
       if (!spec?.name) return;

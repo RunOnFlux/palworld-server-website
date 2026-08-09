@@ -310,14 +310,20 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
    * How much room the CURRENT selection leaves — recomputed as the customer edits, so
    * adding a location visibly moves the number. Compared against the instance count
    * because FluxOS places one instance per unique public IP.
+   *
+   * Computed in an effect rather than a memo, like the picker options above: the plan's
+   * hardware and instance count live in refs that the spec load fills in, and a ref read
+   * during render is both a rules-of-React violation and a stale-value trap — the memo
+   * would not recompute when the spec finally arrives.
    */
-  const selectionCapacity = useMemo(() => {
-    if (!nodes.length) return null;
+  const [selectionCapacity, setSelectionCapacity] = useState(null);
+  useEffect(() => {
+    if (!nodes.length) { setSelectionCapacity(null); return; }
     const inst = instancesRef.current;
     const { nodeCount, ipCount } = capacityForGeolocation(
       nodes, allowedLocations, hardwareRef.current, isEnterpriseRef.current,
     );
-    return { nodeCount, ipCount, instances: inst, tight: ipCount < inst + IP_HEADROOM };
+    setSelectionCapacity({ nodeCount, ipCount, instances: inst, tight: ipCount < inst + IP_HEADROOM });
   }, [nodes, allowedLocations]);
 
   const handleSave = async () => {
