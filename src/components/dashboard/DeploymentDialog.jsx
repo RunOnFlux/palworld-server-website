@@ -10,7 +10,7 @@ import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walle
 import marketplaceService from '../../services/marketplaceService';
 import { withModsMount } from '../../config/modsConfig';
 import { defaultRebootSettings, buildRebootEnv } from '../../config/serverMaintenance';
-import { OS_RESERVE, IP_HEADROOM, REGION_IP_HEADROOM } from '../../utils/nodeCapacity';
+import { OS_RESERVE, IP_HEADROOM, REGION_IP_HEADROOM, capacityForGeolocation, probeFreeIpCount } from '../../utils/nodeCapacity';
 import { applyRandomExternalPorts, registerAppSpecWithPortRetry, palworldGamePort } from '../../utils/appSpecHelpers';
 import geolocationData from '../../utils/geolocation';
 import toast from 'react-hot-toast';
@@ -73,6 +73,10 @@ const parseHddValue = (value) => {
 // so the plan is the single source of truth: the selected config first, then the
 // parent app. Fallback to 3 only if the plan omits it entirely.
 const getPlanInstances = (plan) => plan?._config?.instances || plan?._app?.instances || 3;
+
+// Settle time before probing node capacity — a customer adding three locations in a row
+// should cost one round of requests, not three.
+const PROBE_DEBOUNCE_MS = 800;
 
 // Merge "KEY=value" env arrays with later arrays overriding earlier ones by KEY.
 // This mirrors FluxCloud InstallDialog behavior: the parent app compose env is the
@@ -277,17 +281,18 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     return { cpu, ramGB: ramMb / 1000, hddGB: hdd };
   }, [selectedPlan]);
 
-  // Fetch available nodes from Flux stats API. Enterprise apps need the `flux`
-  // object (for arcaneVersion); both need `benchmark` (hardware) + `geolocation`.
+  // Fetch available nodes from Flux stats API. Everything needs `benchmark` (hardware)
+  // + `geolocation`; `flux` is always asked for because it is the only place the node's
+  // API PORT appears (geolocation.ip is the bare address) and one public IP routinely
+  // hosts several nodes on different ports — the free-capacity probe has to reach the
+  // right one. It also carries arcaneVersion, which enterprise apps are filtered on.
   useEffect(() => {
     const controller = new AbortController();
     const fetchLocations = async () => {
       try {
         // NOTE: `flux` MUST come last — the stats API returns an "Internal error"
         // when `flux` is the first projection field (e.g. `flux,geolocation,...`).
-        const projection = isEnterprise
-          ? 'geolocation,benchmark,flux'
-          : 'geolocation,benchmark';
+        const projection = 'geolocation,benchmark,flux';
         const response = await fetch(`https://stats.runonflux.io/fluxinfo?projection=${projection}`, { signal: controller.signal });
         const result = await response.json();
 
@@ -313,6 +318,9 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
               // the short code — so we carry the raw string through untouched.
               region: g.regionName || '',
               ip,
+              // Kept with its port: the node API is addressed as
+              // <ip>-<port>.node.api.runonflux.io, and several nodes can share one IP.
+              apiIp: rawIp,
               cores: b.cores,
               ram: b.ram || 0,
               ssd: b.ssd || 0,
@@ -537,6 +545,42 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   useEffect(() => {
     computeAvailability(availableLocations, serverConfig.instances);
   }, [serverConfig.instances, availableLocations, computeAvailability]);
+
+  /**
+   * Free capacity of the CURRENT selection, measured rather than assumed.
+   *
+   * The location picker only knows a node is big ENOUGH; it cannot know it is already
+   * full, which is why the selectable list is gated on a spare-IP heuristic (IP_HEADROOM)
+   * instead of a fact. This asks the candidate nodes directly, and it does it here — on
+   * the last step before payment — because that is the last moment the customer can fix
+   * it for free.
+   *
+   * Deliberately advisory: probes that fail count as "not free", so an unreachable node
+   * or two would otherwise talk somebody out of a perfectly good purchase. It never
+   * blocks Continue.
+   *
+   * Runs in the background while the customer is still picking, debounced, so the answer
+   * is already on screen by the time they reach for the button — a probe hung on the
+   * click would hold a purchase hostage for PROBE_TIMEOUT_MS.
+   */
+  const [freeCapacity, setFreeCapacity] = useState(null);
+  useEffect(() => {
+    if (currentStep !== 4 || !availableLocations?.nodes?.length) return undefined;
+    let cancelled = false;
+    setFreeCapacity(null);
+    const timer = setTimeout(async () => {
+      const instances = serverConfig.instances;
+      const { candidates, ipCount } = capacityForGeolocation(
+        availableLocations.nodes, allowedLocations, planHardware, isEnterprise,
+      );
+      const freeIpCount = await probeFreeIpCount(candidates, planHardware);
+      // null = too many candidates to probe, or every probe failed. Say nothing.
+      if (!cancelled && freeIpCount !== null) {
+        setFreeCapacity({ ipCount, freeIpCount, instances });
+      }
+    }, PROBE_DEBOUNCE_MS);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [currentStep, availableLocations, allowedLocations, planHardware, isEnterprise, serverConfig.instances]);
 
   // Build geolocation codes array for Flux app spec (FluxOS format)
   const getGeolocationCodes = () => {
@@ -1511,6 +1555,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
             onRemoveLocation={handleRemoveLocation}
             formatLocationLabel={formatLocationLabel}
             getFlagIcon={getFlagIcon}
+            freeCapacity={freeCapacity}
             onBack={handleBackToStep3OrSkip}
             onContinue={handleContinueToStep5}
           />

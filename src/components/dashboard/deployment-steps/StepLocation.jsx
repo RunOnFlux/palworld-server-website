@@ -21,6 +21,7 @@ const StepLocation = memo(({
   onRemoveLocation,
   formatLocationLabel,
   getFlagIcon,
+  freeCapacity = null,
   onBack,
   onContinue,
   showNav = true
@@ -206,6 +207,51 @@ const StepLocation = memo(({
               ))}
             </div>
           </div>
+        )}
+
+        {/* Measured free capacity of the current selection. The picker can only tell that
+            a node is big enough for the plan; this is the one place we know whether it is
+            actually free. Advisory — Continue is never blocked (see DeploymentDialog). */}
+        {freeCapacity && (
+          freeCapacity.freeIpCount >= freeCapacity.instances ? (
+            <p className="text-xs text-gray-400 flex items-center gap-2 px-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+              {freeCapacity.freeIpCount} of {freeCapacity.ipCount} nodes in your locations have room for this plan right now.
+            </p>
+          ) : (
+            <div className="bg-amber-500/[0.08] border-2 border-amber-500/30 rounded-2xl p-4">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+                <div className="min-w-0">
+                  {freeCapacity.freeIpCount === 0 ? (
+                    <>
+                      <p className="text-sm font-semibold text-amber-300">
+                        No node in your locations has room for this plan right now
+                      </p>
+                      <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
+                        All {freeCapacity.ipCount} of them are already running other apps.
+                        Your server has nowhere to deploy until you add another location.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-amber-300">
+                        Only {freeCapacity.freeIpCount} of {freeCapacity.ipCount} nodes in your locations {freeCapacity.freeIpCount === 1 ? 'has' : 'have'} room for this plan right now
+                      </p>
+                      <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
+                        Your server runs on {freeCapacity.instances}, so{' '}
+                        {freeCapacity.instances - freeCapacity.freeIpCount}{' '}
+                        {freeCapacity.instances - freeCapacity.freeIpCount === 1 ? 'copy has' : 'copies have'} nowhere to go.
+                        Add another location above to fix it.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
         )}
 
         {allowedLocations.length === 0 && (

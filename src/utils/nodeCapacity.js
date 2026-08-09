@@ -45,9 +45,12 @@ const NODE_CACHE_TTL_MS = 10 * 60 * 1000;
 // A sanity floor: the network is thousands of nodes, so a short answer means the
 // stats endpoint is degraded and counting it would produce a false alarm.
 const MIN_PLAUSIBLE_NODES = 5000;
-// Probing free capacity means one request per candidate node. Worth it for the tight
-// selections this diagnosis is about; pointless (and rude) for a whole continent.
-const MAX_NODES_TO_PROBE = 20;
+// Probing free capacity means one request per candidate NODE (not per unique IP — several
+// nodes can share an IP, and each has its own free capacity). Worth it for the tight
+// selections this diagnosis is about; pointless (and rude) for a whole continent. The
+// requests all go out in parallel and cap at PROBE_TIMEOUT_MS, so the ceiling costs
+// latency only in the pathological case where every node is unreachable.
+const MAX_NODES_TO_PROBE = 32;
 const PROBE_TIMEOUT_MS = 6000;
 
 /**
@@ -169,33 +172,81 @@ export function capacityForGeolocation(nodes, geolocation, hw, isEnterprise = fa
 }
 
 /**
+ * Per-node readings of committed resources, cached in-tab for 2 minutes.
+ *
+ * Two callers probe now — the deploy wizard and the dashboard diagnosis — and a customer
+ * editing their location list re-probes the same nodes on every change. We cache what the
+ * node REPORTED rather than a yes/no verdict, so one reading answers for any plan size.
+ * A Map rather than sessionStorage: probes run concurrently, and a read-modify-write
+ * against shared storage would drop entries.
+ */
+const usedCache = new Map();
+const PROBE_CACHE_TTL_MS = 2 * 60 * 1000;
+
+/**
  * Ask a node how much of its hardware is already committed to apps.
  * `/apps/appsresources` is public and cached node-side for 30s. Anything that fails
  * counts as "unknown", never as "free" — a wrong "there is room" reading would send
  * the customer chasing the wrong problem.
  */
-async function nodeFreeCapacity(node, hw) {
-  const base = nodeApiBase(node.apiIp || node.ip);
-  if (!base) return { known: false, free: false };
+async function nodeUsedResources(node) {
+  const key = node.apiIp || node.ip;
+  const hit = usedCache.get(key);
+  if (hit && Date.now() - hit.at < PROBE_CACHE_TTL_MS) return hit.used;
+
+  const base = nodeApiBase(key);
+  if (!base) return { known: false };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  let used = { known: false };
   try {
     const res = await fetch(`${base}/apps/appsresources`, { signal: controller.signal });
     const body = await res.json();
     const d = body?.data;
-    if (body?.status !== 'success' || !d) return { known: false, free: false };
-    const usedCpu = Number(d.appsCpusLocked) || 0;
-    const usedRamGB = (Number(d.appsRamLocked) || 0) / 1000; // node reports MB
-    const usedHddGB = Number(d.appsHddLocked) || 0;
-    const free = (node.cores - OS_RESERVE.cores - usedCpu) >= hw.cpu
-      && (node.ram - OS_RESERVE.ram - usedRamGB) >= hw.ramGB
-      && (node.ssd - OS_RESERVE.ssd - usedHddGB) >= hw.hddGB;
-    return { known: true, free };
-  } catch {
-    return { known: false, free: false };
-  } finally {
+    if (body?.status === 'success' && d) {
+      used = {
+        known: true,
+        cpu: Number(d.appsCpusLocked) || 0,
+        ramGB: (Number(d.appsRamLocked) || 0) / 1000, // node reports MB
+        hddGB: Number(d.appsHddLocked) || 0,
+      };
+    }
+  } catch { /* unreachable or malformed — stays unknown */ } finally {
     clearTimeout(timer);
   }
+  // Failures are cached too: a node that just timed out is not worth re-asking on the
+  // customer's next click, and two minutes is short enough to recover.
+  usedCache.set(key, { at: Date.now(), used });
+  return used;
+}
+
+/** Whether a node still has room for the app on top of what it already runs. */
+function nodeHasRoom(node, used, hw) {
+  return (node.cores - OS_RESERVE.cores - used.cpu) >= hw.cpu
+    && (node.ram - OS_RESERVE.ram - used.ramGB) >= hw.ramGB
+    && (node.ssd - OS_RESERVE.ssd - used.hddGB) >= hw.hddGB;
+}
+
+/**
+ * How many of the candidate nodes' unique public IPs can actually take the app right now.
+ *
+ * @returns {Promise<number|null>} null when we cannot tell — too many candidates to probe
+ *          politely, or every probe failed. Never substitute a guess: both callers turn
+ *          this into something the customer acts on, and a made-up number is worse than
+ *          saying nothing.
+ */
+export async function probeFreeIpCount(candidates, hw) {
+  if (!candidates?.length || candidates.length > MAX_NODES_TO_PROBE) return null;
+  const results = await Promise.all(
+    candidates.map(async (n) => ({ node: n, used: await nodeUsedResources(n) })),
+  );
+  if (!results.some((r) => r.used.known)) return null;
+  const freeIps = new Set(
+    results
+      .filter((r) => r.node.ip && r.used.known && nodeHasRoom(r.node, r.used, hw))
+      .map((r) => r.node.ip),
+  );
+  return freeIps.size;
 }
 
 /**
@@ -234,15 +285,8 @@ export async function diagnosePlacement({ geolocation, compose, instances = 1, i
 
   // Enough nodes exist on paper — the usual cause is that they are all already full.
   // Only worth probing for a small candidate set (which is exactly the case at risk).
-  let freeIpCount = null;
-  let probed = false;
-  if (candidates.length && candidates.length <= MAX_NODES_TO_PROBE) {
-    const results = await Promise.all(candidates.map(async (n) => ({ ip: n.ip, ...(await nodeFreeCapacity(n, hw)) })));
-    if (results.some((r) => r.known)) {
-      probed = true;
-      freeIpCount = new Set(results.filter((r) => r.free && r.ip).map((r) => r.ip)).size;
-    }
-  }
+  const freeIpCount = await probeFreeIpCount(candidates, hw);
+  const probed = freeIpCount !== null;
 
   if (probed && freeIpCount < instances) {
     return {
