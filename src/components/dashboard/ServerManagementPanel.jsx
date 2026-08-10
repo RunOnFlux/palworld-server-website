@@ -7841,7 +7841,9 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
 
       // Step 3: Open payment in popup
       setProgressSteps(prev => [...prev, { step: 'Opening payment window', status: 'complete' }]);
-      const stripeCheckoutUrl = `https://checkout.stripe.com/c/pay/${sessionId}`;
+      // createCheckoutSession/createSubscriptionSession return the FULL checkout URL from the
+      // bridge (same as the deploy flow) — use it directly, don't prepend the Stripe domain.
+      const stripeCheckoutUrl = sessionId;
 
       // Open Stripe checkout in popup window
       const win = window.open(stripeCheckoutUrl, '_blank', 'width=600,height=800,resizable=yes,scrollbars=yes');
