@@ -18,6 +18,32 @@
  * physical location is irrelevant: without a TZ, `0 5 * * *` is 05:00 UTC for
  * everyone — 21:00 for a customer on the US west coast, i.e. peak time. So the
  * deploy form sends TZ along with the cron, defaulting to the buyer's browser zone.
+ *
+ * ── Why the cron expression carries a password ────────────────────────────────
+ * auto_reboot.sh talks to the server's own REST API as admin:${ADMIN_PASSWORD} —
+ * the ENV VAR, which is empty on every server we sell. DISABLE_GENERATE_SETTINGS=true
+ * (see STANDARD_ENV) stops the container regenerating the ini from env vars, which is
+ * what makes customer edits survive a reboot, but it also switches off the only thing
+ * that kept env and ini in sync; the reverse direction, ini→env, does not exist in the
+ * image. So the password the customer sets lands in PalWorldSettings.ini and the job
+ * authenticating with the env var gets a 401: get_player_count reads 0 players, the
+ * save fails, shutdown_server refuses to shut down ("Do not shutdown if not able to
+ * save") and the job exits 1 seconds after it starts — silently, every night.
+ *
+ * start.sh builds the cron line by unquoted interpolation of a value we own:
+ *   echo "$AUTO_REBOOT_CRON_EXPRESSION bash /home/steam/server/auto_reboot.sh" >> crontab
+ * A crontab line is <schedule> <command>, and a command can carry its own environment
+ * prefix, so the schedule hands the password in on the way past — read out of the ini,
+ * at run time, inside the container. It never leaves the node and never reaches the
+ * logs (supercronic logs job.command with the $(…) unexpanded).
+ *
+ * Do NOT put ADMIN_PASSWORD in the spec instead: these apps deploy non-enterprise, so
+ * it would be plaintext on-chain, and AdminPassword is also the in-game admin credential
+ * (/AdminPassword in chat) — publishing it makes every player an admin.
+ *
+ * Upstream fix, which makes the prefix redundant but harmless (the container prefers a
+ * set ADMIN_PASSWORD, and ours holds the same value read from the same file):
+ * https://github.com/thijsvanloef/palworld-server-docker/pull/931
  */
 
 export const REBOOT_ENV_KEYS = {
@@ -94,17 +120,36 @@ export function formatHour(hour) {
   return `${String(Number(hour) || 0).padStart(2, '0')}:00`;
 }
 
+const REBOOT_SETTINGS_INI = '/palworld/Pal/Saved/Config/LinuxServer/PalWorldSettings.ini';
+
+/**
+ * Environment prefix appended to the schedule so the reboot command runs with a working
+ * password (see the header). Only the quoted form the server writes is matched; an ini
+ * hand-edited to AdminPassword=hunter2 yields an empty password, i.e. today's behaviour.
+ */
+const REBOOT_ADMIN_PASSWORD = `ADMIN_PASSWORD=$(sed -n 's/.*AdminPassword="\\([^"]*\\)".*/\\1/p' ${REBOOT_SETTINGS_INI})`;
+
 export function cronForHour(hour) {
   const h = Math.min(23, Math.max(0, Math.round(Number(hour) || 0)));
-  return `0 ${h} * * *`;
+  return `0 ${h} * * * ${REBOOT_ADMIN_PASSWORD}`;
 }
 
-/** Reads the hour back out of a daily cron; null when the expression isn't one. */
+/**
+ * Reads the hour back out of a daily cron; null when the expression isn't one.
+ * Anything past the five schedule fields is the command's environment prefix, not part
+ * of the schedule, so it is ignored — anchoring on $ here would make every suffixed
+ * value unparseable and silently reset the customer's chosen hour to the default.
+ */
 export function hourFromCron(cron) {
-  const m = /^\s*0\s+(\d{1,2})\s+\*\s+\*\s+\*\s*$/.exec(String(cron || ''));
+  const m = /^\s*0\s+(\d{1,2})\s+\*\s+\*\s+\*(?:\s|$)/.exec(String(cron || ''));
   if (!m) return null;
   const h = Number(m[1]);
   return h >= 0 && h <= 23 ? h : null;
+}
+
+/** True when a stored cron predates the password prefix and has to be rewritten. */
+export function cronNeedsAdminPassword(cron) {
+  return hourFromCron(cron) !== null && !String(cron).includes('ADMIN_PASSWORD=');
 }
 
 /** Settings object used by the UI. */
@@ -179,6 +224,10 @@ export function describeNextReboot(settings) {
  * as outdated. `enforce: false` means we only care that the key EXISTS — the
  * customer owns the value (their restart hour, their time zone, restarts off).
  *
+ * A customer-owned value can still need a rewrite: `needsUpdate` reports one as
+ * outdated and `upgrade` produces the replacement from the value already there, so
+ * the customer's own choice is carried across instead of being reset to `value`.
+ *
  * Note on DISABLE_GENERATE_SETTINGS for the legacy per-slot Palworld apps (the ones
  * that predate the current marketplace listing and drive SERVER_NAME/PLAYERS from
  * env): adding it stops the container rebuilding PalWorldSettings.ini from those env
@@ -234,8 +283,11 @@ export const STANDARD_ENV = [
     key: REBOOT_ENV_KEYS.cron,
     value: cronForHour(DEFAULT_REBOOT_HOUR),
     enforce: false,
+    needsUpdate: cronNeedsAdminPassword,
+    upgrade: (current) => cronForHour(hourFromCron(current) ?? DEFAULT_REBOOT_HOUR),
     label: 'Restart schedule',
     description: 'When the daily restart runs.',
+    updateDescription: 'Your daily restart is scheduled but never actually runs: it cannot authenticate with your server. This repairs it and keeps the time you chose.',
   },
   {
     key: REBOOT_ENV_KEYS.warnMinutes,
@@ -276,6 +328,8 @@ export function findMissingStandardEnv(envObj) {
       out.push({ ...item, reason: 'missing' });
     } else if (item.enforce && String(current).toLowerCase() !== String(item.value).toLowerCase()) {
       out.push({ ...item, reason: 'outdated' });
+    } else if (item.needsUpdate && item.needsUpdate(current)) {
+      out.push({ ...item, reason: 'outdated' });
     }
   }
   return out;
@@ -285,12 +339,21 @@ export function findMissingStandardEnv(envObj) {
  * The patch to apply for a one-click "update my server": only the keys reported by
  * findMissingStandardEnv, so nothing the customer configured is overwritten. TZ
  * defaults to the browser's zone rather than the spec's literal UTC — a restart at
- * "05:00 UTC" is the wrong 05:00 for most of the world.
+ * "05:00 UTC" is the wrong 05:00 for most of the world. An entry with `upgrade`
+ * rewrites the value the server already has, keeping the customer's choice inside it.
  */
 export function standardEnvPatch(envObj) {
+  const env = envObj || {};
   const patch = {};
-  for (const item of findMissingStandardEnv(envObj)) {
-    patch[item.key] = item.key === REBOOT_ENV_KEYS.timeZone ? detectTimeZone() : item.value;
+  for (const item of findMissingStandardEnv(env)) {
+    const current = env[item.key];
+    if (item.upgrade && current !== undefined && current !== '') {
+      patch[item.key] = item.upgrade(current);
+    } else if (item.key === REBOOT_ENV_KEYS.timeZone) {
+      patch[item.key] = detectTimeZone();
+    } else {
+      patch[item.key] = item.value;
+    }
   }
   return patch;
 }

@@ -454,7 +454,11 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
                       {item.reason === 'outdated' && (
                         <span className="ml-1.5 text-[10px] uppercase tracking-wide text-amber-300">needs update</span>
                       )}
-                      <span className="block text-gray-400">{item.description}</span>
+                      <span className="block text-gray-400">
+                        {item.reason === 'outdated' && item.updateDescription
+                          ? item.updateDescription
+                          : item.description}
+                      </span>
                     </span>
                   </li>
                 ))}
