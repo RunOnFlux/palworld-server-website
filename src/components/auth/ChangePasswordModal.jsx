@@ -18,7 +18,9 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  // One toggle per field: revealing the current password and checking a new one
+  // you just typed are separate needs.
+  const [reveal, setReveal] = useState({ current: false, next: false, confirm: false });
 
   const {
     register: registerField,
@@ -32,7 +34,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
       reset();
       setError('');
       setDone(false);
-      setShowPassword(false);
+      setReveal({ current: false, next: false, confirm: false });
     }
   }, [isOpen, reset]);
 
@@ -59,14 +61,15 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const revealButton = (
+  const revealButton = (field) => (
     <button
       type="button"
-      onClick={() => setShowPassword(!showPassword)}
+      onClick={() => setReveal((current) => ({ ...current, [field]: !current[field] }))}
       className="text-gray-400 hover:text-gray-300 focus:outline-none"
+      aria-label={reveal[field] ? 'Hide password' : 'Show password'}
       tabIndex={-1}
     >
-      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+      {reveal[field] ? <EyeOff size={18} /> : <Eye size={18} />}
     </button>
   );
 
@@ -90,11 +93,11 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
 
           <Input
             label="Current Password"
-            type={showPassword ? 'text' : 'password'}
+            type={reveal.current ? 'text' : 'password'}
             placeholder="••••••••"
             autoComplete="current-password"
             leftIcon={<Lock size={18} />}
-            rightIcon={revealButton}
+            rightIcon={revealButton('current')}
             error={errors.currentPassword?.message}
             {...registerField('currentPassword', {
               required: 'Current password is required',
@@ -103,10 +106,11 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
 
           <Input
             label="New Password"
-            type={showPassword ? 'text' : 'password'}
+            type={reveal.next ? 'text' : 'password'}
             placeholder="••••••••"
             autoComplete="new-password"
             leftIcon={<Lock size={18} />}
+            rightIcon={revealButton('next')}
             error={errors.newPassword?.message}
             {...registerField('newPassword', {
               required: 'New password is required',
@@ -122,10 +126,11 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
 
           <Input
             label="Confirm New Password"
-            type={showPassword ? 'text' : 'password'}
+            type={reveal.confirm ? 'text' : 'password'}
             placeholder="••••••••"
             autoComplete="new-password"
             leftIcon={<Lock size={18} />}
+            rightIcon={revealButton('confirm')}
             error={errors.confirmPassword?.message}
             {...registerField('confirmPassword', {
               required: 'Please confirm your new password',
