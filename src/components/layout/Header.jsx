@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Menu, X, User, LogOut, LayoutDashboard, ChevronDown, CircleDollarSign, HelpCircle, CreditCard, Globe, TicketCheck } from 'lucide-react';
+import { Menu, X, User, LogOut, LayoutDashboard, ChevronDown, CircleDollarSign, HelpCircle, CreditCard, Globe, TicketCheck, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { gameConfig } from '../../config/gameConfig';
 import stripeService from '../../services/stripeService';
 import Button from '../common/Button';
+import ChangePasswordModal from '../auth/ChangePasswordModal';
 import PropTypes from 'prop-types';
 
 // Move logo style outside to prevent recreation on every render
@@ -33,6 +34,17 @@ const Header = ({ onLoginClick }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+
+  // Only email/password accounts have a password to change. Google and ZelCore
+  // sessions never see the entry.
+  const canChangePassword = user?.loginType === 'firebase' && user?.hasPassword;
+
+  const openChangePassword = useCallback(() => {
+    setChangePasswordOpen(true);
+    setUserMenuOpen(false);
+    setMobileMenuOpen(false);
+  }, []);
 
   // Get display name based on login type
   const getDisplayName = () => {
@@ -232,6 +244,17 @@ const Header = ({ onLoginClick }) => {
                           </span>
                           {billingLoading ? 'Opening...' : 'Billing Portal'}
                         </button>
+                        {canChangePassword && (
+                          <button
+                            className="w-full px-3 py-2 text-left text-sm text-text-secondary hover:text-text flex items-center gap-2.5 transition-all duration-200 cursor-pointer rounded-lg border border-transparent hover:border-border/30 hover:bg-surface-hover/50"
+                            onClick={openChangePassword}
+                          >
+                            <span className="w-6 h-6 flex items-center justify-center rounded-md bg-primary/10">
+                              <KeyRound className="w-3.5 h-3.5" />
+                            </span>
+                            Change Password
+                          </button>
+                        )}
                         <button
                           className="w-full px-3 py-2 text-left text-sm text-text-secondary hover:text-text flex items-center gap-2.5 transition-all duration-200 cursor-pointer rounded-lg border border-transparent hover:border-border/30 hover:bg-surface-hover/50"
                           onClick={goToSupport}
@@ -288,6 +311,7 @@ const Header = ({ onLoginClick }) => {
                 ...(loading ? [] : isAuthenticated ? [
                   { icon: <LayoutDashboard size={18} />, label: 'Dashboard', onClick: goToDashboard },
                   { icon: <CreditCard size={18} />, label: billingLoading ? 'Opening...' : 'Billing Portal', onClick: handleBillingPortal, disabled: billingLoading },
+                  ...(canChangePassword ? [{ icon: <KeyRound size={18} />, label: 'Change Password', onClick: openChangePassword }] : []),
                   { icon: <TicketCheck size={18} />, label: 'Support', onClick: goToSupport },
                   { icon: <LogOut size={18} />, label: 'Logout', onClick: handleLogout, danger: true },
                 ] : [
@@ -318,6 +342,11 @@ const Header = ({ onLoginClick }) => {
           </div>
         )}
       </nav>
+
+      <ChangePasswordModal
+        isOpen={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
     </header>
   );
 };

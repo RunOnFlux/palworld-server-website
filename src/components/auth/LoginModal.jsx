@@ -14,7 +14,7 @@ import GoogleLoginButton from './GoogleLoginButton';
  * Supports Email and Google authentication
  */
 const LoginModal = ({ isOpen, onClose }) => {
-  const [mode, setMode] = useState('login'); // 'login' or 'register'
+  const [mode, setMode] = useState('login'); // 'login', 'register' or 'forgot'
   const [isLoading, setIsLoading] = useState(false);
   const [isExternalAuthLoading, setIsExternalAuthLoading] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
@@ -23,14 +23,17 @@ const LoginModal = ({ isOpen, onClose }) => {
   const [verificationEmail, setVerificationEmail] = useState('');
   const [waitingForAuth, setWaitingForAuth] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetCooldown, setResetCooldown] = useState(0);
   const verificationCheckInterval = useRef(null);
-  const { login, /* loginWithZelCore, */ register, resendVerification, checkEmailVerified, user, loading: authLoading } = useAuth();
+  const { login, /* loginWithZelCore, */ register, resendVerification, resetPassword, checkEmailVerified, user, loading: authLoading } = useAuth();
 
   const {
     register: registerField,
     handleSubmit,
     formState: { errors },
     reset,
+    unregister,
   } = useForm();
 
   // Close modal once zelidauth is stored (zelid available)
@@ -65,7 +68,12 @@ const LoginModal = ({ isOpen, onClose }) => {
 
   // Reset waiting state when modal opens/closes
   useEffect(() => {
-    if (!isOpen) setWaitingForAuth(false);
+    if (!isOpen) {
+      setWaitingForAuth(false);
+      // Don't leave the modal parked on the reset form for the next open.
+      setMode('login');
+      setResetSent(false);
+    }
   }, [isOpen]);
 
   // Auto-check email verification (FluxOS pattern)
@@ -115,11 +123,28 @@ const LoginModal = ({ isOpen, onClose }) => {
     };
   }, [showVerificationScreen, checkEmailVerified, onClose, reset]);
 
-  const handleModeSwitch = () => {
-    setMode(mode === 'login' ? 'register' : 'login');
+  // Tick the resend cooldown down to zero. Firebase throttles reset mails on its
+  // own side, so the button stays disabled rather than firing a request that
+  // would just come back rejected.
+  useEffect(() => {
+    if (resetCooldown <= 0) return;
+    const timer = setTimeout(() => setResetCooldown((seconds) => seconds - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resetCooldown]);
+
+  const goToMode = (nextMode) => {
+    setMode(nextMode);
     setShowResendVerification(false);
     setShowVerificationScreen(false);
+    setResetSent(false);
     reset();
+    // 'forgot' does not render the password input. Its rules would otherwise stay
+    // registered and a "Password is required" error would silently block submit.
+    if (nextMode === 'forgot') unregister('password');
+  };
+
+  const handleModeSwitch = () => {
+    goToMode(mode === 'login' ? 'register' : 'login');
   };
 
   const onSubmit = async (data) => {
@@ -128,6 +153,15 @@ const LoginModal = ({ isOpen, onClose }) => {
 
     try {
       let result;
+
+      if (mode === 'forgot') {
+        result = await resetPassword(data.email);
+        if (result.success) {
+          setResetSent(true);
+          setResetCooldown(60);
+        }
+        return;
+      }
 
       if (mode === 'login') {
         result = await login(data.email, data.password);
@@ -267,25 +301,47 @@ const LoginModal = ({ isOpen, onClose }) => {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={mode === 'login' ? 'Welcome Back' : 'Create Account'}
+      title={mode === 'login' ? 'Welcome Back' : mode === 'register' ? 'Create Account' : 'Reset Password'}
       size="sm"
     >
       <div className="space-y-6">
-        {/* Wallet Login Options */}
-        <div className="space-y-3">
-          {/* <ZelCoreLoginButton onSuccess={handleZelCoreSuccess} disabled={isLoading || isExternalAuthLoading} /> */}
-          <GoogleLoginButton onClose={() => setWaitingForAuth(true)} onLoadingChange={setIsExternalAuthLoading} disabled={isLoading || isExternalAuthLoading} />
-        </div>
+        {/* Wallet and Google sign-in have no password to reset, so they are hidden
+            while the user is asking for a reset link. */}
+        {mode !== 'forgot' && (
+          <>
+            {/* Wallet Login Options */}
+            <div className="space-y-3">
+              {/* <ZelCoreLoginButton onSuccess={handleZelCoreSuccess} disabled={isLoading || isExternalAuthLoading} /> */}
+              <GoogleLoginButton onClose={() => setWaitingForAuth(true)} onLoadingChange={setIsExternalAuthLoading} disabled={isLoading || isExternalAuthLoading} />
+            </div>
 
-        {/* Divider */}
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-border"></div>
+            {/* Divider */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-3 text-text-secondary font-semibold">Or continue with email</span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {mode === 'forgot' && (
+          <p className="text-sm text-text-secondary text-center">
+            Enter the email address on your account and we&apos;ll send you a link to set a new password.
+          </p>
+        )}
+
+        {mode === 'forgot' && resetSent && (
+          <div className="rounded-lg border border-primary/20 bg-primary/10 p-4 text-center space-y-1">
+            <Mail className="w-6 h-6 text-primary-light mx-auto" />
+            <p className="text-sm font-semibold text-primary-light">Check your email</p>
+            <p className="text-xs text-text-secondary">
+              If an account exists for that address, a reset link is on its way. Remember to check your spam folder.
+            </p>
           </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-3 text-text-secondary font-semibold">Or continue with email</span>
-          </div>
-        </div>
+        )}
 
         {/* Email Login/Register Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -304,6 +360,7 @@ const LoginModal = ({ isOpen, onClose }) => {
             })}
           />
 
+          {mode !== 'forgot' && (
           <Input
             label="Password"
             type={showPassword ? 'text' : 'password'}
@@ -335,6 +392,7 @@ const LoginModal = ({ isOpen, onClose }) => {
               } : undefined,
             })}
           />
+          )}
 
           {mode === 'login' && (
             <div className="flex justify-between items-center">
@@ -348,6 +406,13 @@ const LoginModal = ({ isOpen, onClose }) => {
                   Resend Verification Email
                 </button>
               )}
+              <button
+                type="button"
+                className="text-sm text-primary hover:text-primary-light font-medium ml-auto"
+                onClick={() => goToMode('forgot')}
+              >
+                Forgot your password?
+              </button>
             </div>
           )}
 
@@ -357,22 +422,39 @@ const LoginModal = ({ isOpen, onClose }) => {
             size="md"
             fullWidth
             loading={isLoading}
-            disabled={isExternalAuthLoading}
+            disabled={isExternalAuthLoading || (mode === 'forgot' && resetCooldown > 0)}
           >
-            {mode === 'login' ? 'Sign In' : 'Create Account'}
+            {mode === 'login' && 'Sign In'}
+            {mode === 'register' && 'Create Account'}
+            {mode === 'forgot' && (
+              resetCooldown > 0
+                ? `Resend in ${resetCooldown}s`
+                : resetSent ? 'Resend Reset Link' : 'Send Reset Link'
+            )}
           </Button>
         </form>
 
         {/* Switch Mode */}
-        <div className="text-center text-sm text-text-secondary">
-          {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-          <button
-            onClick={handleModeSwitch}
-            className="text-primary hover:text-primary-light font-medium"
-          >
-            {mode === 'login' ? 'Sign up' : 'Sign in'}
-          </button>
-        </div>
+        {mode === 'forgot' ? (
+          <div className="text-center text-sm text-text-secondary">
+            <button
+              onClick={() => goToMode('login')}
+              className="text-primary hover:text-primary-light font-medium"
+            >
+              Back to sign in
+            </button>
+          </div>
+        ) : (
+          <div className="text-center text-sm text-text-secondary">
+            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+            <button
+              onClick={handleModeSwitch}
+              className="text-primary hover:text-primary-light font-medium"
+            >
+              {mode === 'login' ? 'Sign up' : 'Sign in'}
+            </button>
+          </div>
+        )}
 
         {/* Terms */}
         {mode === 'register' && (

@@ -88,6 +88,8 @@ export const AuthProvider = ({ children }) => {
             displayName: firebaseUser.displayName,
             photoURL: firebaseUser.photoURL,
             loginType: 'firebase',
+            // Google sessions have no password to change — the menu entry keys off this.
+            hasPassword: firebaseUser.providerData?.some((p) => p.providerId === 'password') ?? false,
           });
 
           // Store zelidauth for Flux API — reuse existing on refresh, only re-fetch on new login
@@ -242,6 +244,24 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const changePassword = async (currentPassword, newPassword) => {
+    try {
+      const result = await authService.changePassword(currentPassword, newPassword);
+      return { success: true, message: result.message };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  const resetPassword = async (email) => {
+    try {
+      const result = await authService.sendPasswordReset(email);
+      return { success: true, message: result.message };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
   const checkEmailVerified = async () => {
     try {
       const result = await authService.checkEmailVerified();
@@ -261,6 +281,8 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     resendVerification,
+    resetPassword,
+    changePassword,
     checkEmailVerified,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [user, loading, isAuthenticated, loginTime]);

@@ -4,6 +4,8 @@ import {
   getUser,
   signOut as firebaseSignOut,
   sendVerificationEmail,
+  sendPasswordReset as firebaseSendPasswordReset,
+  changePassword as firebaseChangePassword,
   updateUserProfile,
   reloadUser,
 } from '../utils/firebase';
@@ -204,6 +206,51 @@ class AuthService {
   }
 
   /**
+   * Send a password reset email.
+   *
+   * `auth/user-not-found` is swallowed on purpose: surfacing it would turn this
+   * form into an oracle for which emails have an account. Every caller gets the
+   * same neutral outcome whether or not the address is registered.
+   */
+  async sendPasswordReset(email) {
+    try {
+      await firebaseSendPasswordReset(email);
+    } catch (error) {
+      if (error.code !== 'auth/user-not-found') {
+        console.error('Password reset email failed:', error);
+        throw this.handleFirebaseError(error);
+      }
+    }
+
+    return {
+      success: true,
+      message: 'If an account exists for that address, a reset link is on its way.',
+    };
+  }
+
+  /**
+   * Change the signed-in user's password, reauthenticating with the current one.
+   */
+  async changePassword(currentPassword, newPassword) {
+    try {
+      await firebaseChangePassword(currentPassword, newPassword);
+
+      return { success: true, message: 'Your password has been changed.' };
+    } catch (error) {
+      // A failed reauthentication reports the same codes as a failed sign-in.
+      // Here the only credential in play is the current password, so say that
+      // rather than the generic "check your email and password".
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        const wrong = new Error('Current password is incorrect');
+        wrong.code = error.code;
+        throw wrong;
+      }
+
+      throw this.handleFirebaseError(error);
+    }
+  }
+
+  /**
    * Check if current user's email is verified (FluxOS pattern)
    * Reloads user data from Firebase
    */
@@ -256,6 +303,9 @@ class AuthService {
       'auth/weak-password': 'Password must be at least 6 characters',
       'auth/too-many-requests': 'Too many failed attempts. Please try again later',
       'auth/email-not-verified': 'Please verify your email before logging in. Check your inbox for the verification link.',
+      'auth/missing-email': 'Please enter your email address',
+      'auth/requires-recent-login': 'For security, please sign out and sign in again before changing your password',
+      'auth/no-current-user': 'You must be signed in to change your password',
       'auth/network-request-failed': 'Network error. Please check your connection',
       'auth/invalid-credential': 'Invalid credentials. Please check your email and password',
     };
