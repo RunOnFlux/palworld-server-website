@@ -7298,9 +7298,38 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
   );
 };
 
+// ── Subscription block math ─────────────────────────────────────────────────
+// Flux bills a "month" as 88,000 blocks and refuses any expire above one year.
+// The cap applies to the WHOLE subscription: time still left + time being bought.
+const BLOCKS_PER_MONTH = 88000;
+const MAX_SUBSCRIPTION_BLOCKS = BLOCKS_PER_MONTH * 12; // 1,056,000 blocks
+const BLOCKS_PER_DAY = BLOCKS_PER_MONTH / 30; // a day of that same 30-day month
+
+/** Blocks → "4 months 12 days". */
+const formatBlocksDuration = (blocks) => {
+  const totalDays = Math.max(0, Math.round(blocks / BLOCKS_PER_DAY));
+  if (totalDays < 1) return 'less than a day';
+  const months = Math.floor(totalDays / 30);
+  const days = totalDays % 30;
+  const parts = [];
+  if (months) parts.push(months === 1 ? '1 month' : `${months} months`);
+  if (days) parts.push(days === 1 ? '1 day' : `${days} days`);
+  return parts.join(' ');
+};
+
+/** Flux's long-duration discount, derived from the TOTAL subscription length. */
+const discountForTotalBlocks = (totalBlocks) => {
+  const months = totalBlocks / BLOCKS_PER_MONTH;
+  if (months >= 9) return 12;
+  if (months >= 6) return 6;
+  if (months >= 3) return 3;
+  return 0;
+};
+
 // Billing Tab - Renewal, subscription management, and cancellation
 const BillingTab = ({ server, onUpdate, onClose }) => {
-  const [selectedDuration, setSelectedDuration] = useState('1');
+  // Blocks the customer is buying right now (slider value).
+  const [addBlocks, setAddBlocks] = useState(BLOCKS_PER_MONTH);
   const [isProcessing, setIsProcessing] = useState(false);
   const [availableBlocks, setAvailableBlocks] = useState(null);
   const [currentExpire, setCurrentExpire] = useState(null);
@@ -7358,19 +7387,6 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
       abort?.abort();
     };
   }, []);
-
-  const BLOCKS_PER_MONTH = 88000;
-  const MAX_SUBSCRIPTION_BLOCKS = BLOCKS_PER_MONTH * 12; // 1,056,000 blocks
-  const BLOCKS_PER_DAY = 2880; // 30s blocks post-PON-fork
-
-  // Human-readable headroom left before the 1-year cap ("18 days", "2 months").
-  const formatBlocksDuration = (blocks) => {
-    const days = Math.max(0, Math.floor(blocks / BLOCKS_PER_DAY));
-    if (days < 1) return 'less than a day';
-    if (days < 30) return days === 1 ? '1 day' : `${days} days`;
-    const months = Math.floor(days / 30);
-    return months === 1 ? '1 month' : `${months} months`;
-  };
 
   // Subscription period mapping (matches FluxOS SUBSCRIPTION_PERIOD_MAP)
   const SUBSCRIPTION_PERIOD_MAP = {
@@ -7455,9 +7471,6 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
     setProgressSteps([]);
 
     try {
-      // Get selected duration or default to 1 month
-      const duration = durations.find(d => d.months === selectedDuration) || durations[0];
-
       // Step 1: Calculate price
       setProgressSteps([{ step: 'Calculating price (TEST)', status: 'loading' }]);
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -7494,14 +7507,14 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
 
       // Step 5: Set renewal details for success UI
       const SECONDS_PER_BLOCK = 30; // Post-fork block time
-      const secondsAdded = duration.blocks * SECONDS_PER_BLOCK;
+      const secondsAdded = addBlocks * SECONDS_PER_BLOCK;
       const currentDate = server.expiresAt ? new Date(server.expiresAt) : new Date();
       const newExpirationDate = new Date(currentDate.getTime() + (secondsAdded * 1000));
 
       setRenewalDetails({
-        duration: duration.label + ' (TEST)',
+        duration: periodLabel + ' (TEST)',
         price: testPrice,
-        blocksAdded: duration.blocks,
+        blocksAdded: addBlocks,
         currentExpiration: currentDate,
         newExpiration: newExpirationDate,
         daysAdded: Math.floor(secondsAdded / (60 * 60 * 24)),
@@ -7532,6 +7545,31 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
     { months: '6', label: '6 Months', blocks: BLOCKS_PER_MONTH * 6 },
     { months: '12', label: '12 Months', blocks: BLOCKS_PER_MONTH * 12 },
   ];
+
+  // ── Renewal period selection ──────────────────────────────────────────────
+  // The subscription is capped at 1 year IN TOTAL, so the most that can be bought
+  // right now is a year minus whatever is still on the server. The slider spans
+  // exactly that headroom, in days, so the customer can always top up to the cap.
+  const maxAddBlocks = availableBlocks ?? 0;
+  const maxAddDays = Math.floor(maxAddBlocks / BLOCKS_PER_DAY);
+  const addDays = Math.min(Math.max(1, Math.round(addBlocks / BLOCKS_PER_DAY)), Math.max(1, maxAddDays));
+  // Snap the top of the slider to the exact headroom so "max" really means max.
+  const blocksForDays = (days) => (days >= maxAddDays ? maxAddBlocks : Math.round(days * BLOCKS_PER_DAY));
+  const periodLabel = formatBlocksDuration(addBlocks);
+  const totalAfterRenewal = (currentExpire ?? 0) + addBlocks;
+  // Stripe subscriptions only exist for the whole-month periods.
+  const subscriptionMonths = SUBSCRIPTION_PERIOD_MAP[addBlocks];
+
+  // Quick picks: every preset that fits, plus the exact headroom when no preset hits it.
+  const presets = durations.filter(d => d.blocks <= maxAddBlocks).map(d => ({ key: d.months, label: d.label, blocks: d.blocks }));
+  if (maxAddBlocks > 0 && !presets.some(p => p.blocks === maxAddBlocks)) {
+    presets.push({ key: 'max', label: `Max · ${formatBlocksDuration(maxAddBlocks)}`, blocks: maxAddBlocks });
+  }
+
+  // Auto-renewal is a Stripe subscription, which only supports 1/3/6/12-month periods.
+  useEffect(() => {
+    if (!subscriptionMonths && autoRenewal) setAutoRenewal(false);
+  }, [subscriptionMonths, autoRenewal]);
 
   // Fetch plans once on mount (in-memory cache only)
   useEffect(() => {
@@ -7576,14 +7614,8 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
           maxTotal: MAX_SUBSCRIPTION_BLOCKS
         });
 
-        // Auto-select first available duration
-        // Keep the user's choice unless it no longer fits under the 1-year cap.
-        setSelectedDuration((prev) => {
-          const current = durations.find(d => d.months === prev);
-          if (current && current.blocks <= available) return prev;
-          const firstAvailable = durations.find(d => d.blocks <= available);
-          return firstAvailable ? firstAvailable.months : prev;
-        });
+        // Keep the chosen period, only pulling it down to whatever still fits.
+        setAddBlocks((prev) => Math.min(prev || BLOCKS_PER_MONTH, available));
       } catch (error) {
         console.error('Failed to load subscription limits:', error);
       } finally {
@@ -7630,7 +7662,7 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
     const pricingController = new AbortController();
     const calculatePricing = async () => {
       // currentExpire === 0 is valid (expired server) — only bail while it is still unknown.
-      if (!server || !selectedDuration || currentExpire === null || !cachedPlans) {
+      if (!server || currentExpire === null || !cachedPlans) {
         // Wait for plans to be cached before calculating
         if (!cachedPlans) {
           setIsLoadingPrice(true);
@@ -7642,22 +7674,18 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
       setPricing(null);
 
       try {
-        const duration = durations.find(d => d.months === selectedDuration);
-
         // Hard 1-year cap: the subscription is the time still left PLUS the period being
-        // bought, and Flux rejects any expire above MAX_SUBSCRIPTION_BLOCKS. Refuse instead
-        // of silently shortening the purchase — the customer must get the period they picked.
+        // bought, and Flux rejects any expire above MAX_SUBSCRIPTION_BLOCKS. The slider can
+        // never go past it; this only guards a stale value.
         const available = Math.max(0, MAX_SUBSCRIPTION_BLOCKS - currentExpire);
-        if (duration.blocks > available) {
+        const blocksToAdd = Math.min(addBlocks, available);
+        if (blocksToAdd <= 0) {
           setPricing({
-            error: available > 0
-              ? `${duration.label} would take this server past the 1-year subscription maximum. You can add up to ${formatBlocksDuration(available)} right now.`
-              : 'This server is already subscribed for the maximum of 1 year. You can renew again once some of it has elapsed.',
+            error: 'This server is already subscribed for the maximum of 1 year. You can renew again once some of it has elapsed.',
           });
           return;
         }
 
-        const blocksToAdd = duration.blocks;
         // appupdate re-registers the app at the CURRENT block height, so `expire` counts
         // from now on: blocks still remaining + the period just purchased.
         const newExpire = currentExpire + blocksToAdd;
@@ -7669,11 +7697,7 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
         if (!outer?.name) throw new Error('Could not load the current app spec.');
 
         // Discount is derived by Flux from the spec's expire; we compute it here only for display.
-        const newTotalMonths = newExpire / BLOCKS_PER_MONTH;
-        let discount = 0;
-        if (newTotalMonths >= 9) discount = 12;
-        else if (newTotalMonths >= 6) discount = 6;
-        else if (newTotalMonths >= 3) discount = 3;
+        const discount = discountForTotalBlocks(newExpire);
 
         const p = await apiService.calculateAppPrice({ ...outer, expire: newExpire });
         if (!(p?.usd > 0)) throw new Error('Price calculation returned no price.');
@@ -7709,10 +7733,15 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
       }
     };
 
-    calculatePricing();
-    return () => pricingController.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDuration, server, currentExpire, cachedPlans]);
+    // Debounced: the slider fires continuously while dragging, and each run hits the
+    // Flux price API. Show the spinner straight away, but only price once it settles.
+    setIsLoadingPrice(true);
+    const debounce = setTimeout(calculatePricing, 350);
+    return () => {
+      clearTimeout(debounce);
+      pricingController.abort();
+    };
+  }, [addBlocks, server, currentExpire, cachedPlans]);
 
   const handleRenewal = async () => {
     if (!server) return;
@@ -7724,8 +7753,6 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
     setRenewalDetails(null);
 
     try {
-      const duration = durations.find(d => d.months === selectedDuration);
-
       // Use pre-calculated pricing for initial check
       if (!pricing) {
         throw new Error('Pricing not calculated');
@@ -7776,16 +7803,17 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
       const freshAvailableBlocks = Math.max(0, MAX_SUBSCRIPTION_BLOCKS - freshRemainingBlocks);
 
       // Never shorten the purchase to fit the cap — refuse it, so the customer always gets
-      // exactly the period they selected and paid for.
-      if (duration.blocks > freshAvailableBlocks) {
+      // exactly the period they selected and paid for. (The slider is bounded by the same
+      // cap, so this only trips if the app was renewed elsewhere meanwhile.)
+      if (addBlocks > freshAvailableBlocks) {
         throw new Error(
           freshAvailableBlocks > 0
-            ? `${duration.label} would take this server past the 1-year subscription maximum. You can add up to ${formatBlocksDuration(freshAvailableBlocks)} right now.`
+            ? `${periodLabel} would take this server past the 1-year subscription maximum. You can add up to ${formatBlocksDuration(freshAvailableBlocks)} right now.`
             : 'This server is already subscribed for the maximum of 1 year.',
         );
       }
 
-      const freshBlocksToAdd = duration.blocks;
+      const freshBlocksToAdd = addBlocks;
       // appupdate re-registers at the CURRENT height (renewAppSubscription drops the old
       // height), so `expire` counts from now: time still remaining + the period purchased.
       const freshNewExpire = freshRemainingBlocks + freshBlocksToAdd;
@@ -7797,11 +7825,8 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
         freshNewExpire
       });
 
-      const newTotalMonths = (freshRemainingBlocks + freshBlocksToAdd) / BLOCKS_PER_MONTH;
-      let discount = 0;
-      if (newTotalMonths >= 9) discount = 12;
-      else if (newTotalMonths >= 6) discount = 6;
-      else if (newTotalMonths >= 3) discount = 3;
+      const newTotalMonths = freshNewExpire / BLOCKS_PER_MONTH;
+      const discount = discountForTotalBlocks(freshNewExpire);
 
       const freshP = await apiService.calculateAppPrice({ ...freshOuter, expire: freshNewExpire });
       if (!(freshP?.usd > 0)) throw new Error('Price calculation returned no price.');
@@ -7844,7 +7869,7 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
 
       // Store renewal details for display after success (using FRESH price)
       setRenewalDetails({
-        duration: duration.label,
+        duration: periodLabel,
         price: freshPrice,
         blocksAdded: freshBlocksToAdd,
         currentExpiration: currentDate,
@@ -7854,12 +7879,11 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
 
       // Step 2: Create payment session with FRESH price
       setProgressSteps(prev => [...prev, { step: 'Creating payment session', status: 'loading' }]);
-      const productName = `${server.name} - Renewal (${duration.label})`;
+      const productName = `${server.name} - Renewal (${periodLabel})`;
       const successUrl = `${window.location.origin}/success?renewal=true&server=${server.name}&hash=${paymentHash}`;
       const cancelUrl = `${window.location.origin}/cancel?renewal=true&server=${server.name}`;
 
       const appDescription = 'Palworld Server on Flux Decentralized Cloud';
-      const subscriptionMonths = SUBSCRIPTION_PERIOD_MAP[duration.blocks];
 
       const sessionId = autoRenewal && subscriptionMonths
         ? await stripeService.createSubscriptionSession(
@@ -7957,8 +7981,6 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
     setRenewalDetails(null);
 
     try {
-      const duration = durations.find(d => d.months === selectedDuration);
-
       // Fresh block height calculation (same as handleRenewal)
       let freshBlockHeight;
       try {
@@ -7978,15 +8000,15 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
       const freshAvailableBlocks = Math.max(0, MAX_SUBSCRIPTION_BLOCKS - freshRemainingBlocks);
 
       // Same cap rule as the fiat flow: refuse rather than shorten the purchased period.
-      if (duration.blocks > freshAvailableBlocks) {
+      if (addBlocks > freshAvailableBlocks) {
         throw new Error(
           freshAvailableBlocks > 0
-            ? `${duration.label} would take this server past the 1-year subscription maximum. You can add up to ${formatBlocksDuration(freshAvailableBlocks)} right now.`
+            ? `${periodLabel} would take this server past the 1-year subscription maximum. You can add up to ${formatBlocksDuration(freshAvailableBlocks)} right now.`
             : 'This server is already subscribed for the maximum of 1 year.',
         );
       }
 
-      const freshBlocksToAdd = duration.blocks;
+      const freshBlocksToAdd = addBlocks;
       // appupdate re-registers at the CURRENT height, so `expire` must be the time still
       // remaining plus the period bought — NOT the old expire (that would charge/grant the
       // already-elapsed time again, and the FLUX paid here would then be underpaid on-chain).
@@ -8059,13 +8081,12 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
       ]);
 
       // Set renewal details for success UI
-      const selectedDur = durations.find(d => d.months === selectedDuration);
       const SECONDS_PER_BLOCK = 30;
       const secondsAdded = freshBlocksToAdd * SECONDS_PER_BLOCK;
       const currentDate = server.expiresAt ? new Date(server.expiresAt) : new Date();
       const newExpirationDate = new Date(currentDate.getTime() + (secondsAdded * 1000));
       setRenewalDetails({
-        duration: selectedDur.label,
+        duration: periodLabel,
         price: parseFloat(fluxPrice),
         crypto: true,
         txid,
@@ -8550,37 +8571,40 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
           {(!subscriptionStatus || subscriptionStatus.status !== 'active' || currentExpire <= 200) && (
           <>
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-3">Select Renewal Duration</label>
+            <div className="flex items-baseline justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-300">Select Renewal Duration</label>
+              <span className="text-xs text-gray-500">1 year maximum</span>
+            </div>
             {isLoadingLimits ? (
               <div className="text-sm text-gray-400 text-center py-4">Loading available options...</div>
+            ) : maxAddBlocks <= 0 ? (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-300">
+                This server is already paid up to the 1-year maximum, with {formatBlocksDuration(currentExpire)} still to run.
+                You can extend it again once some of that time has elapsed.
+              </div>
             ) : (
               <>
+              {/* Quick picks — only periods that fit, plus the exact headroom left */}
               <div className="flex flex-wrap gap-3">
-                {durations.map((duration) => {
-                  // A period is only offered if the whole of it fits under the 1-year cap
-                  // (subscription = blocks still remaining + the period being bought).
-                  const fitsInCap = duration.blocks <= (availableBlocks ?? 0);
-
-                  let discount = 0;
-                  if (duration.months >= 12) discount = 12;
-                  else if (duration.months >= 6) discount = 6;
-                  else if (duration.months >= 3) discount = 3;
+                {presets.map((preset) => {
+                  // Flux's discount comes off the TOTAL subscription, so the time already on
+                  // the server counts towards it too.
+                  const discount = discountForTotalBlocks((currentExpire ?? 0) + preset.blocks);
 
                   return (
                     <button
-                      key={duration.months}
-                      onClick={() => setSelectedDuration(duration.months)}
-                      disabled={isProcessing || !fitsInCap}
-                      title={fitsInCap ? undefined : 'Would exceed the 1-year subscription maximum'}
+                      key={preset.key}
+                      onClick={() => setAddBlocks(preset.blocks)}
+                      disabled={isProcessing}
                       className={`flex-1 min-w-fit px-3 py-2 rounded-lg border-2 transition-colors ${
-                        selectedDuration === duration.months
+                        addBlocks === preset.blocks
                           ? 'border-blue-500 bg-blue-500/10'
                           : 'border-gray-700 bg-gray-700/30 hover:border-gray-600'
-                      } ${(isProcessing || !fitsInCap) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <div className="flex items-center gap-2 justify-center">
                         <span className="text-sm font-semibold text-white whitespace-nowrap">
-                          {duration.label}
+                          {preset.label}
                         </span>
                         {discount > 0 && (
                           <span className="inline-block px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full text-xs font-medium whitespace-nowrap">
@@ -8592,19 +8616,62 @@ const BillingTab = ({ server, onUpdate, onClose }) => {
                   );
                 })}
               </div>
-              {availableBlocks !== null && availableBlocks < BLOCKS_PER_MONTH && (
-                <p className="mt-2 text-xs text-amber-400">
-                  {availableBlocks > 0
-                    ? `A subscription can never exceed 1 year in total. With ${formatBlocksDuration(currentExpire)} still left, you can only add ${formatBlocksDuration(availableBlocks)} — renew again once more time has elapsed.`
-                    : 'This server is already subscribed for the maximum of 1 year. You can renew again once some of it has elapsed.'}
-                </p>
+
+              {/* Fine-tune anywhere up to the headroom left under the cap */}
+              {maxAddDays > 1 && (
+                <div className="mt-4">
+                  <div className="flex items-baseline justify-between gap-3 mb-2">
+                    <span className="text-sm text-white">
+                      Adding <span className="font-semibold text-blue-400">{periodLabel}</span>
+                    </span>
+                    <span className="text-xs text-gray-500 whitespace-nowrap">up to {formatBlocksDuration(maxAddBlocks)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={maxAddDays}
+                    step={1}
+                    value={addDays}
+                    disabled={isProcessing}
+                    aria-label="Renewal duration"
+                    onChange={(e) => setAddBlocks(blocksForDays(Number(e.target.value)))}
+                    className="w-full accent-blue-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
               )}
+
+              {/* The cap, made visible: time already paid for + time being added, out of 1 year */}
+              <div className="mt-4">
+                <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-gray-700/40">
+                  <div className="bg-gray-400/60" style={{ width: `${((currentExpire ?? 0) / MAX_SUBSCRIPTION_BLOCKS) * 100}%` }} />
+                  <div className="bg-blue-500 transition-all duration-150" style={{ width: `${(addBlocks / MAX_SUBSCRIPTION_BLOCKS) * 100}%` }} />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                  <span className="flex items-center gap-1.5 text-gray-400">
+                    <span className="inline-block w-2 h-2 rounded-full bg-gray-400/60" />
+                    {formatBlocksDuration(currentExpire)} still active
+                  </span>
+                  <span className="flex items-center gap-1.5 text-blue-300">
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+                    + {periodLabel}
+                  </span>
+                  <span className="sm:ml-auto text-gray-500">
+                    {MAX_SUBSCRIPTION_BLOCKS - totalAfterRenewal < BLOCKS_PER_DAY
+                      ? 'at the 1-year cap'
+                      : `${formatBlocksDuration(MAX_SUBSCRIPTION_BLOCKS - totalAfterRenewal)} left to the cap`}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  A subscription can run for at most 1 year at a time, counting the {formatBlocksDuration(currentExpire)} still
+                  on this server plus the time you add now.
+                </p>
+              </div>
               </>
             )}
           </div>
 
           {/* Pricing Display */}
-          {!isProcessing && !paymentResult && (
+          {!isProcessing && !paymentResult && maxAddBlocks > 0 && (
             <div className="rounded-lg overflow-hidden" style={{ background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(51,65,85,0.3)' }}>
               <div className="px-4 py-2 flex items-center gap-1.5 bg-gray-700/70" style={{ borderBottom: '1px solid rgba(51,65,85,0.3)' }}>
                   <MdMonetizationOn className="w-4 h-4 text-white" />
@@ -8633,7 +8700,7 @@ Price
                       <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full font-medium">
                         {pricing.discount}% OFF
                       </span>
-                      <span>for {selectedDuration}-month renewal</span>
+                      <span>on a {formatBlocksDuration(totalAfterRenewal)} subscription</span>
                     </div>
                   )}
                   <div className="text-sm mt-1.5">
@@ -8663,7 +8730,7 @@ Price
                 </div>
               ) : (
                 <div className="text-sm text-red-400">
-                  Failed to calculate pricing
+                  {pricing?.error || 'Failed to calculate pricing'}
                 </div>
               )}
               </div>
@@ -8681,16 +8748,19 @@ Price
                   <div>
                     <span className="text-sm font-semibold text-white">Auto-Renewal</span>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {autoRenewal
-                        ? 'Automatically renews via Stripe each billing period'
-                        : 'One-time payment. Manually renew before expiry.'}
+                      {!subscriptionMonths
+                        ? 'Available for 1, 3, 6 or 12-month periods — pick one above to enable it.'
+                        : autoRenewal
+                          ? 'Automatically renews via Stripe each billing period'
+                          : 'One-time payment. Manually renew before expiry.'}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setAutoRenewal(!autoRenewal)}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  disabled={!subscriptionMonths}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${
                     autoRenewal ? 'bg-blue-600' : 'bg-gray-600'
                   }`}
                 >
