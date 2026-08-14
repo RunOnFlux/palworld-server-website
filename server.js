@@ -19,8 +19,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * UDP ping — send a packet to the game port and measure response time
- * No authentication required, works with any Palworld server
+ * UDP ping — send a packet to the game port and see whether the server answers.
+ * No authentication required, works with any Palworld server.
+ *
+ * This is a liveness check, and only that. The round trip it measures is the one between the
+ * node serving this site and the node running the game, which is not a path any player takes:
+ * reported to customers as "latency" it read up to 200ms away from their real ping, which is
+ * what the "latency looks high but the game feels fine" tickets were about. The number stays
+ * in the log for ops, and is no longer returned. Latency shown in the dashboard is measured in
+ * the customer's own browser (src/utils/clientLatency.js), and the exact in-game ping comes
+ * from the game server itself via the REST API's per-player `ping`.
  */
 function udpPing(host, port, timeout = 5000) {
   return new Promise((resolve) => {
@@ -100,13 +108,8 @@ app.get('/api/palworld-status/{:domain}', async (req, res) => {
     const result = await udpPing(domain, port);
 
     if (result.online) {
-      const response = {
-        online: true,
-        latency: result.latency,
-      };
-
-      console.log(`✅ ${domain} - Online - latency: ${result.latency}ms`);
-      return res.json(response);
+      console.log(`✅ ${domain} - Online - probe round trip: ${result.latency}ms (ops only, not reported)`);
+      return res.json({ online: true });
     }
 
     if (attempt < maxRetries) {

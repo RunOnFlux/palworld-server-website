@@ -21,6 +21,7 @@ import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walle
 import marketplaceService from '../../services/marketplaceService';
 import ServerTerminal from './ServerTerminal';
 import ServerStats from './ServerStats';
+import { useClientLatency, latencyClass, LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import secureStorage from '../../utils/secureStorage';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
@@ -1695,7 +1696,9 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, statsRefreshKey }) => {
   // masterLocation is passed down from parent - no DNS resolution needed
 
-  // Live Palworld status — poll every 30s while overview tab is active
+  // Live Palworld status — poll every 30s while overview tab is active.
+  // Liveness only: this probe is sent by our own backend, so its timing measures the path from
+  // whichever node serves this site to the game node. Latency is measured in the browser below.
   const [livePalworld, setLivePalworld] = useState(null);
   useEffect(() => {
     if (!masterLocation) { setLivePalworld(null); return; }
@@ -1721,6 +1724,67 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
   const containerName = server?.version >= 4 && server?.compose?.length > 0
     ? `${server.compose[0].name}_${server.name}`
     : server?.name;
+  const componentName = server?.version >= 4 && server?.compose?.length > 0
+    ? server.compose[0].name
+    : 'null';
+
+  // Latency measured from this browser to the node running the game — the customer's own
+  // network path, which is what they mean when they ask about ping.
+  const [nodeHost, nodePort = 16127] = (masterLocation?.ip || '').split(':');
+  const { latency: clientLatency, measuring: measuringLatency } = useClientLatency(
+    nodeHost || null,
+    nodePort,
+    { enabled: server?.status === 'running' },
+  );
+
+  // The real in-game ping: the Palworld REST API reports a `ping` per connected player,
+  // measured by the game server itself. Nothing we probe from outside can beat it — but it
+  // only exists while someone is playing, and only if the server has an Admin Password.
+  const [playerPing, setPlayerPing] = useState(null);
+  useEffect(() => {
+    if (!masterLocation || server?.status !== 'running') { setPlayerPing(null); return undefined; }
+
+    let cancelled = false;
+    let timer = null;
+    const host = masterLocation.ip.split(':')[0];
+    const port = restApiPort(server);
+
+    const poll = async (password) => {
+      try {
+        const res = await fetch(`/api/palworld-rest/${host}/players?port=${port}&password=${encodeURIComponent(password)}`);
+        if (!res.ok || cancelled) return;
+
+        const data = await res.json();
+        const pings = (data.players || [])
+          .map((p) => Number(p.ping))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        if (cancelled) return;
+
+        setPlayerPing(pings.length > 0
+          ? {
+            avg: Math.round(pings.reduce((sum, n) => sum + n, 0) / pings.length),
+            worst: Math.round(Math.max(...pings)),
+            count: pings.length,
+          }
+          : null);
+      } catch { /* a failed poll keeps the last known value */ }
+    };
+
+    // The password is read once, not on every tick: it means downloading the config file from
+    // the node, and a server without an Admin Password would otherwise re-download it forever
+    // to learn the same nothing. No password simply means no in-game ping to show.
+    (async () => {
+      const password = await loadAdminPasswordFromConfig(server, masterLocation, componentName)
+        .catch(() => null);
+      if (!password || cancelled) return;
+      await poll(password);
+      if (cancelled) return;
+      timer = setInterval(() => poll(password), 30000);
+    })();
+
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [masterLocation, server?.status, server?.name]);
 
   return (
     <div className="p-4 space-y-3">
@@ -1780,7 +1844,6 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
       {/* Palworld Server Status */}
       {server.status === 'running' && (server.palworldOnline !== undefined || livePalworld) && (() => {
         const mcOnline = livePalworld ? livePalworld.online : server.palworldOnline;
-        const mcLatency = livePalworld ? livePalworld.latency : server.palworldLatency;
         return (
           <div className="rounded-xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.9))', border: '1px solid rgba(51,65,85,0.5)' }}>
             <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(51,65,85,0.3)' }}>
@@ -1789,7 +1852,7 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
               </div>
               <h3 className="text-sm font-semibold text-white">Palworld Server Status</h3>
             </div>
-            <div className="grid grid-cols-3 gap-2 p-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
               <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }}>
                 <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Status</div>
                 <div className={`text-sm font-bold flex items-center justify-center gap-1.5 ${mcOnline ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -1797,10 +1860,22 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
                   {mcOnline ? 'Online' : 'Offline'}
                 </div>
               </div>
-              <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }}>
-                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Latency</div>
-                <div className={`text-sm font-bold ${mcLatency && mcLatency < 200 ? 'text-emerald-400' : mcLatency && mcLatency < 500 ? 'text-yellow-400' : mcLatency ? 'text-red-400' : 'text-slate-500'}`}>
-                  {mcLatency ? `${mcLatency}ms` : '-'}
+              <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }} title={LATENCY_TOOLTIP}>
+                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Your Latency</div>
+                <div className={`text-sm font-bold ${clientLatency ? latencyClass(clientLatency) : 'text-slate-500'}`}>
+                  {clientLatency ? `${clientLatency}ms` : measuringLatency ? 'Measuring...' : '-'}
+                </div>
+              </div>
+              <div
+                className="rounded-lg px-3 py-2.5 text-center"
+                style={{ background: 'rgba(15,23,42,0.5)' }}
+                title={playerPing
+                  ? `Reported by the game server for ${playerPing.count} connected player${playerPing.count === 1 ? '' : 's'} (worst: ${playerPing.worst}ms).`
+                  : 'The exact ping the game server measures for connected players. Needs someone online and an Admin Password set.'}
+              >
+                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">In-Game Ping</div>
+                <div className={`text-sm font-bold ${playerPing ? latencyClass(playerPing.avg) : 'text-slate-500'}`}>
+                  {playerPing ? `${playerPing.avg}ms` : '-'}
                 </div>
               </div>
               <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }}>
@@ -1808,11 +1883,16 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
                 <div className="text-sm font-bold text-slate-400">Latest</div>
               </div>
             </div>
-            {(livePalworld?.lastCheck || server.palworldLastCheck) && (
-              <div className="px-4 py-2 text-xs text-slate-600" style={{ borderTop: '1px solid rgba(51,65,85,0.2)' }}>
-                Last checked: {new Date(livePalworld?.lastCheck || server.palworldLastCheck).toLocaleString()}
+            <div className="px-4 py-2 text-xs text-slate-600 space-y-1" style={{ borderTop: '1px solid rgba(51,65,85,0.2)' }}>
+              <div>
+                Your latency is measured from this browser to the node hosting your server, so it
+                reflects your own connection. In-game ping comes from the game server itself and
+                shows while players are online — see Remote Control for the per-player figures.
               </div>
-            )}
+              {(livePalworld?.lastCheck || server.palworldLastCheck) && (
+                <div>Last checked: {new Date(livePalworld?.lastCheck || server.palworldLastCheck).toLocaleString()}</div>
+              )}
+            </div>
           </div>
         );
       })()}
@@ -1931,6 +2011,33 @@ function parseIniSettings(content) {
     settings[m[1]] = m[3] !== undefined ? m[3] : (m[4] !== undefined ? m[4] : m[5]);
   }
   return settings;
+}
+
+/**
+ * Read AdminPassword out of the server's PalWorldSettings.ini. Both Remote Control and the
+ * Overview tab (for the in-game ping) need it, and neither can ask the customer: the password
+ * is generated at deploy time and only ever lives in the config file on the node.
+ * Returns null whenever it cannot be read — no password is a normal state, not an error.
+ */
+async function loadAdminPasswordFromConfig(server, masterLocation, component) {
+  if (!masterLocation) return null;
+  const zelidauth = await secureStorage.getItem('zelidauth');
+  if (!zelidauth) return null;
+
+  const [host, port = 16127] = masterLocation.ip.split(':');
+  const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/downloadfile/${server.name}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
+  const response = await fetch(apiUrl, {
+    headers: { zelidauth: JSON.stringify(zelidauth) },
+  });
+  if (!response.ok) return null;
+
+  const parsed = parseIniSettings(await response.text());
+  return parsed.AdminPassword?.trim() || null;
+}
+
+/** External REST port (index 2 = the 8212 slot); randomized deploys expose a high port. */
+function restApiPort(server) {
+  return server?.ports?.[2] || server?.compose?.[0]?.ports?.[2] || 8212;
 }
 
 function buildIniContent(settings, originalContent) {
@@ -2488,18 +2595,9 @@ const RemoteControlTab = ({ server, masterLocation }) => {
     const loadPassword = async () => {
       if (!masterLocation) { setConfigLoading(false); return; }
       try {
-        const zelidauth = await secureStorage.getItem('zelidauth');
-        if (!zelidauth) { setConfigLoading(false); setConfigHasPassword(false); return; }
-        const [host, port = 16127] = masterLocation.ip.split(':');
-        const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/downloadfile/${server.name}/${selectedComponent}/${encodeURIComponent(CONFIG_PATH)}`;
-        const response = await fetch(apiUrl, {
-          headers: { zelidauth: JSON.stringify(zelidauth) },
-        });
-        if (!response.ok) { setConfigLoading(false); setConfigHasPassword(false); return; }
-        const text = await response.text();
-        const parsed = parseIniSettings(text);
-        if (parsed.AdminPassword && parsed.AdminPassword.trim()) {
-          setAdminPassword(parsed.AdminPassword);
+        const password = await loadAdminPasswordFromConfig(server, masterLocation, selectedComponent);
+        if (password) {
+          setAdminPassword(password);
           setConfigHasPassword(true);
         } else {
           setConfigHasPassword(false);
@@ -2532,9 +2630,7 @@ const RemoteControlTab = ({ server, masterLocation }) => {
   const apiCall = async (endpoint, method = 'GET', body = null) => {
     const host = getHost();
     if (!host) throw new Error('No server IP available');
-    // External REST port (index 2 = the 8212 slot). Randomized deploys expose a
-    // high port; fall back to 8212 for legacy servers / missing spec.
-    const port = server?.ports?.[2] || server?.compose?.[0]?.ports?.[2] || 8212;
+    const port = restApiPort(server);
     const url = method === 'GET'
       ? `/api/palworld-rest/${host}/${endpoint}?port=${port}&password=${encodeURIComponent(adminPassword)}`
       : `/api/palworld-rest/${host}/${endpoint}?port=${port}&password=${encodeURIComponent(adminPassword)}`;
@@ -2828,6 +2924,17 @@ const RemoteControlTab = ({ server, masterLocation }) => {
                         <div className="text-sm font-medium text-white truncate">{player.name || 'Unknown'}</div>
                         <div className="text-[10px] text-slate-500 font-mono truncate">{player.playerId || player.userId || ''}</div>
                       </div>
+                      {/* The genuine in-game ping: the game server measures this itself, so it is
+                          the same number the player sees in game. */}
+                      {Number.isFinite(Number(player.ping)) && Number(player.ping) > 0 && (
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${latencyClass(Math.round(Number(player.ping)))}`}
+                          style={{ background: 'rgba(15,23,42,0.6)' }}
+                          title="Ping between this player and the server, reported by the game."
+                        >
+                          {Math.round(Number(player.ping))}ms
+                        </span>
+                      )}
                     </div>
                     <div className="flex gap-1 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                       <button

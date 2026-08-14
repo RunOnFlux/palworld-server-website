@@ -5,11 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Server, Activity, Copy, Check, Globe, Settings, Users, Package, Clock, DatabaseBackup, AlertTriangle } from 'lucide-react';
 import { MdMemory, MdSpeed, MdStorage } from 'react-icons/md';
 import ServerManagementPanel from './ServerManagementPanel';
+import ClientLatencyValue from './ClientLatency';
 import apiService, { parseAddress } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
 import secureStorage from '../../utils/secureStorage';
 import { recoverPendingRestores } from '../../utils/appPower';
 import { diagnosePlacement } from '../../utils/nodeCapacity';
+import { LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import toast from 'react-hot-toast';
 
 // How often a stuck server is re-diagnosed for a placement problem. Node capacity moves
@@ -587,7 +589,6 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
       containerPorts: fluxApp.containerPorts || firstComponent.containerPorts || [], // Internal ports
       // Preserve any existing Palworld data - leave undefined so merge keeps old values
       palworldOnline: undefined,
-      palworldLatency: undefined,
     };
   };
 
@@ -874,7 +875,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
         console.warn(`⚠️ Failed to fetch Palworld status for ${server.name} - HTTP ${response.status}`);
         updateServerInList(server.name, {
           palworldOnline: false, palworldError: `HTTP ${response.status}`,
-          palworldLatency: null, palworldLastCheck: new Date().toISOString(),
+          palworldLastCheck: new Date().toISOString(),
         });
         return;
       }
@@ -911,18 +912,19 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
           updateServerInList(server.name, {
             palworldOnline: null,
             palworldLastCheck: new Date().toISOString(),
-            palworldLatency: null, palworldError: null,
+            palworldError: null,
           });
           return;
         }
       }
 
-      // Always set all fields — clear stale data when server is offline
+      // Always set all fields — clear stale data when server is offline. Liveness only: the
+      // probe's own timing is a backend-to-node measurement and says nothing about what a
+      // player experiences, so latency is measured in the browser instead (see ClientLatency).
       const palworldData = {
         palworldLastCheck: new Date().toISOString(),
         palworldOnline: data.online ?? false,
         palworldError: data.error || null,
-        palworldLatency: data.latency ?? null,
       };
 
       console.log(`✅ Updating ${server.name} with:`, palworldData);
@@ -931,7 +933,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
       console.error(`❌ Failed to check Palworld status for ${server.name}:`, error);
       updateServerInList(server.name, {
         palworldOnline: false, palworldError: 'Connection failed',
-        palworldLatency: null, palworldLastCheck: new Date().toISOString(),
+        palworldLastCheck: new Date().toISOString(),
       });
     }
   };
@@ -1087,7 +1089,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Server Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Hardware</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Latency</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider" title={LATENCY_TOOLTIP}>Your Latency</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Expires</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
@@ -1419,20 +1421,10 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                       <div className="p-1.5 rounded-lg bg-blue-500/20">
                         <Activity className="w-4 h-4 text-blue-400" />
                       </div>
-                      <div className="text-xs font-medium text-gray-500">Latency</div>
+                      <div className="text-xs font-medium text-gray-500" title={LATENCY_TOOLTIP}>Your Latency</div>
                     </div>
                     <div className="text-base font-bold">
-                      {server.status === 'running' && server.palworldLatency ? (
-                        <span className={
-                          server.palworldLatency < 200 ? 'text-emerald-400' :
-                          server.palworldLatency < 500 ? 'text-orange-400' :
-                          'text-red-400'
-                        }>
-                          {server.palworldLatency}ms
-                        </span>
-                      ) : (
-                        <span className="text-gray-600">-</span>
-                      )}
+                      <ClientLatencyValue server={server} enabled={server.status === 'running'} />
                     </div>
                   </div>
 
@@ -1485,8 +1477,8 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
               <th className="px-4 py-2 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-4 py-2 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Latency
+              <th className="px-4 py-2 text-center text-xs font-medium text-gray-400 uppercase tracking-wider" title={LATENCY_TOOLTIP}>
+                Your Latency
               </th>
               <th className="px-4 py-2 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Expires
@@ -1679,17 +1671,11 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                     )}
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-center text-sm">
-                    {server.status === 'running' && server.palworldLatency ? (
-                      <span className={`font-medium ${
-                        server.palworldLatency < 200 ? 'text-emerald-400' :
-                        server.palworldLatency < 500 ? 'text-orange-400' :
-                        'text-red-400'
-                      }`}>
-                        {server.palworldLatency}ms
-                      </span>
-                    ) : (
-                      <span className="text-gray-600">-</span>
-                    )}
+                    <ClientLatencyValue
+                      server={server}
+                      enabled={server.status === 'running'}
+                      className="font-medium"
+                    />
                   </td>
                   <td className="px-4 py-4 whitespace-nowrap text-center text-sm">
                     {server.status !== 'payment_pending' ? (
