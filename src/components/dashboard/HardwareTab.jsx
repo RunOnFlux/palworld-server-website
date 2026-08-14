@@ -234,7 +234,7 @@ const HardwareTab = ({ server, onUpdate, onRedeploy, onReinstall, onSwitchTab })
           const cancelUrl = `${origin}/cancel?hardware=true`;
           const sessionId = await stripeService.createCheckoutSession(
             server.name, successUrl, cancelUrl, paymentHash, price.usd,
-            `${server.name} - Hardware change`, 'Project Zomboid Server on Flux Decentralized Cloud',
+            `${server.name} - Hardware change`, 'Palworld Server on Flux Decentralized Cloud',
           );
           const sid = await openStripeCheckout(sessionId, paymentHash, {
             onStart: (cancel) => { cancelPayRef.current = cancel; },
