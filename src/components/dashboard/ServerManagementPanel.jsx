@@ -6785,24 +6785,22 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {backup.source !== 'fluxdrive' && (
-                      <button
-                        onClick={() => downloadBackup(backup)}
-                        disabled={downloadingFile === backup.file || restoringFile === backup.file}
-                        className={`relative group p-2 rounded-lg transition-colors ${
-                          downloadingFile === backup.file
-                            ? 'bg-blue-500/10 text-blue-600 cursor-wait'
-                            : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400'
-                        }`}
-                      >
-                        {downloadingFile === backup.file ? (
-                          <MdDownload className="w-5 h-5 opacity-50" />
-                        ) : (
-                          <MdDownload className="w-5 h-5" />
-                        )}
-                        <span className={_TIP}>{downloadingFile === backup.file ? 'Downloading...' : 'Download'}</span>
-                      </button>
-                    )}
+                    <button
+                      onClick={() => downloadBackup(backup)}
+                      disabled={downloadingFile === backup.file || restoringFile === backup.file}
+                      className={`relative group p-2 rounded-lg transition-colors ${
+                        downloadingFile === backup.file
+                          ? 'bg-blue-500/10 text-blue-600 cursor-wait'
+                          : 'bg-blue-500/20 hover:bg-blue-500/30 text-blue-400'
+                      }`}
+                    >
+                      {downloadingFile === backup.file ? (
+                        <MdDownload className="w-5 h-5 opacity-50" />
+                      ) : (
+                        <MdDownload className="w-5 h-5" />
+                      )}
+                      <span className={_TIP}>{downloadingFile === backup.file ? 'Downloading...' : 'Download'}</span>
+                    </button>
                     <button
                       onClick={() => restoreBackup(backup)}
                       disabled={restoringFile || downloadingFile === backup.file || isUploadingFiles || isRestoringRemote}
