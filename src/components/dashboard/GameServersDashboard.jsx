@@ -13,6 +13,7 @@ import { recoverPendingRestores } from '../../utils/appPower';
 import { diagnosePlacement } from '../../utils/nodeCapacity';
 import { LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import { pendingStandardUpdates } from '../../config/serverMaintenance';
+import { reconcilePalworldIni } from '../../utils/palworldIni';
 import toast from 'react-hot-toast';
 
 // How often a stuck server is re-diagnosed for a placement problem. Node capacity moves
@@ -407,10 +408,14 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
         const localServerNames = new Set(localServers.map(s => s.name));
         const pendingServers = localServers.filter(s => !fluxAppNames.has(s.name));
 
-        // Mark Flux apps still in localStorage as 'installing' (just deployed, not fully ready)
+        // Mark Flux apps still in localStorage as 'installing' (just deployed, not fully ready).
+        // 'configuring' is the later half of the same wait and is written by the status loop,
+        // not derived from the spec, so it must survive this refresh — otherwise the row flips
+        // back to "Installing on network" every three minutes while the config is being applied.
+        const localStatus = new Map(localServers.map(s => [s.name, s.status]));
         transformedFluxServers.forEach(s => {
           if (localServerNames.has(s.name)) {
-            s.status = 'installing';
+            s.status = localStatus.get(s.name) === 'configuring' ? 'configuring' : 'installing';
           }
         });
 
@@ -653,7 +658,12 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
     };
   };
 
-  // Status monitoring - initial check + poll every 3 minutes
+  // A deploy moves through several states in a couple of minutes (placed → config written →
+  // game answering), and the customer is watching every one of them right after paying.
+  // Three minutes between ticks is fine for a settled server and far too slow for that.
+  const deploying = servers.some((s) => s.status === 'installing' || s.status === 'configuring');
+
+  // Status monitoring - initial check + poll every 3 minutes (30s while deploying)
   useEffect(() => {
     if (servers.length === 0) return;
 
@@ -680,11 +690,11 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
       } finally {
         isCheckingRef.current = false;
       }
-    }, 180000);
+    }, deploying ? 30000 : 180000);
 
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [servers.length]);
+  }, [servers.length, deploying]);
 
   // Fast domain-check interval (30s) — only for running servers where domain isn't ready yet
   useEffect(() => {
@@ -725,8 +735,10 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
             return;
           }
 
-          // Phase 2: Check installation status for installing servers
-          if (server.status === 'installing') {
+          // Phase 2: Check installation status for servers still being deployed.
+          // 'configuring' is the same phase seen from the customer's side — the app is
+          // placed and we are finishing its config — so it follows the same path.
+          if (server.status === 'installing' || server.status === 'configuring') {
             await checkInstallationStatus(server);
             return;
           }
@@ -827,6 +839,51 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
     } catch { /* diagnosis is advisory — never disturb the status loop */ }
   };
 
+  /**
+   * The last step of a deploy: make the server's persisted PalWorldSettings.ini agree with
+   * the app that was actually registered — the randomized external port it advertises to
+   * the in-game community browser, the admin API, and an admin password.
+   *
+   * This is why it happens here rather than only in the manage panel. The ini a server boots
+   * with is the game's own default, which advertises port 8211 and has no admin API; the
+   * panel's fallback fixes that whenever the customer next opens it, which in practice is
+   * mid-session, and it costs them a restart with players connected. Done during the deploy
+   * it costs one extra boot that nobody is there to notice, and the server is never
+   * advertised at an address that does not work.
+   *
+   * Only ever against the FDM master: Syncthing replicates the write from there, and a write
+   * landing on a slave is reverted. No master yet (FDM needs a moment to pick one up) means
+   * "not now", not "give up" — the next tick tries again. Everything else, including the
+   * attempt cap that stops a stubborn server being restarted forever, lives in the util,
+   * which is also what keeps this and the panel from ever stopping the same server at once.
+   */
+  const configureNewServer = async (server) => {
+    let masterIp = null;
+    try {
+      const res = await fetch(`/api/fdm/appips/${server.name}`);
+      const data = await res.json();
+      if (data.status === 'success' && data.data?.ips?.length > 0) masterIp = data.data.ips[0];
+    } catch { /* FDM not answering for this app yet */ }
+    if (!masterIp) return;
+
+    try {
+      await reconcilePalworldIni(server, masterIp, {
+        // The customer is only told once a write is actually needed — reading the file is
+        // silent, and most of these passes find nothing to do.
+        onPhase: (phase) => {
+          if (phase === 'patching') {
+            updateServerInList(server.name, { status: 'configuring' });
+            updateLocalStorage(server.name, { status: 'configuring' });
+          }
+        },
+        // The file only exists once the container's first boot has generated it, and that
+        // boot re-verifies 5 GB of game files first. Two looks per tick is enough: the tick
+        // itself repeats every 30 seconds while a server is deploying.
+        iniReadAttempts: 2,
+      });
+    } catch { /* transient — the next tick retries, and the panel is the final fallback */ }
+  };
+
   const checkInstallationStatus = async (server) => {
     try {
       // Check 1: Flux API - Is the app installed and running on Flux nodes?
@@ -841,7 +898,10 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
       if (Array.isArray(locations) && locations.length > 0) {
         console.log(`✅ ${server.name} is installed on Flux nodes:`, locations.length);
 
-        // Check 2: Domain check - Is the Palworld server actually responding?
+        // Check 2: the config the deploy needs, applied before the server is called ready.
+        await configureNewServer({ ...server, locations });
+
+        // Check 3: Domain check - Is the Palworld server actually responding?
         const palworldReady = await checkPalworldServerReady(server);
 
         if (palworldReady) {
@@ -1333,6 +1393,22 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                 )
               )}
 
+              {/* Configuring — the deploy's own last step: the app is placed, and its
+                  advertised port and admin access are written before anyone connects. */}
+              {server.status === 'configuring' && (
+                <div className="px-4 py-2.5 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border-y border-blue-500/30">
+                  <div className="flex items-start gap-2">
+                    <Settings className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5 animate-spin" style={{ animationDuration: '3s' }} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-blue-300">Configuring your server</p>
+                      <p className="text-[11px] text-blue-200/70 mt-0.5 leading-relaxed">
+                        Setting up the address players connect to and your admin access. It restarts once and is then ready.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Cancelling Banner */}
               {server.status === 'cancelling' && (
                 <div className="px-4 py-2.5 bg-gradient-to-r from-red-500/20 to-orange-500/20 border-y border-red-500/30">
@@ -1634,6 +1710,19 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                             </span>
                           </div>
                         )
+                      )}
+
+                      {/* Configuring — see the mobile card. */}
+                      {server.status === 'configuring' && (
+                        <div
+                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 border border-blue-500/30 rounded-md w-fit"
+                          title="Setting up the address players connect to and your admin access. Your server restarts once and is then ready."
+                        >
+                          <Settings className="w-3 h-3 text-blue-400 flex-shrink-0 animate-spin" style={{ animationDuration: '3s' }} />
+                          <span className="text-xs font-medium text-blue-300 whitespace-nowrap">
+                            Configuring your server
+                          </span>
+                        </div>
                       )}
 
                       {/* Cancelling Indicator */}

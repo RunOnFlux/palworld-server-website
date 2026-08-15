@@ -25,7 +25,8 @@ import { useClientLatency, latencyClass, LATENCY_TOOLTIP } from '../../utils/cli
 import secureStorage from '../../utils/secureStorage';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
-import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore, recoverPendingRestores } from '../../utils/appPower';
+import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore } from '../../utils/appPower';
+import { reconcilePalworldIni, externalGamePort, patchPublicPort, fetchIniText } from '../../utils/palworldIni';
 import { parseEnvArray } from '../../utils/appSpecHelpers';
 import { findMissingStandardEnv } from '../../config/serverMaintenance';
 import { diagnosePlacement } from '../../utils/nodeCapacity';
@@ -61,135 +62,6 @@ const getExpirationClass = (expiresAt) => {
   if (diff < 0) return 'text-red-400';
   if (days < 7) return 'text-orange-400';
   return 'text-emerald-400';
-};
-
-// ── PublicPort reconcile bookkeeping (see the effect in ServerManagementPanel) ──────
-// Apps whose reconcile is running right now. Module scope, not a ref: the dashboard keys
-// this panel on the server name, so closing it unmounts the component and would wipe a
-// ref-based guard while the container is still stopped.
-const publicPortReconcileInFlight = new Set();
-
-// The reconcile stops the container, so it must not be able to run on every visit forever.
-// A server that keeps rewriting its ini gets at most this many restarts, then we give up.
-const PORT_RECONCILE_MAX_ATTEMPTS = 3;
-const PORT_RECONCILE_STORE = 'palworld:publicPortReconcile';
-
-const readPublicPort = (ini) => /PublicPort=(\d+)/.exec(ini)?.[1];
-
-// Surgical patch — replace only the PublicPort value; the rest of the user-owned ini is
-// one big OptionSettings=(...) line and must survive untouched.
-const patchPublicPort = (ini, port) => (
-  /PublicPort=\d+/.test(ini)
-    ? ini.replace(/PublicPort=\d+/, `PublicPort=${port}`)
-    : ini.replace(/OptionSettings=\(/, `OptionSettings=(PublicPort=${port},`)
-);
-
-// ── REST API + AdminPassword ────────────────────────────────────────────────────────
-// The ini the server boots with is the GAME's DefaultPalWorldSettings.ini (start.sh copies
-// it verbatim, because DISABLE_GENERATE_SETTINGS=true stops compile-settings.sh running),
-// which ships RESTAPIEnabled=False and an empty AdminPassword. So every server we sell
-// starts with no admin API at all, and the Remote Control tab is dead until the customer
-// finds the two fields — in different sections of the Server Settings tab — and sets both.
-// Reconciling them costs nothing extra: the port pass already has the file open.
-//
-// Booleans are written `True`/`False` to match what the Config tab's toggles write
-// (see the toggle handler in ConfigTab) and what the game's own default file uses.
-// Values are matched as "anything up to the next , or )" rather than \w+ / a quoted string,
-// so a key that is present but malformed (`RESTAPIEnabled=`, an unquoted password) is still
-// recognised as PRESENT and gets replaced in place. Matching narrowly would fall through to
-// the insert branch and leave the same key in the line twice.
-const REST_ENABLED_RE = /RESTAPIEnabled=[^,)]*/;
-const ADMIN_PASSWORD_RE = /AdminPassword=(?:"([^"]*)"|([^,)]*))/;
-
-const readRestApiEnabled = (ini) => /RESTAPIEnabled=([^,)]*)/.exec(ini)?.[1];
-const patchRestApiEnabled = (ini) => (
-  REST_ENABLED_RE.test(ini)
-    ? ini.replace(REST_ENABLED_RE, 'RESTAPIEnabled=True')
-    : ini.replace(/OptionSettings=\(/, 'OptionSettings=(RESTAPIEnabled=True,')
-);
-
-// Unquoted values count too: a hand-edited `AdminPassword=hunter2` is a real password, and
-// reading it as absent would overwrite it — the one thing this must never do.
-const readAdminPassword = (ini) => {
-  const m = ADMIN_PASSWORD_RE.exec(ini);
-  return m ? (m[1] !== undefined ? m[1] : m[2]) : undefined;
-};
-// Present AND non-blank. `AdminPassword=""` is the game's default and counts as absent.
-const hasAdminPassword = (ini) => !!readAdminPassword(ini)?.trim();
-// Only ever fills a BLANK password. A customer who set their own keeps it — this must not
-// be able to lock someone out of their own admin API, or invalidate a password they wrote
-// down. Written quoted, like every string in the ini.
-const patchAdminPassword = (ini, password) => (
-  ADMIN_PASSWORD_RE.test(ini)
-    ? ini.replace(ADMIN_PASSWORD_RE, `AdminPassword="${password}"`)
-    : ini.replace(/OptionSettings=\(/, `OptionSettings=(AdminPassword="${password}",`)
-);
-
-// 24 chars of crypto-random base58-ish alphabet (no look-alikes). The customer never has to
-// type it — the Remote Control tab reads it straight out of the ini — but it is visible and
-// editable in Server Settings, so it stays readable.
-const generateAdminPassword = () => {
-  const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = new Uint32Array(24);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
-};
-
-// The external game port Flux registered for this app (index 0 of the game component).
-// PublicPort in the ini MUST equal this: it is the address the server hands out to the
-// in-game community browser, and the node only forwards this port to the container's 8211.
-const externalGamePort = (server) => server?.ports?.[0] || server?.compose?.[0]?.ports?.[0];
-
-// Everything the reconcile owns, in one predicate and one patch so they can never drift:
-// the write is verified by re-running the predicate, not by re-checking a subset.
-// RESTAPIPort is deliberately absent — it is the container's INTERNAL bind port (Flux maps
-// the external port onto 8212), so it must keep its default or the REST proxy breaks.
-const iniNeedsReconcile = (ini, expectedPort) => (
-  readPublicPort(ini) !== expectedPort
-  || String(readRestApiEnabled(ini)).toLowerCase() !== 'true'
-  || !hasAdminPassword(ini)
-);
-
-// `password` is generated once per reconcile run, not per call: this runs twice (before the
-// stop, then again on the copy re-read while stopped) and both must agree on the value.
-const reconcileIni = (ini, expectedPort, password) => {
-  let out = ini;
-  if (readPublicPort(out) !== expectedPort) out = patchPublicPort(out, expectedPort);
-  if (String(readRestApiEnabled(out)).toLowerCase() !== 'true') out = patchRestApiEnabled(out);
-  if (!hasAdminPassword(out)) out = patchAdminPassword(out, password);
-  return out;
-};
-
-// Read the live PalWorldSettings.ini off a node. Cache-bypassed on purpose — the node API
-// caches downloads, and acting on a stale copy is exactly how one writer silently reverts
-// another. Returns null (never throws) when the file is missing or not yet generated.
-const fetchIniText = async (nodeBase, appName, component, authHeader) => {
-  try {
-    const url = `${nodeBase}/apps/downloadfile/${appName}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
-    const res = await fetch(url, { headers: { zelidauth: authHeader, 'x-apicache-bypass': true } });
-    if (!res.ok) return null;
-    const text = await res.text();
-    return text && text.includes('OptionSettings=') ? text : null;
-  } catch { return null; }
-};
-
-// Persisted so the marker survives page reloads and panel remounts — the previous
-// in-memory guard reset on every close, which is how one server could be restarted
-// repeatedly across a session. Keyed by port so a redeploy (new random port) re-runs.
-const readPortReconcileMark = (appName, port) => {
-  try {
-    const entry = JSON.parse(localStorage.getItem(PORT_RECONCILE_STORE) || '{}')[appName];
-    if (entry?.port === port) return { done: !!entry.done, attempts: entry.attempts || 0 };
-  } catch { /* unreadable/disabled storage — behave as a fresh server */ }
-  return { done: false, attempts: 0 };
-};
-
-const writePortReconcileMark = (appName, port, patch) => {
-  try {
-    const store = JSON.parse(localStorage.getItem(PORT_RECONCILE_STORE) || '{}');
-    store[appName] = { ...readPortReconcileMark(appName, port), ...patch, port };
-    localStorage.setItem(PORT_RECONCILE_STORE, JSON.stringify(store));
-  } catch { /* storage full or disabled — the attempt cap degrades, nothing breaks */ }
 };
 
 // Language detection for Monaco Editor
@@ -675,174 +547,46 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   }, [masterLocation, server?.name]);
 
   // ── Auto-reconcile the ini to what this deploy actually needs ─────────────────
-  // Three fields, one pass, because they all need the same expensive thing: the file
-  // read, the container stopped, and a restart.
+  // The write itself lives in utils/palworldIni — a new deploy is reconciled by the
+  // dashboard, before the server is ever announced as ready, so this is now the FALLBACK
+  // for every other case: a server bought before that existed, a browser that was closed
+  // during the deploy, or a redeploy that moved the server to a new external port.
   //
-  //  - PublicPort. Randomized deploys expose a high external game port (e.g. 57356), but
-  //    the persisted PalWorldSettings.ini is seeded from the image default
-  //    (PublicPort=8211) and DISABLE_GENERATE_SETTINGS=true means env vars never
-  //    rewrite it. A stale PublicPort makes the in-game community browser hand out
-  //    IP:8211 (unreachable) instead of IP:<externalPort>, so joining fails.
-  //    Direct-connect is unaffected either way.
-  //  - RESTAPIEnabled + AdminPassword. Both ship off/blank in the game's default file, and
-  //    the Remote Control tab needs both. See the helpers at the top of this file.
-  //
-  // Runs on EVERY panel open, for EVERY server — NOT gated on COMMUNITY, and NOT gated on
-  // the port being a randomized one — so the advertised address is always correct.
-  //
-  // ONLY these three are touched. RCONPort / RESTAPIPort in the ini are the
-  // container's INTERNAL bind ports — Flux maps the external ports onto them
-  // (e.g. 59025→8212), so the server must keep listening on the defaults; changing
-  // them would break the REST proxy. Same reason PORT/QUERY_PORT are never set.
-  // ServerPassword is never touched either: writing one would lock existing players out.
-  //
-  // Two safeguards, because this stops a container the user did not ask to stop:
-  //  - The restart is guaranteed by withAppStopped (finally + retries + unload rescue),
-  //    so an unmount, a failed upload or a network blip can never strand the app `exited`.
-  //  - WRITES are attempt-capped via a persisted (localStorage) marker, so a server that
-  //    keeps rewriting its ini gets a bounded number of restarts instead of one per visit.
-  //    Reads are never gated: the comparison must happen on every open, or a port that
-  //    drifts after a successful fix goes unnoticed forever.
+  // Still runs on EVERY panel open, for EVERY server — the read is one cache-bypassed GET,
+  // and only a real divergence costs a restart. It has to stay ungated: a PublicPort that
+  // drifts after a successful fix (a later config save writing the stale value back) would
+  // otherwise go unnoticed forever.
   useEffect(() => {
-    if (!isOpen || !masterLocation || !server?.name) return;
-    const appName = server.name;
-    // Module-scoped, unlike a ref: closing the panel unmounts this component (the parent
-    // keys it on the server name), which would otherwise reset an in-flight guard.
-    if (publicPortReconcileInFlight.has(appName)) return;
-    publicPortReconcileInFlight.add(appName);
-    let cancelled = false;
+    if (!isOpen || !masterLocation || !server?.name) return undefined;
 
-    const reconcile = async () => {
-      // 1. Expected PublicPort = the external game port (index 0) actually in use.
-      //    The only reason to skip is not knowing the port: a queued deploy has no on-chain
-      //    spec yet. Emphatically NOT skipped when that port is 8211 — an app deployed
-      //    before port randomization is served on 8211 and its ini still has to say 8211,
-      //    which is exactly the case an earlier "nothing to fix" shortcut here missed.
-      const expected = String(externalGamePort(server) || '');
-      if (!expected) return;
-
-      // 2. Retried too often? A server that keeps rewriting its ini must not earn a restart
-      //    on every visit, so writes stay capped. This deliberately no longer short-circuits
-      //    on `done`: the ini is re-read every time instead. A sticky "done" flag (a) lives
-      //    in this browser's localStorage only, and (b) hid the case that produced this
-      //    check — a later config save putting the stale PublicPort back — forever.
-      //    Reading is one cache-bypassed GET; only the write stops the container.
-      const mark = readPortReconcileMark(appName, expected);
-      if (mark.attempts >= PORT_RECONCILE_MAX_ATTEMPTS) return;
-
-      // 3. Node + paths (master node; Syncthing replicates the write to the slaves).
-      const zelidauth = await secureStorage.getItem('zelidauth');
-      if (!zelidauth) return;
-      const authHeader = JSON.stringify(zelidauth);
-      const nodeBase = nodeApiBase(masterLocation.ip);
-
-      // Settle any restart still owed to THIS server before deciding anything: a server
-      // left stopped by an earlier write must come back up, not be treated as an
-      // intentional stop by the write-while-stopped path below.
-      await recoverPendingRestores(authHeader, { appName });
-
-      const component = server?.version >= 4 && server?.compose?.length > 0 ? server.compose[0].name : 'null';
-      const readIni = () => fetchIniText(nodeBase, appName, component, authHeader);
-
-      // 4. Read the persisted ini — retry a few times in case the container's first
-      //    boot is still generating the default config, so it works on first open.
-      let ini = null;
-      for (let attempt = 0; attempt < 4 && !cancelled && !ini; attempt += 1) {
-        if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
-        ini = await readIni();
-      }
-      // Nothing has been touched yet, so bailing out here is free — retry on next open.
-      if (cancelled || !ini) return;
-
-      // 5. Already correct on all three? The common case after the first fix — no restart.
-      //    Generated once here and reused below, so the value written while stopped is the
-      //    same one this comparison was made against.
-      const password = generateAdminPassword();
-      if (!iniNeedsReconcile(ini, expected)) {
-        writePortReconcileMark(appName, expected, { done: true });
-        return;
-      }
-      if (reconcileIni(ini, expected, password) === ini) {
-        writePortReconcileMark(appName, expected, { done: true }); // nothing patchable
-        return;
-      }
-
-      // What we are about to change, for the toasts. Read off the pre-stop copy: the write
-      // uses the copy re-read while stopped, but for telling the customer why their server
-      // is restarting this is the honest answer.
-      const changes = [
-        readPublicPort(ini) !== expected && 'public port',
-        String(readRestApiEnabled(ini)).toLowerCase() !== 'true' && 'admin API',
-        !hasAdminPassword(ini) && 'admin password',
-      ].filter(Boolean);
-      const summary = changes.join(', ');
-
-      // 6. Write while stopped so the running game can't clobber the file. Past this point
-      //    `cancelled` is deliberately ignored: the work must finish even if the panel is
-      //    closed mid-flight, and withAppStopped owns bringing the container back.
-      //    A server the user has stopped is written to but left stopped, and never toasts
-      //    about a restart that isn't happening.
-      let persisted = false;
-      let busy = false;
-      let startState;
-      try {
-        ({ startState } = await withAppStopped(nodeBase, appName, authHeader, async ({ wasRunning }) => {
-          // Count the attempt only once the container has actually been touched.
-          if (wasRunning) writePortReconcileMark(appName, expected, { attempts: mark.attempts + 1 });
-
-          // Re-read while stopped: Palworld flushes its own settings on shutdown, so
-          // patching the copy read before the stop would revert whatever it just wrote.
-          const fresh = (await readIni()) || ini;
-          if (!iniNeedsReconcile(fresh, expected)) { persisted = true; return; }
-
-          const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${appName}/${component}/${encodeURIComponent('appdata/Config/LinuxServer')}`;
-          const fd = new FormData();
-          fd.append('PalWorldSettings.ini', new Blob([reconcileIni(fresh, expected, password)], { type: 'text/plain' }));
-          const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
-          if (!up.ok) throw new Error(`Upload failed: HTTP ${up.status}`);
-
-          // Confirm the write landed before marking this server done (anti-loop).
-          const verify = await readIni();
-          persisted = verify ? !iniNeedsReconcile(verify, expected) : false;
-        }, {
-          // Announce the restart exactly when the stop is issued — never when the lock was
-          // taken by another operation, nor when the server was already down.
-          onPhase: (phase) => {
-            if (phase === 'stopping') {
-              toast(`Applying ${changes.length > 1 ? 'automatic config changes' : 'an automatic config change'} (${summary}) — restarting your server…`, { icon: '🔧', duration: 6000 });
-            }
-          },
-        }));
-      } catch (err) {
-        // AppBusyError: a save/restart is already running — leave it alone, retry next open.
-        busy = err?.name === 'AppBusyError';
-        startState = err?.startState;
-        persisted = false;
-      }
-      if (busy) return;
-
+    let changes = [];
+    reconcilePalworldIni(server, masterLocation.ip, {
+      onPhase: (phase, ctx) => {
+        changes = ctx.changes;
+        // Announce the restart exactly when the stop is issued — never when the lock was
+        // taken by another operation, nor when the server was already down.
+        if (phase === 'stopping') {
+          toast(`Applying ${changes.length > 1 ? 'automatic config changes' : 'an automatic config change'} (${changes.join(', ')}) — restarting your server…`, { icon: '🔧', duration: 6000 });
+        }
+      },
+    }).then((result) => {
+      const summary = (result.changes || changes).join(', ');
       // The restart is guaranteed to be attempted, but if the node refused it the user has
       // to know rather than discover an `exited` server later.
-      if (startState === 'stopped') {
+      if (result.startState === 'stopped') {
         toast.error('Your server did not come back up automatically — press Start on the Overview tab.', { duration: 10000 });
       }
-
-      if (persisted) {
-        writePortReconcileMark(appName, expected, { done: true });
+      if (result.status === 'done') {
         toast.success(`Server settings updated automatically (${summary}) — server restarting.`);
         if (onUpdate) onUpdate();
-      } else if (readPortReconcileMark(appName, expected).attempts >= PORT_RECONCILE_MAX_ATTEMPTS) {
+      } else if (result.status === 'exhausted' && summary) {
         toast.error(`Could not update your server settings automatically (${summary}). Your server still runs — contact support if the community browser or the Remote Control tab misbehaves.`);
-      } else {
+      } else if (result.status === 'failed') {
         toast.error('Automatic config change did not persist — will retry.');
       }
-    };
+    }).catch(() => { /* transient/network — allow a retry on the next panel open */ });
 
-    reconcile()
-      .catch(() => { /* transient/network — allow a retry on the next panel open */ })
-      .finally(() => { publicPortReconcileInFlight.delete(appName); });
-
-    return () => { cancelled = true; };
+    return undefined;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, masterLocation, server?.name]);
 
