@@ -6,7 +6,7 @@ import { MdMemory, MdSpeed, MdStorage, MdFolder, MdDownload, MdEdit, MdDelete, M
 import { RiFolderReceivedFill } from 'react-icons/ri';
 import { GrPlan } from 'react-icons/gr';
 import { FaFileImage, FaFileVideo, FaFileAudio, FaFileArchive, FaFileAlt, FaFileCode, FaFilePdf, FaFile } from 'react-icons/fa';
-import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package } from 'lucide-react';
+import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package, Sparkles } from 'lucide-react';
 import EnvironmentTab from './EnvironmentTab';
 import GeolocationTab from './GeolocationTab';
 import HardwareTab from './HardwareTab';
@@ -1301,9 +1301,11 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
                 {tab.label}
                 {tab.id === 'environment' && pendingEnvUpdates > 0 && (
                   <span
-                    className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"
+                    className="flex-shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-blue-500 text-white text-[10px] font-bold leading-none"
                     title={`${pendingEnvUpdates} recommended ${pendingEnvUpdates === 1 ? 'setting' : 'settings'} available`}
-                  />
+                  >
+                    {pendingEnvUpdates}
+                  </span>
                 )}
                 {tab.id === 'geolocation' && placementIssue && placementIssue.severity !== 'waiting' && (
                   <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title={placementIssue.title} />
@@ -1421,6 +1423,34 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
                 </span>
               </span>
               <ChevronRight className="h-4 w-4 flex-shrink-0 text-amber-400/70" />
+            </button>
+          )}
+
+          {/* Standard settings this server predates. The dot on the tab only ever reached
+              customers who happened to look at the tab strip, so the offer is made on every
+              tab instead — except the one that already shows it in full, and Billing, where
+              the customer is in the middle of paying for something. */}
+          {pendingEnvUpdates > 0 && activeTab !== 'environment' && activeTab !== 'billing' && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('environment')}
+              className="mx-1 mt-0.5 mb-3 w-[calc(100%-0.5rem)] flex items-center gap-3 rounded-xl border border-blue-500/40 bg-blue-500/[0.10] px-4 py-3 text-left hover:bg-blue-500/[0.16] transition-colors"
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-blue-500/30 bg-blue-500/15">
+                <Sparkles className="h-4 w-4 text-blue-300" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-blue-200">Server update available</span>
+                <span className="block mt-0.5 text-xs text-blue-200/75">
+                  Your server predates {pendingEnvUpdates} recommended{' '}
+                  {pendingEnvUpdates === 1 ? 'setting' : 'settings'} that keep Palworld servers healthy. Applying
+                  them leaves your world and your own settings untouched.
+                </span>
+              </span>
+              <span className="hidden sm:inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-100">
+                Review and apply
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-blue-300/70" />
             </button>
           )}
 

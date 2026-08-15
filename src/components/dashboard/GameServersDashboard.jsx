@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useSearchParams } from 'react-router-dom';
  
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server, Activity, Copy, Check, Globe, Settings, Users, Package, Clock, DatabaseBackup, AlertTriangle } from 'lucide-react';
+import { Server, Activity, Copy, Check, Globe, Settings, Users, Package, Clock, DatabaseBackup, AlertTriangle, Sparkles, ChevronRight } from 'lucide-react';
 import { MdMemory, MdSpeed, MdStorage } from 'react-icons/md';
 import ServerManagementPanel from './ServerManagementPanel';
 import ClientLatencyValue from './ClientLatency';
@@ -12,6 +12,7 @@ import secureStorage from '../../utils/secureStorage';
 import { recoverPendingRestores } from '../../utils/appPower';
 import { diagnosePlacement } from '../../utils/nodeCapacity';
 import { LATENCY_TOOLTIP } from '../../utils/clientLatency';
+import { pendingStandardUpdates } from '../../config/serverMaintenance';
 import toast from 'react-hot-toast';
 
 // How often a stuck server is re-diagnosed for a placement problem. Node capacity moves
@@ -76,6 +77,63 @@ const checkDomainReady = async (server, gamePort) => {
 const gamePortKnown = (server) => Boolean(server?.ports?.[0] || server?.compose?.[0]?.ports?.[0]);
 
 const gameAddressOf = (server) => `${server.name.toLowerCase()}.app.runonflux.io:${gamePortOf(server)}`;
+
+/**
+ * "Server update available", for a server that predates settings we now ship by default.
+ *
+ * Until this existed the only sign was a dot on the Deployment Settings tab — inside the
+ * manage panel, on a tab a customer has no reason to open, so servers stayed on defaults
+ * we had already stopped selling. Both surfaces below open that tab directly: an
+ * indicator nobody can act on from where they are is just decoration.
+ *
+ * Blue, like the panel it leads to, but filled rather than tinted — it is the only badge
+ * in the row that asks the customer to decide something, and it has to win against the
+ * status pills sitting beside it.
+ */
+const UpdateAvailableBadge = ({ server, onOpen }) => {
+  const count = pendingStandardUpdates(server);
+  if (!count) return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onOpen(server, 'environment'); }}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/20 border border-blue-400/50 rounded-md w-fit hover:bg-blue-500/30 transition-colors"
+      title={`${count} recommended ${count === 1 ? 'setting' : 'settings'} — click to review and apply`}
+    >
+      <span className="relative flex w-1.5 h-1.5 flex-shrink-0">
+        <span className="absolute inset-0 rounded-full bg-blue-300 animate-ping opacity-75" />
+        <span className="relative w-1.5 h-1.5 rounded-full bg-blue-300" />
+      </span>
+      <Sparkles className="w-3 h-3 text-blue-200 flex-shrink-0" />
+      <span className="text-xs font-semibold text-blue-100 whitespace-nowrap">Server update available</span>
+      <ChevronRight className="w-3 h-3 text-blue-300/70 flex-shrink-0" />
+    </button>
+  );
+};
+
+/** The same offer on the mobile card, as a full-width tap target like its sibling banners. */
+const UpdateAvailableBanner = ({ server, onOpen }) => {
+  const count = pendingStandardUpdates(server);
+  if (!count) return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onOpen(server, 'environment'); }}
+      className="w-full px-4 py-2.5 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border-y border-blue-400/40 text-left hover:from-blue-500/30 hover:to-indigo-500/30 transition-colors"
+    >
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-3.5 h-3.5 text-blue-300 flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-blue-200">Server update available</p>
+          <p className="text-[11px] text-blue-200/70 mt-0.5">
+            {count} recommended {count === 1 ? 'setting' : 'settings'} — tap to review and apply.
+          </p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-blue-300/70 flex-shrink-0" />
+      </div>
+    </button>
+  );
+};
 
 /**
  * GameServersDashboard Component
@@ -583,6 +641,9 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
       expireBlocks: fluxApp.expire,
       // Terminal needs these for container name construction
       version: fluxApp.version || 3, // App version (v3, v4+)
+      // Empty for everything we sell; carried so the update badge can tell an
+      // undecryptable spec apart from a server that genuinely has no env set.
+      enterprise: fluxApp.enterprise || '',
       compose: fluxApp.compose || [{ name: 'null', repotag: fluxApp.repotag || '', ports: fluxApp.ports || [], containerPorts: fluxApp.containerPorts || [] }], // v3: component must be "null" string for FluxOS volume lookup
       repotag: fluxApp.repotag || firstComponent.repotag || '', // Docker image
       ports: fluxApp.ports || firstComponent.ports || [], // External ports
@@ -1355,6 +1416,8 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                 </div>
               )}
 
+              <UpdateAvailableBanner server={server} onOpen={handleManage} />
+
               {/* Divider */}
               <div className="h-px bg-gray-700" />
 
@@ -1629,6 +1692,8 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                           </span>
                         </button>
                       )}
+
+                      <UpdateAvailableBadge server={server} onOpen={handleManage} />
                     </div>
                     </div>
                   </td>
