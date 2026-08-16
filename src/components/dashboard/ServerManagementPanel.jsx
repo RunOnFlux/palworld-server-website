@@ -26,6 +26,7 @@ import secureStorage from '../../utils/secureStorage';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
 import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore } from '../../utils/appPower';
+import { runFileOperation } from '../../utils/fluxFileApi';
 import { reconcilePalworldIni, externalGamePort, patchPublicPort, fetchIniText } from '../../utils/palworldIni';
 import { parseEnvArray } from '../../utils/appSpecHelpers';
 import { findMissingStandardEnv } from '../../config/serverMaintenance';
@@ -3140,6 +3141,9 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
   const [hasChanges, setHasChanges] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [fileToDelete, setFileToDelete] = useState(null);
+  // A folder delete can outlive its request and continue as a job, so the dialog now waits
+  // for the node to finish rather than closing on a promise nobody is watching.
+  const [deleting, setDeleting] = useState(false);
   const [openMenuFile, setOpenMenuFile] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const menuCloseTimeoutRef = useRef(null);
@@ -3524,50 +3528,39 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
       return;
     }
 
+    setDeleting(true);
     try {
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!masterLocation) throw new Error('Master location not available');
 
-      const [host, port = 16127] = masterLocation.ip.split(':');
       const objectPath = currentPath ? `${currentPath}/${fileToDelete.name}` : fileToDelete.name;
-      const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`;
 
       console.log('🗑️ Delete request:', {
         type: fileToDelete.type,
         name: fileToDelete.name,
         objectPath,
-        apiUrl,
         component: selectedComponent
       });
 
-      const response = await fetch(apiUrl, {
-        cache: 'no-store',
-        headers: { zelidauth: JSON.stringify(zelidauth), 'x-apicache-bypass': true },
-      });
+      // A delete big enough to outlive the node's inline deadline - a world folder, a
+      // backup directory - is handed back as a job and carries on in the background.
+      // runFileOperation follows it to the end, so the listing below is reloaded once the
+      // folder has actually gone rather than while it is still being removed.
+      await runFileOperation(
+        nodeApiBase(masterLocation.ip),
+        `/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`,
+        JSON.stringify(zelidauth),
+      );
 
-      console.log('🗑️ Delete response:', response.status, response.statusText);
-
-      const data = await response.json();
-      console.log('🗑️ Delete data:', data);
-
-      // Check for auth errors
-      const authError = checkAuthError(response, data.data?.message);
-      if (authError) {
-        throw new Error(authError);
-      }
-
-      if (data.status === 'success') {
-        setError(null);
-        fetchFiles(currentPath);
-      } else {
-        throw new Error(data.data?.message || 'Failed to delete');
-      }
+      setError(null);
+      fetchFiles(currentPath);
     } catch (err) {
       if (err instanceof TypeError) onMasterError();
       console.error('Delete failed:', err.message);
-      setError(`Failed to delete: ${err.message}`);
+      setError(checkAuthError({ status: err.status }, err.message) || `Failed to delete: ${err.message}`);
       setTimeout(() => setError(null), 5000);
     } finally {
+      setDeleting(false);
       setShowDeleteDialog(false);
       setFileToDelete(null);
     }
@@ -3581,34 +3574,24 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!masterLocation) throw new Error('Master location not available');
 
-      const [host, port = 16127] = masterLocation.ip.split(':');
       const oldPath = currentPath ? `${currentPath}/${renameFile.name}` : renameFile.name;
-      const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/renameobject/${server.name}/${selectedComponent}/${encodeURIComponent(oldPath)}/${newFileName}`;
 
-      const response = await fetch(apiUrl, {
-        cache: 'no-store',
-        headers: { zelidauth: JSON.stringify(zelidauth), 'x-apicache-bypass': true },
-      });
+      // The node refuses a rename onto a name that already exists rather than replacing
+      // what is there, so this reports "Destination already exists" instead of quietly
+      // destroying the other file the way it used to.
+      await runFileOperation(
+        nodeApiBase(masterLocation.ip),
+        `/apps/renameobject/${server.name}/${selectedComponent}/${encodeURIComponent(oldPath)}/${newFileName}`,
+        JSON.stringify(zelidauth),
+      );
 
-      const data = await response.json();
-
-      // Check for auth errors
-      const authError = checkAuthError(response, data.data?.message);
-      if (authError) {
-        throw new Error(authError);
-      }
-
-      if (data.status === 'success') {
-        setShowRenameDialog(false);
-        setRenameFile(null);
-        setNewFileName('');
-        fetchFiles(currentPath);
-      } else {
-        throw new Error(data.data?.message || 'Failed to rename');
-      }
+      setShowRenameDialog(false);
+      setRenameFile(null);
+      setNewFileName('');
+      fetchFiles(currentPath);
     } catch (err) {
       if (err instanceof TypeError) onMasterError();
-      setError(`Failed to rename: ${err.message}`);
+      setError(checkAuthError({ status: err.status }, err.message) || `Failed to rename: ${err.message}`);
       setTimeout(() => setError(null), 5000);
     }
   };
@@ -5127,7 +5110,7 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
 
       {/* Delete Confirmation Dialog */}
       {showDeleteDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowDeleteDialog(false); setFileToDelete(null); }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { if (!deleting) { setShowDeleteDialog(false); setFileToDelete(null); } }}>
           <div className="bg-gray-800 rounded-lg w-full max-w-md border border-gray-700" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
@@ -5155,16 +5138,18 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-700">
               <button
                 onClick={() => { setShowDeleteDialog(false); setFileToDelete(null); }}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                disabled={deleting}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
               >
-                <MdDelete className="w-4 h-4" />
-                Delete
+                {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MdDelete className="w-4 h-4" />}
+                {deleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>
@@ -5379,11 +5364,12 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
   // a file within its own folder, which is exactly the guarantee we want here.
   const renameInWorld = useCallback(async (relWorld, from, to) => {
     const zelidauth = await secureStorage.getItem('zelidauth');
-    const url = nodeUrlFor(`/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`);
-    const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth) } });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok || body.status === 'error') throw new Error(body?.data?.message || `rename ${from} failed`);
-  }, [nodeUrlFor, server?.name, snapshotComponent]);
+    await runFileOperation(
+      nodeApiBase(masterLocation.ip),
+      `/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`,
+      JSON.stringify(zelidauth),
+    );
+  }, [masterLocation, server?.name, snapshotComponent]);
 
   const loadSnapshots = useCallback(async () => {
     if (!masterLocation) return;
@@ -5469,19 +5455,33 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
     };
 
     const rename = async (from, to) => {
-      const url = nodeUrlFor(`/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`);
-      const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth) } });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body.status === 'error') throw new Error(body?.data?.message || `rename ${from} failed`);
+      await runFileOperation(
+        nodeApiBase(masterLocation.ip),
+        `/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`,
+        JSON.stringify(zelidauth),
+      );
+    };
+
+    const remove = async (name) => {
+      await runFileOperation(
+        nodeApiBase(masterLocation.ip),
+        `/apps/removeobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${name}`)}`,
+        JSON.stringify(zelidauth),
+      );
     };
 
     const swapped = [];
     try {
       // 1. Copy while the server is still up. Only *.restore-<stamp> siblings appear;
       //    the live save is untouched, so a failure here changes nothing.
+      //
+      //    The stamp comes from the snapshot's own name, so restoring the same snapshot a
+      //    second time reuses it. Any copy an earlier attempt left behind goes first:
+      //    `cp -a` onto an existing DIRECTORY copies inside it, which would put the
+      //    snapshot's Players folder one level down and publish that as the save.
       setSnapshotStep('Copying snapshot…');
       const copies = ITEMS
-        .map((i) => `[ -e "${snapDir}/${i}" ] && cp -a "${snapDir}/${i}" "${worldDir}/${i}.restore-${stamp}" || true`)
+        .map((i) => `rm -rf "${worldDir}/${i}.restore-${stamp}"; [ -e "${snapDir}/${i}" ] && cp -a "${snapDir}/${i}" "${worldDir}/${i}.restore-${stamp}" || true`)
         .join('; ');
       await exec(['sh', '-c', `set -e; ${copies}`]);
 
@@ -5503,6 +5503,13 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
           for (const item of ITEMS) {
             if (!names.includes(`${item}.restore-${stamp}`)) continue;
             if (names.includes(item)) {
+              // Restoring the same snapshot again parks the live save under the name the
+              // last restore parked its own under. The node refuses a rename onto a name
+              // that exists, and the promise here is one spare copy rather than a growing
+              // pile of them, so the previous park goes.
+              if (names.includes(`${item}.pre-restore-${stamp}`)) {
+                await remove(`${item}.pre-restore-${stamp}`);
+              }
               await rename(item, `${item}.pre-restore-${stamp}`);
               swapped.push([`${item}.pre-restore-${stamp}`, item]);
             }
@@ -5525,7 +5532,7 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
       setRestoringSnapshot(null);
       setSnapshotStep('');
     }
-  }, [worldGuid, masterLocation, server?.name, snapshotComponent, nodeUrlFor, listFolder, loadSnapshots, containerBasePath]);
+  }, [worldGuid, masterLocation, server?.name, snapshotComponent, listFolder, loadSnapshots, containerBasePath]);
 
   /**
    * Put back the save a restore replaced.
