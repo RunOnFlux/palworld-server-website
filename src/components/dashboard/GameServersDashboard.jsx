@@ -771,6 +771,14 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
               if (fdmData.status === 'success' && fdmData.data?.ips?.length > 0) {
                 fdmMasterIp = fdmData.data.ips[0];
               }
+              // Keep it on the server itself, not just in the status call below: the latency
+              // probe only runs against the master instance, and the card had no other way to
+              // learn which one that is. Written even when it comes back null — losing the
+              // master means the reading is stale and should stop, not keep measuring the
+              // node that used to be it.
+              if (server.fdmMasterIp !== fdmMasterIp) {
+                updateServerInList(server.name, { fdmMasterIp });
+              }
               // One method for the flag, shared with the 30s loop — two writers using
               // different rules is how it ended up alternating in the first place.
               const settled = await checkDomainReady(server, gamePortOf(server));

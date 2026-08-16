@@ -277,10 +277,17 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // player-facing domain is not routing to it yet.
   const [domainRouted, setDomainRouted] = useState(true);
 
+  // Whether the resolved node is running the container. The panel deliberately falls back to
+  // an instance that is only INSTALLED so that a crashed server can still be managed — but
+  // that node is not hosting anyone, so anything that describes the play experience (latency)
+  // has to stay quiet rather than report the path to a stopped container.
+  const [masterLive, setMasterLive] = useState(false);
+
   // Resolve master node via FDM API (same as FluxOS) - called on panel open and on error
   const resolveMaster = useCallback(async (signal) => {
     const srv = serverRef.current;
     if (!srv?.locations || srv.locations.length === 0) {
+      setMasterLive(false);
       setMasterLocationStable(null);
       setMasterLoading(false);
       return;
@@ -310,6 +317,9 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           if (locHost === masterIp) {
             console.log(`✅ [Master] Found at location ${i}:`, locHost);
             setDomainRouted(true);
+            // FDM only lists instances that answer the game port, so a master from FDM is by
+            // definition the live one.
+            setMasterLive(true);
             setMasterLocationStable(srv.locations[i]);
             masterResolvingRef.current = false;
             setMasterLoading(false);
@@ -367,6 +377,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
         console.log('📍 [Master] FDM unavailable — using node', resolved.ip, running ? '(container running)' : '(installed, not running)');
         setDomainRouted(false);
       }
+      setMasterLive(!!running);
       setMasterLocationStable(resolved || null);
       masterResolvingRef.current = false;
       setMasterLoading(false);
@@ -377,6 +388,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       }
       console.error('❌ [Master] FDM failed:', error);
       if (signal?.aborted) { masterResolvingRef.current = false; return; }
+      setMasterLive(false);
       setMasterLocationStable(null);
       masterResolvingRef.current = false;
       setMasterLoading(false);
@@ -1267,7 +1279,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           )}
           {activeTab === 'overview' && (
             <div key="overview" className="animate-fade-in">
-              <OverviewTab server={server} masterLocation={masterLocation} onMasterError={retryResolveMaster} statsRefreshKey={statsRefreshKey} onSwitchTab={setActiveTab} />
+              <OverviewTab server={server} masterLocation={masterLocation} masterLive={masterLive} onMasterError={retryResolveMaster} statsRefreshKey={statsRefreshKey} onSwitchTab={setActiveTab} />
             </div>
           )}
           {activeTab === 'config' && (
@@ -1467,7 +1479,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 };
 
 // Overview Tab - Shows server info and status
-const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, statsRefreshKey }) => {
+const OverviewTab = ({ server, masterLocation, masterLive, onMasterError: _onMasterError, statsRefreshKey }) => {
   // masterLocation is passed down from parent - no DNS resolution needed
 
   // Live Palworld status — poll every 30s while overview tab is active.
@@ -1503,12 +1515,14 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
     : 'null';
 
   // Latency measured from this browser to the node running the game — the customer's own
-  // network path, which is what they mean when they ask about ping.
+  // network path, which is what they mean when they ask about ping. Only the live instance is
+  // worth timing: the standby ones are not carrying the game, and on a stopped container the
+  // number would describe a machine the player never touches.
   const [nodeHost, nodePort = 16127] = (masterLocation?.ip || '').split(':');
   const { latency: clientLatency, measuring: measuringLatency } = useClientLatency(
     nodeHost || null,
     nodePort,
-    { enabled: server?.status === 'running' },
+    { enabled: masterLive && server?.status === 'running' },
   );
 
   // The real in-game ping: the Palworld REST API reports a `ping` per connected player,

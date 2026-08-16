@@ -114,25 +114,27 @@ export async function measureClientLatency(host, port = DEFAULT_NODE_API_PORT, o
 }
 
 /**
- * The FluxOS API endpoint of the node the server actually runs on. It is the same machine that
- * runs the game container, so a probe to it takes the path the game takes. FDM's master IP wins
- * when we have it — that is the instance players connect to.
+ * The FluxOS API endpoint of the instance players are actually on — FDM's master, the one the
+ * domain routes to. A multi-instance app keeps the others on standby, usually with the
+ * container stopped, so probing them measures the path to a machine nobody is playing on.
+ *
+ * No master, no target: the caller renders a dash. That is deliberately not a fallback to
+ * `locations[0]` — the on-chain order says nothing about which instance is live, so the
+ * fallback was as likely to time a standby node as the real one, and it spent a failed
+ * request per sample doing it.
  */
 export function nodeTargetFor(server) {
   const locations = Array.isArray(server?.locations) ? server.locations : [];
+  if (!server?.fdmMasterIp) return { host: null, port: DEFAULT_NODE_API_PORT };
 
-  if (server?.fdmMasterIp) {
-    const master = locations.find((loc) => parseAddress(loc.ip).host === server.fdmMasterIp);
-    const port = master ? parseAddress(master.ip).port : null;
-    return { host: server.fdmMasterIp, port: port || DEFAULT_NODE_API_PORT };
-  }
+  const master = locations.find((loc) => parseAddress(loc.ip).host === server.fdmMasterIp);
+  // The API port belongs to the node, not to the network — 16127 is only the most common one,
+  // and plenty of nodes sit on 16137-16197. Guessing it for a master that is missing from the
+  // locations list would probe a closed port and burn three timeouts on it.
+  if (!master) return { host: null, port: DEFAULT_NODE_API_PORT };
 
-  if (locations.length > 0) {
-    const { host, port } = parseAddress(locations[0].ip);
-    return { host, port: port || DEFAULT_NODE_API_PORT };
-  }
-
-  return { host: null, port: DEFAULT_NODE_API_PORT };
+  const { port } = parseAddress(master.ip);
+  return { host: server.fdmMasterIp, port: port || DEFAULT_NODE_API_PORT };
 }
 
 /**
