@@ -7,6 +7,7 @@ import secureStorage from '../../utils/secureStorage';
 import apiService from '../../services/apiService';
 import { computeRemainingExpire } from '../../utils/appSpecHelpers';
 import { restartApp } from '../../utils/appPower';
+import { isAlreadyExists, jobFailureMessage, pollOperation, readVolumeResponse } from '../../utils/volumeOperations';
 import { MODS_VOLUME_PATH, MOD_CATALOG, fileNameFromUrl, withModsMount } from '../../config/modsConfig';
 
 /**
@@ -108,7 +109,14 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     const oldPath = `${MODS_VOLUME_PATH}/${from}`;
     const res = await fetch(`${base}/apps/renameobject/${server.name}/${selectedComponent}/${encodeURIComponent(oldPath)}/${to}`,
       { headers: { zelidauth: authHeader } });
-    if (!res.ok) throw new Error(`Rename failed (HTTP ${res.status})`);
+
+    const outcome = await readVolumeResponse(res);
+    if (outcome.state === 'busy') throw new Error(outcome.message);
+    if (outcome.state === 'error') throw new Error(`Rename failed: ${outcome.message}`);
+    if (outcome.state === 'job') {
+      const view = await pollOperation(base, authHeader, outcome.job);
+      if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
+    }
   }, [server?.name, selectedComponent]);
 
   // --- add a .pak to ~mods as DISABLED, then refresh ---
@@ -124,11 +132,34 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     try {
       const authHeader = await auth();
 
-      // Ensure the ~mods folder exists (ignore "already exists").
-      try {
-        await fetch(`${base}/apps/createfolder/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
-          { headers: { zelidauth: authHeader } });
-      } catch { /* ignore */ }
+      // Ensure the ~mods folder exists. "Already exists" is the expected answer
+      // and is ignored; a refusal is not, and used to be swallowed here - fetch
+      // does not throw on a 503, so a busy node passed silently and the upload
+      // below then failed for a reason that looked unrelated.
+      //
+      // isAlreadyExists rather than a bare EEXIST check: only a node carrying
+      // FluxOS #1778 names the refusal. Everything on the network today answers
+      // an existing folder with mkdir's own words and the exit status in the
+      // code field, and reading only the code turns the second mod a customer
+      // uploads into a hard failure.
+      const folderRes = await fetch(`${base}/apps/createfolder/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
+        { headers: { zelidauth: authHeader } });
+
+      const folderOutcome = await readVolumeResponse(folderRes);
+      if (folderOutcome.state === 'busy') throw new Error(folderOutcome.message);
+      if (folderOutcome.state === 'error' && !isAlreadyExists(folderOutcome)) {
+        throw new Error(`Could not create the mods folder: ${folderOutcome.message}`);
+      }
+      // A mkdir is bounded by construction and answers inline, so this is a
+      // shape the node is not expected to use here. Polled rather than assumed
+      // finished, because the cost of being wrong is uploading into a folder
+      // that does not exist yet.
+      if (folderOutcome.state === 'job') {
+        const view = await pollOperation(base, authHeader, folderOutcome.job);
+        if (view.status !== 'Succeeded' && !isAlreadyExists({ code: view.error?.code, message: jobFailureMessage(view) })) {
+          throw new Error(`Could not create the mods folder: ${jobFailureMessage(view)}`);
+        }
+      }
 
       // Upload the pak as `<name>.pak.disabled` — the running server is untouched.
       setStep('uploading');
@@ -137,6 +168,12 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       formData.append(disabledName, blob, disabledName);
       const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: formData });
       if (!up.ok) {
+        // Upload refuses for the same reasons the operations above do, and a
+        // customer told "Upload failed (HTTP 503)" mid-flow learns nothing they
+        // can act on. Read from a clone so the raw body is still there for
+        // anything that is not a refusal we recognise.
+        const upOutcome = await readVolumeResponse(up.clone());
+        if (upOutcome.state === 'busy') throw new Error(upOutcome.message);
         const text = await up.text().catch(() => '');
         throw new Error(text || `Upload failed (HTTP ${up.status})`);
       }
@@ -270,7 +307,18 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       const objectPath = `${MODS_VOLUME_PATH}/${mod.name}`;
       const res = await fetch(`${base}/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`,
         { headers: { zelidauth: authHeader } });
-      if (!res.ok) throw new Error(`Failed to remove (HTTP ${res.status})`);
+      const outcome = await readVolumeResponse(res);
+      if (outcome.state === 'busy') throw new Error(outcome.message);
+      if (outcome.state === 'error') throw new Error(`Failed to remove: ${outcome.message}`);
+
+      // A remove big enough to outlive the node's inline deadline carries on as
+      // a job. Reporting it removed now would refresh a listing that still has
+      // the file in it.
+      if (outcome.state === 'job') {
+        const view = await pollOperation(base, authHeader, outcome.job);
+        if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
+      }
+
       if (mod.enabled) setNeedsRestart(true); // removing the active mod needs a restart
       setNotice(`Removed "${mod.displayName}".${mod.enabled ? ' Restart to apply.' : ''}`);
       await loadInstalled();
