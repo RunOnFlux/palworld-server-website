@@ -6,7 +6,7 @@ import { MdMemory, MdSpeed, MdStorage, MdFolder, MdDownload, MdEdit, MdDelete, M
 import { RiFolderReceivedFill } from 'react-icons/ri';
 import { GrPlan } from 'react-icons/gr';
 import { FaFileImage, FaFileVideo, FaFileAudio, FaFileArchive, FaFileAlt, FaFileCode, FaFilePdf, FaFile } from 'react-icons/fa';
-import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package, Sparkles } from 'lucide-react';
+import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package, Sparkles } from 'lucide-react';
 import EnvironmentTab from './EnvironmentTab';
 import GeolocationTab from './GeolocationTab';
 import HardwareTab from './HardwareTab';
@@ -501,8 +501,6 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
     if (!isOpen) setPostReinstall(false);
   }, [isOpen]);
 
-  const [isPaused, setIsPaused] = useState(false);
-  const [isTogglingPause, setIsTogglingPause] = useState(false);
   const mainTimersRef = useRef([]);
 
   // Cleanup timers and streams on unmount — intentionally read refs at cleanup time (timer arrays are dynamic)
@@ -537,27 +535,6 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       .catch(() => {});
     return () => controller.abort();
   }, [isOpen, masterLocation, loginTime]);
-
-  // Fetch container state from master node
-  useEffect(() => {
-    if (!masterLocation || !server?.name) return;
-    const fetchState = async () => {
-      try {
-        const [host, port = 16127] = masterLocation.ip.split(':');
-        const res = await fetch(
-          `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/listrunningapps`
-        );
-        const data = await res.json();
-        if (data.status === 'success' && data.data) {
-          const container = data.data.find((c) => c.Names?.[0]?.includes(server.name));
-          setIsPaused(container?.State === 'paused');
-        }
-      } catch {
-        // ignore - state unknown
-      }
-    };
-    fetchState();
-  }, [masterLocation, server?.name]);
 
   // ── Auto-reconcile the ini to what this deploy actually needs ─────────────────
   // The write itself lives in utils/palworldIni — a new deploy is reconciled by the
@@ -602,41 +579,6 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
     return undefined;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, masterLocation, server?.name]);
-
-  const handleTogglePause = async () => {
-    if (isTogglingPause || !masterLocation) return;
-    setIsTogglingPause(true);
-    try {
-      const [host, port = 16127] = masterLocation.ip.split(':');
-      const zelidauth = await secureStorage.getItem('zelidauth');
-      const endpoint = isPaused ? 'appunpause' : 'apppause';
-      const response = await fetch(
-        `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/${endpoint}/${server.name}`,
-        {
-          method: 'GET',
-          headers: { zelidauth: JSON.stringify(zelidauth) },
-        }
-      );
-      const data = await response.json();
-      if (data.status === 'error') {
-        toast.error(data.data?.message || `${isPaused ? 'Unpause' : 'Pause'} failed`);
-      } else {
-        setIsPaused(!isPaused);
-        [5000, 10000, 20000, 30000, 60000].forEach(delay => {
-          mainTimersRef.current.push(setTimeout(() => {
-            setStatsRefreshKey((k) => k + 1);
-            if (onUpdate) onUpdate();
-          }, delay));
-        });
-        toast.success(isPaused ? 'Server resumed' : 'Server paused');
-      }
-    } catch (error) {
-      if (error instanceof TypeError) retryResolveMaster();
-      toast.error(`Failed to ${isPaused ? 'unpause' : 'pause'} server`);
-    } finally {
-      mainTimersRef.current.push(setTimeout(() => setIsTogglingPause(false), 2000));
-    }
-  };
 
   const [isStopping, setIsStopping] = useState(false);
   const [isStopped, setIsStopped] = useState(false);
@@ -977,16 +919,8 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <button
-              onClick={handleTogglePause}
-              disabled={isTogglingPause || !masterLocation}
-              className={`relative group w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0 flex items-center justify-center disabled:opacity-30 rounded-full border bg-gray-700/50 ${isPaused ? 'text-blue-400 border-blue-500/30 hover:text-blue-300 hover:border-blue-400/30' : 'text-gray-400 border-gray-600/30 hover:text-orange-400 hover:border-yellow-500/30'}`}
-            >
-              {isPaused ? <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-              <span className={_TIP}>{isPaused ? 'Resume' : 'Pause'}</span>
-            </button>
-            <button
               onClick={handleRestart}
-              disabled={isRestarting || !masterLocation || isPaused}
+              disabled={isRestarting || !masterLocation}
               className="relative group w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0 flex items-center justify-center text-gray-400 hover:text-blue-400 disabled:opacity-30 rounded-full border border-gray-600/30 hover:border-blue-500/30 bg-gray-700/50"
             >
               <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isRestarting ? 'animate-spin text-blue-400' : ''}`} />
@@ -994,7 +928,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
             </button>
             <button
               onClick={isStopped ? handleStart : handleStop}
-              disabled={isStopping || isStarting || !masterLocation || isPaused}
+              disabled={isStopping || isStarting || !masterLocation}
               className={`relative group w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0 flex items-center justify-center disabled:opacity-30 rounded-full border bg-gray-700/50 ${
                 isStopped
                   ? 'text-emerald-400 border-emerald-500/30 hover:text-emerald-300 hover:border-emerald-400/30'
@@ -1017,7 +951,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
               <span className={_TIP}>Reinstall</span>
             </button>
             <span className="hidden sm:inline-flex items-center gap-2 text-sm px-3 py-1.5 bg-gray-700/50 rounded-full border border-gray-600/30" style={{ color: 'white', opacity: 1 }}>
-              <span className={`w-2 h-2 rounded-full ${isRestarting ? 'bg-blue-400 animate-spin' : isPaused ? 'bg-orange-400' : 'bg-emerald-400 animate-pulse'}`} />
+              <span className={`w-2 h-2 rounded-full ${isRestarting ? 'bg-blue-400 animate-spin' : isStopped ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
               {server.name}
             </span>
           </div>
