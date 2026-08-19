@@ -7,7 +7,7 @@ import secureStorage from '../../utils/secureStorage';
 import apiService from '../../services/apiService';
 import { computeRemainingExpire } from '../../utils/appSpecHelpers';
 import { restartApp } from '../../utils/appPower';
-import { runFileOperation } from '../../utils/fluxFileApi';
+import { isAlreadyExists, jobFailureMessage, pollOperation, readVolumeResponse } from '../../utils/volumeOperations';
 import { MODS_VOLUME_PATH, MOD_CATALOG, fileNameFromUrl, withModsMount } from '../../config/modsConfig';
 
 /**
@@ -59,31 +59,33 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     setError('');
     try {
       const authHeader = await auth();
-      const listing = await runFileOperation(
-        base,
-        `/apps/getfolderinfo/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
-        authHeader,
-      );
-      setMountMissing(false);
-      // A mod is enabled when its file ends in `.pak`; disabled mods are kept as
-      // `<name>.pak.disabled` (Unreal only loads `.pak`, so `.disabled` is ignored).
-      const paks = (Array.isArray(listing) ? listing : [])
-        .filter((f) => /\.pak(\.disabled)?$/i.test(f.name))
-        .map((f) => ({
-          name: f.name,                                    // actual file name on disk
-          displayName: f.name.replace(/\.disabled$/i, ''), // shown to the user
-          enabled: !/\.disabled$/i.test(f.name),
-          size: f.size,
-        }));
-      setInstalled(paks);
+      const apiUrl = `${base}/apps/getfolderinfo/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`;
+      const res = await fetch(apiUrl, {
+        headers: { zelidauth: authHeader, 'x-apicache-bypass': true },
+      });
+      if (!res.ok) throw new Error('Failed to read mods folder');
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.data)) {
+        setMountMissing(false);
+        // A mod is enabled when its file ends in `.pak`; disabled mods are kept as
+        // `<name>.pak.disabled` (Unreal only loads `.pak`, so `.disabled` is ignored).
+        const paks = data.data
+          .filter((f) => /\.pak(\.disabled)?$/i.test(f.name))
+          .map((f) => ({
+            name: f.name,                                    // actual file name on disk
+            displayName: f.name.replace(/\.disabled$/i, ''), // shown to the user
+            enabled: !/\.disabled$/i.test(f.name),
+            size: f.size,
+          }));
+        setInstalled(paks);
+      } else {
+        // Reachable response but no folder → the `mods` mount isn't on this server.
+        setMountMissing(true);
+        setInstalled([]);
+      }
     } catch (err) {
       if (err instanceof TypeError) onMasterError?.();
       setInstalled([]);
-      // No such folder is the server predating the `~mods` mount, which the panel offers
-      // to add. Everything else is a fault worth naming rather than dressing up as one -
-      // except an unreachable node, which onMasterError already answers for.
-      if (err.code === 'ENOENT') setMountMissing(true);
-      else if (!(err instanceof TypeError)) setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -93,45 +95,33 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
 
   // List the mod files (.pak / .pak.disabled) currently in ~mods.
   const listMods = useCallback(async (base, authHeader) => {
-    const listing = await runFileOperation(
-      base,
-      `/apps/getfolderinfo/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
-      authHeader,
-    );
-
-    return (Array.isArray(listing) ? listing : [])
-      .filter((f) => /\.pak(\.disabled)?$/i.test(f.name))
-      .map((f) => f.name);
+    const res = await fetch(`${base}/apps/getfolderinfo/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
+      { headers: { zelidauth: authHeader, 'x-apicache-bypass': true } });
+    const data = await res.json();
+    if (data.status === 'success' && Array.isArray(data.data)) {
+      return data.data.filter((f) => /\.pak(\.disabled)?$/i.test(f.name)).map((f) => f.name);
+    }
+    return [];
   }, [server?.name, selectedComponent]);
 
   const renameObj = useCallback(async (base, authHeader, from, to) => {
     if (from === to) return;
     const oldPath = `${MODS_VOLUME_PATH}/${from}`;
-    await runFileOperation(
-      base,
-      `/apps/renameobject/${server.name}/${selectedComponent}/${encodeURIComponent(oldPath)}/${to}`,
-      authHeader,
-    );
-  }, [server?.name, selectedComponent]);
+    const res = await fetch(`${base}/apps/renameobject/${server.name}/${selectedComponent}/${encodeURIComponent(oldPath)}/${to}`,
+      { headers: { zelidauth: authHeader } });
 
-  const removeObj = useCallback(async (base, authHeader, name) => {
-    const objectPath = `${MODS_VOLUME_PATH}/${name}`;
-    await runFileOperation(
-      base,
-      `/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`,
-      authHeader,
-    );
+    const outcome = await readVolumeResponse(res);
+    if (outcome.state === 'busy') throw new Error(outcome.message);
+    if (outcome.state === 'error') throw new Error(`Rename failed: ${outcome.message}`);
+    if (outcome.state === 'job') {
+      const view = await pollOperation(base, authHeader, outcome.job);
+      if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
+    }
   }, [server?.name, selectedComponent]);
 
   // --- add a .pak to ~mods as DISABLED, then refresh ---
   // New mods are added OFF so they don't disturb the currently-active mod (only one runs
   // at a time) and no restart is needed until the user turns one On.
-  //
-  // A mod already installed is REPLACED rather than added beside itself. Uploading the same
-  // mod again is how someone updates one, and the old shape left both `X.pak` and
-  // `X.pak.disabled` on disk claiming one mod - a state the enable/disable rename cannot
-  // resolve, because the name it has to rename to is taken. Replacing keeps its On/Off
-  // setting: a mod that was running is still running when its newer file lands.
   const uploadPakToMods = useCallback(async (name, blob) => {
     const base = nodeBase();
     if (!base) { setError('Server location not available yet.'); return; }
@@ -142,56 +132,53 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     try {
       const authHeader = await auth();
 
-      // Ensure the ~mods folder exists. A folder that is already there is the ordinary
-      // case and answers an error; a folder that genuinely cannot be created fails the
-      // upload below, which is where it belongs.
-      try {
-        await runFileOperation(
-          base,
-          `/apps/createfolder/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
-          authHeader,
-        );
-      } catch { /* already there */ }
+      // Ensure the ~mods folder exists. "Already exists" is the expected answer
+      // and is ignored; a refusal is not, and used to be swallowed here - fetch
+      // does not throw on a 503, so a busy node passed silently and the upload
+      // below then failed for a reason that looked unrelated.
+      //
+      // isAlreadyExists rather than a bare EEXIST check: only a node carrying
+      // FluxOS #1778 names the refusal. Everything on the network today answers
+      // an existing folder with mkdir's own words and the exit status in the
+      // code field, and reading only the code turns the second mod a customer
+      // uploads into a hard failure.
+      const folderRes = await fetch(`${base}/apps/createfolder/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
+        { headers: { zelidauth: authHeader } });
 
-      // What this mod is already installed as, if anything. Compared without case because
-      // an `X.pak` beside an `x.pak` is two files claiming one mod, which is the state
-      // being got rid of.
-      const present = await listMods(base, authHeader);
-      const replacing = present.filter((f) => f.replace(/\.disabled$/i, '').toLowerCase() === name.toLowerCase());
-      const wasEnabled = replacing.some((f) => !/\.disabled$/i.test(f));
+      const folderOutcome = await readVolumeResponse(folderRes);
+      if (folderOutcome.state === 'busy') throw new Error(folderOutcome.message);
+      if (folderOutcome.state === 'error' && !isAlreadyExists(folderOutcome)) {
+        throw new Error(`Could not create the mods folder: ${folderOutcome.message}`);
+      }
+      // A mkdir is bounded by construction and answers inline, so this is a
+      // shape the node is not expected to use here. Polled rather than assumed
+      // finished, because the cost of being wrong is uploading into a folder
+      // that does not exist yet.
+      if (folderOutcome.state === 'job') {
+        const view = await pollOperation(base, authHeader, folderOutcome.job);
+        if (view.status !== 'Succeeded' && !isAlreadyExists({ code: view.error?.code, message: jobFailureMessage(view) })) {
+          throw new Error(`Could not create the mods folder: ${jobFailureMessage(view)}`);
+        }
+      }
 
-      // Upload the pak as `<name>.pak.disabled` — the running server is untouched. It goes
-      // in BEFORE the old copy comes out: an upload that fails half way through leaves the
-      // mod the server already has exactly where it was.
+      // Upload the pak as `<name>.pak.disabled` — the running server is untouched.
       setStep('uploading');
       const uploadUrl = `${base}/ioutils/fileupload/volume/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`;
       const formData = new FormData();
       formData.append(disabledName, blob, disabledName);
       const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: formData });
       if (!up.ok) {
+        // Upload refuses for the same reasons the operations above do, and a
+        // customer told "Upload failed (HTTP 503)" mid-flow learns nothing they
+        // can act on. Read from a clone so the raw body is still there for
+        // anything that is not a refusal we recognise.
+        const upOutcome = await readVolumeResponse(up.clone());
+        if (upOutcome.state === 'busy') throw new Error(upOutcome.message);
         const text = await up.text().catch(() => '');
         throw new Error(text || `Upload failed (HTTP ${up.status})`);
       }
 
-      // Everything else claiming this mod's name goes, so exactly one file is left holding
-      // it. The upload has already replaced a copy named identically, so that one stays.
-      setStep('removing');
-      for (const f of replacing.filter((f) => f !== disabledName)) {
-        await removeObj(base, authHeader, f);
-      }
-
-      if (wasEnabled) {
-        // It was the active mod before, so it is the active mod after. The server is
-        // still running the file it loaded at boot, which is why this needs a restart.
-        setStep('toggling');
-        await renameObj(base, authHeader, disabledName, name);
-        setNeedsRestart(true);
-        setNotice(`Updated "${name}" — it stays On. Restart to run the new version.`);
-      } else {
-        setNotice(replacing.length
-          ? `Updated "${name}" (Off). Turn it On below to use it — that swaps the active mod and needs a restart.`
-          : `Added "${name}" (Off). Turn it On below to use it — that swaps the active mod and needs a restart.`);
-      }
+      setNotice(`Added "${name}" (Off). Turn it On below to use it — that swaps the active mod and needs a restart.`);
       await loadInstalled();
     } catch (err) {
       if (err instanceof TypeError) onMasterError?.();
@@ -200,7 +187,7 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       setBusy('');
       setStep('');
     }
-  }, [nodeBase, auth, server?.name, selectedComponent, onMasterError, loadInstalled, listMods, removeObj, renameObj]);
+  }, [nodeBase, auth, server?.name, selectedComponent, onMasterError, loadInstalled]);
 
   // --- install a .pak from a direct URL (proxied download → shared upload) ---
   // Only used by DIRECT catalog entries (those with a downloadUrl).
@@ -257,31 +244,15 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     setStep('toggling');
     try {
       const authHeader = await auth();
-      const files = await listMods(base, authHeader);
-
-      // The node refuses a rename onto a name that is already there, so a mod present in
-      // both spellings at once - which servers can still be holding from before uploads
-      // replaced - is named here, before anything moves, rather than half way through the
-      // swap with one mod already disabled.
-      const taken = (name) => files.some((f) => f.toLowerCase() === name.toLowerCase());
-      const twoCopies = (name) => new Error(
-        `There are two copies of "${name.replace(/\.disabled$/i, '')}" on this server, one On and one Off. `
-        + 'Remove one of them and try again.',
-      );
-
       if (enable) {
+        const files = await listMods(base, authHeader);
         for (const f of files) {
           if (!/\.disabled$/i.test(f) && f !== mod.name) {
-            if (taken(`${f}.disabled`)) throw twoCopies(f);
             await renameObj(base, authHeader, f, `${f}.disabled`);
           }
         }
-        if (!mod.enabled) {
-          if (taken(mod.displayName)) throw twoCopies(mod.displayName);
-          await renameObj(base, authHeader, mod.name, mod.displayName);
-        }
+        if (!mod.enabled) await renameObj(base, authHeader, mod.name, mod.displayName);
       } else if (mod.enabled) {
-        if (taken(`${mod.displayName}.disabled`)) throw twoCopies(mod.displayName);
         await renameObj(base, authHeader, mod.name, `${mod.displayName}.disabled`);
       }
       setNeedsRestart(true);
@@ -333,7 +304,21 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     setStep('removing');
     try {
       const authHeader = await auth();
-      await removeObj(base, authHeader, mod.name);
+      const objectPath = `${MODS_VOLUME_PATH}/${mod.name}`;
+      const res = await fetch(`${base}/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`,
+        { headers: { zelidauth: authHeader } });
+      const outcome = await readVolumeResponse(res);
+      if (outcome.state === 'busy') throw new Error(outcome.message);
+      if (outcome.state === 'error') throw new Error(`Failed to remove: ${outcome.message}`);
+
+      // A remove big enough to outlive the node's inline deadline carries on as
+      // a job. Reporting it removed now would refresh a listing that still has
+      // the file in it.
+      if (outcome.state === 'job') {
+        const view = await pollOperation(base, authHeader, outcome.job);
+        if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
+      }
+
       if (mod.enabled) setNeedsRestart(true); // removing the active mod needs a restart
       setNotice(`Removed "${mod.displayName}".${mod.enabled ? ' Restart to apply.' : ''}`);
       await loadInstalled();
@@ -344,7 +329,7 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       setBusy('');
       setStep('');
     }
-  }, [nodeBase, auth, removeObj, onMasterError, loadInstalled]);
+  }, [nodeBase, auth, server?.name, selectedComponent, onMasterError, loadInstalled]);
 
   // --- one-click fix: add the ~mods mount to the app spec, then redeploy ---
   // For servers deployed before mods support. Adds `m:mods:...` to every component's
