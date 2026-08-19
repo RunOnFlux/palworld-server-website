@@ -3155,6 +3155,9 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
   const [hasChanges, setHasChanges] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [fileToDelete, setFileToDelete] = useState(null);
+  // A folder delete can outlive its request and continue as a job, so the dialog waits for
+  // the node to finish rather than closing on a promise nobody is watching.
+  const [deleting, setDeleting] = useState(false);
   const [openMenuFile, setOpenMenuFile] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const menuCloseTimeoutRef = useRef(null);
@@ -3543,6 +3546,7 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
       return;
     }
 
+    setDeleting(true);
     try {
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!masterLocation) throw new Error('Master location not available');
@@ -3597,6 +3601,7 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
       setError(`Failed to delete: ${err.message}`);
       setTimeout(() => setError(null), 5000);
     } finally {
+      setDeleting(false);
       setShowDeleteDialog(false);
       setFileToDelete(null);
     }
@@ -5160,7 +5165,7 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
 
       {/* Delete Confirmation Dialog */}
       {showDeleteDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowDeleteDialog(false); setFileToDelete(null); }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { if (!deleting) { setShowDeleteDialog(false); setFileToDelete(null); } }}>
           <div className="bg-gray-800 rounded-lg w-full max-w-md border border-gray-700" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
@@ -5188,16 +5193,18 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-700">
               <button
                 onClick={() => { setShowDeleteDialog(false); setFileToDelete(null); }}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                disabled={deleting}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                disabled={deleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
               >
-                <MdDelete className="w-4 h-4" />
-                Delete
+                {deleting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MdDelete className="w-4 h-4" />}
+                {deleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>
@@ -5412,11 +5419,19 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
   // a file within its own folder, which is exactly the guarantee we want here.
   const renameInWorld = useCallback(async (relWorld, from, to) => {
     const zelidauth = await secureStorage.getItem('zelidauth');
-    const url = nodeUrlFor(`/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`);
-    const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth) } });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok || body.status === 'error') throw new Error(body?.data?.message || `rename ${from} failed`);
-  }, [nodeUrlFor, server?.name, snapshotComponent]);
+    const base = nodeApiBase(masterLocation.ip);
+    const res = await fetch(
+      `${base}/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`,
+      { headers: { zelidauth: JSON.stringify(zelidauth) } },
+    );
+
+    const outcome = await readVolumeResponse(res);
+    if (outcome.state === 'busy' || outcome.state === 'error') throw new Error(`rename ${from} failed: ${outcome.message}`);
+    if (outcome.state === 'job') {
+      const view = await pollOperation(base, JSON.stringify(zelidauth), outcome.job);
+      if (view.status !== 'Succeeded') throw new Error(`rename ${from} failed: ${jobFailureMessage(view)}`);
+    }
+  }, [masterLocation, server?.name, snapshotComponent]);
 
   const loadSnapshots = useCallback(async () => {
     if (!masterLocation) return;
@@ -5501,20 +5516,44 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
       return String(body.data || '');
     };
 
-    const rename = async (from, to) => {
-      const url = nodeUrlFor(`/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`);
-      const res = await fetch(url, { headers: { zelidauth: JSON.stringify(zelidauth) } });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || body.status === 'error') throw new Error(body?.data?.message || `rename ${from} failed`);
+    // The swap is renames on a stopped server, so it is short — but the node still answers
+    // busy while another operation holds the volume, and still hands back a job for
+    // anything that outlives its inline deadline. Both go through readVolumeResponse.
+    const fileOp = async (path, what) => {
+      const base = nodeApiBase(masterLocation.ip);
+      const res = await fetch(`${base}${path}`, { headers: { zelidauth: JSON.stringify(zelidauth) } });
+
+      const outcome = await readVolumeResponse(res);
+      if (outcome.state === 'busy' || outcome.state === 'error') throw new Error(`${what} failed: ${outcome.message}`);
+      if (outcome.state === 'job') {
+        const view = await pollOperation(base, JSON.stringify(zelidauth), outcome.job);
+        if (view.status !== 'Succeeded') throw new Error(`${what} failed: ${jobFailureMessage(view)}`);
+      }
     };
+
+    const rename = (from, to) => fileOp(
+      `/apps/renameobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${from}`)}/${to}`,
+      `rename ${from}`,
+    );
+
+    const remove = (name) => fileOp(
+      `/apps/removeobject/${server.name}/${snapshotComponent}/${encodeURIComponent(`${relWorld}/${name}`)}`,
+      `remove ${name}`,
+    );
 
     const swapped = [];
     try {
       // 1. Copy while the server is still up. Only *.restore-<stamp> siblings appear;
       //    the live save is untouched, so a failure here changes nothing.
+      //
+      //    The stamp comes from the snapshot's own name, so restoring the same snapshot a
+      //    second time reuses it, and any staging copy an earlier attempt left behind is
+      //    still sitting on the name this one needs. It goes first: `cp -a` onto an
+      //    existing DIRECTORY copies INSIDE it, which would put the snapshot's Players
+      //    folder one level down and then publish that as the save.
       setSnapshotStep('Copying snapshot…');
       const copies = ITEMS
-        .map((i) => `[ -e "${snapDir}/${i}" ] && cp -a "${snapDir}/${i}" "${worldDir}/${i}.restore-${stamp}" || true`)
+        .map((i) => `rm -rf "${worldDir}/${i}.restore-${stamp}"; [ -e "${snapDir}/${i}" ] && cp -a "${snapDir}/${i}" "${worldDir}/${i}.restore-${stamp}" || true`)
         .join('; ');
       await exec(['sh', '-c', `set -e; ${copies}`]);
 
@@ -5536,6 +5575,13 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
           for (const item of ITEMS) {
             if (!names.includes(`${item}.restore-${stamp}`)) continue;
             if (names.includes(item)) {
+              // Restoring the same snapshot again parks the live save under the name the
+              // last restore parked its own under. A node carrying FluxOS #1778 refuses a
+              // rename onto a name that exists, and what this flow promises is one spare
+              // copy rather than a growing pile of them, so the previous park goes.
+              if (names.includes(`${item}.pre-restore-${stamp}`)) {
+                await remove(`${item}.pre-restore-${stamp}`);
+              }
               await rename(item, `${item}.pre-restore-${stamp}`);
               swapped.push([`${item}.pre-restore-${stamp}`, item]);
             }
@@ -5558,7 +5604,7 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
       setRestoringSnapshot(null);
       setSnapshotStep('');
     }
-  }, [worldGuid, masterLocation, server?.name, snapshotComponent, nodeUrlFor, listFolder, loadSnapshots, containerBasePath]);
+  }, [worldGuid, masterLocation, server?.name, snapshotComponent, listFolder, loadSnapshots, containerBasePath]);
 
   /**
    * Put back the save a restore replaced.

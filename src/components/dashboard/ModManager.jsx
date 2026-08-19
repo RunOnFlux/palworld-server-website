@@ -93,16 +93,24 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
 
   useEffect(() => { loadInstalled(); }, [loadInstalled]);
 
-  // List the mod files (.pak / .pak.disabled) currently in ~mods.
-  const listMods = useCallback(async (base, authHeader) => {
+  // The mod files (.pak / .pak.disabled) currently in ~mods, with their sizes - which is how
+  // an upload is confirmed to have landed, since the upload endpoint will not say.
+  const listModEntries = useCallback(async (base, authHeader) => {
     const res = await fetch(`${base}/apps/getfolderinfo/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
       { headers: { zelidauth: authHeader, 'x-apicache-bypass': true } });
     const data = await res.json();
     if (data.status === 'success' && Array.isArray(data.data)) {
-      return data.data.filter((f) => /\.pak(\.disabled)?$/i.test(f.name)).map((f) => f.name);
+      return data.data.filter((f) => /\.pak(\.disabled)?$/i.test(f.name));
     }
     return [];
   }, [server?.name, selectedComponent]);
+
+  // List the mod file names currently in ~mods.
+  const listMods = useCallback(async (base, authHeader) => {
+    const entries = await listModEntries(base, authHeader);
+
+    return entries.map((f) => f.name);
+  }, [listModEntries]);
 
   const renameObj = useCallback(async (base, authHeader, from, to) => {
     if (from === to) return;
@@ -119,9 +127,32 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     }
   }, [server?.name, selectedComponent]);
 
+  const removeObj = useCallback(async (base, authHeader, name) => {
+    const objectPath = `${MODS_VOLUME_PATH}/${name}`;
+    const res = await fetch(`${base}/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`,
+      { headers: { zelidauth: authHeader } });
+
+    const outcome = await readVolumeResponse(res);
+    if (outcome.state === 'busy') throw new Error(outcome.message);
+    if (outcome.state === 'error') throw new Error(`Failed to remove: ${outcome.message}`);
+
+    // A remove big enough to outlive the node's inline deadline carries on as a job.
+    // Reporting it removed now would refresh a listing that still has the file in it.
+    if (outcome.state === 'job') {
+      const view = await pollOperation(base, authHeader, outcome.job);
+      if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
+    }
+  }, [server?.name, selectedComponent]);
+
   // --- add a .pak to ~mods as DISABLED, then refresh ---
   // New mods are added OFF so they don't disturb the currently-active mod (only one runs
   // at a time) and no restart is needed until the user turns one On.
+  //
+  // A mod already installed is REPLACED rather than added beside itself. Uploading the same
+  // mod again is how someone updates one, and adding beside left both `X.pak` and
+  // `X.pak.disabled` on disk claiming one mod — a state the enable/disable rename cannot
+  // resolve, because the name it has to rename to is taken. Replacing keeps its On/Off
+  // setting: a mod that was running is still running once its newer file lands.
   const uploadPakToMods = useCallback(async (name, blob) => {
     const base = nodeBase();
     if (!base) { setError('Server location not available yet.'); return; }
@@ -161,7 +192,16 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
         }
       }
 
-      // Upload the pak as `<name>.pak.disabled` — the running server is untouched.
+      // What this mod is already installed as, if anything. Compared without case because
+      // an `X.pak` beside an `x.pak` is two files claiming one mod, which is the state
+      // being got rid of.
+      const present = await listMods(base, authHeader);
+      const replacing = present.filter((f) => f.replace(/\.disabled$/i, '').toLowerCase() === name.toLowerCase());
+      const wasEnabled = replacing.some((f) => !/\.disabled$/i.test(f));
+
+      // Upload the pak as `<name>.pak.disabled` — the running server is untouched. It goes
+      // in BEFORE the old copy comes out: an upload that fails half way through leaves the
+      // mod the server already has exactly where it was.
       setStep('uploading');
       const uploadUrl = `${base}/ioutils/fileupload/volume/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`;
       const formData = new FormData();
@@ -178,7 +218,48 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
         throw new Error(text || `Upload failed (HTTP ${up.status})`);
       }
 
-      setNotice(`Added "${name}" (Off). Turn it On below to use it — that swaps the active mod and needs a restart.`);
+      // Confirm the file actually landed BEFORE anything is removed on the strength of it.
+      //
+      // `up.ok` does not answer that. The upload endpoint streams progress down the body and
+      // writes its refusal - unauthorized, volume not found, a formidable error - into that
+      // same body, leaving the status at 200. Both FluxOS `IOUtils.fileUpload` and the
+      // `fileSystemManager.uploadAppsFiles` that replaces it in #1778 do this. So a failed
+      // upload reads as a successful one, and removing the copy the customer already had on
+      // the strength of it would lose them the mod. The listing is asked instead, which
+      // answers the same on a node carrying #1778 and one that does not.
+      const landed = (await listModEntries(base, authHeader)).find((f) => f.name === disabledName);
+      if (!landed || (typeof landed.size === 'number' && landed.size !== blob.size)) {
+        throw new Error(`"${name}" did not finish uploading — nothing on the server was changed. Try again.`);
+      }
+
+      // Everything else claiming this mod's name goes, so exactly one file is left holding
+      // it. The upload has already replaced a copy named identically, so that one stays.
+      setStep('removing');
+      for (const f of replacing.filter((f) => f !== disabledName)) {
+        await removeObj(base, authHeader, f);
+      }
+
+      if (wasEnabled) {
+        // It was the active mod before, so it is the active mod after. The server is still
+        // running the file it loaded at boot, which is why this needs a restart.
+        //
+        // The old copy had to come out first - it held the name this rename needs - so a
+        // node that goes busy between the two leaves the new file installed and Off rather
+        // than On. Nothing is lost, but the customer is told which of the two it is.
+        setStep('toggling');
+        try {
+          await renameObj(base, authHeader, disabledName, name);
+          setNeedsRestart(true);
+          setNotice(`Updated "${name}" — it stays On. Restart to run the new version.`);
+        } catch (e) {
+          if (e instanceof TypeError) throw e;   // the master node has gone; the outer catch answers for it
+          setError(`"${name}" was updated but could not be turned back On: ${e.message} Turn it On below.`);
+        }
+      } else {
+        setNotice(replacing.length
+          ? `Updated "${name}" (Off). Turn it On below to use it — that swaps the active mod and needs a restart.`
+          : `Added "${name}" (Off). Turn it On below to use it — that swaps the active mod and needs a restart.`);
+      }
       await loadInstalled();
     } catch (err) {
       if (err instanceof TypeError) onMasterError?.();
@@ -187,7 +268,7 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       setBusy('');
       setStep('');
     }
-  }, [nodeBase, auth, server?.name, selectedComponent, onMasterError, loadInstalled]);
+  }, [nodeBase, auth, server?.name, selectedComponent, onMasterError, loadInstalled, listMods, listModEntries, removeObj, renameObj]);
 
   // --- install a .pak from a direct URL (proxied download → shared upload) ---
   // Only used by DIRECT catalog entries (those with a downloadUrl).
@@ -244,15 +325,32 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     setStep('toggling');
     try {
       const authHeader = await auth();
+      const files = await listMods(base, authHeader);
+
+      // A node carrying FluxOS #1778 refuses a rename onto a name that is already there,
+      // and a mod present in both spellings at once — which servers uploaded to before
+      // uploads replaced can still be holding — has no free name to move to. Named here,
+      // before anything moves, rather than half way through the swap with the mod the
+      // customer was running already disabled.
+      const taken = (name) => files.some((f) => f.toLowerCase() === name.toLowerCase());
+      const twoCopies = (name) => new Error(
+        `There are two copies of "${name.replace(/\.disabled$/i, '')}" on this server, one On and one Off. `
+        + 'Remove one of them and try again.',
+      );
+
       if (enable) {
-        const files = await listMods(base, authHeader);
         for (const f of files) {
           if (!/\.disabled$/i.test(f) && f !== mod.name) {
+            if (taken(`${f}.disabled`)) throw twoCopies(f);
             await renameObj(base, authHeader, f, `${f}.disabled`);
           }
         }
-        if (!mod.enabled) await renameObj(base, authHeader, mod.name, mod.displayName);
+        if (!mod.enabled) {
+          if (taken(mod.displayName)) throw twoCopies(mod.displayName);
+          await renameObj(base, authHeader, mod.name, mod.displayName);
+        }
       } else if (mod.enabled) {
+        if (taken(`${mod.displayName}.disabled`)) throw twoCopies(mod.displayName);
         await renameObj(base, authHeader, mod.name, `${mod.displayName}.disabled`);
       }
       setNeedsRestart(true);
@@ -304,21 +402,7 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     setStep('removing');
     try {
       const authHeader = await auth();
-      const objectPath = `${MODS_VOLUME_PATH}/${mod.name}`;
-      const res = await fetch(`${base}/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`,
-        { headers: { zelidauth: authHeader } });
-      const outcome = await readVolumeResponse(res);
-      if (outcome.state === 'busy') throw new Error(outcome.message);
-      if (outcome.state === 'error') throw new Error(`Failed to remove: ${outcome.message}`);
-
-      // A remove big enough to outlive the node's inline deadline carries on as
-      // a job. Reporting it removed now would refresh a listing that still has
-      // the file in it.
-      if (outcome.state === 'job') {
-        const view = await pollOperation(base, authHeader, outcome.job);
-        if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
-      }
-
+      await removeObj(base, authHeader, mod.name);
       if (mod.enabled) setNeedsRestart(true); // removing the active mod needs a restart
       setNotice(`Removed "${mod.displayName}".${mod.enabled ? ' Restart to apply.' : ''}`);
       await loadInstalled();
@@ -329,7 +413,7 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       setBusy('');
       setStep('');
     }
-  }, [nodeBase, auth, server?.name, selectedComponent, onMasterError, loadInstalled]);
+  }, [nodeBase, auth, removeObj, onMasterError, loadInstalled]);
 
   // --- one-click fix: add the ~mods mount to the app spec, then redeploy ---
   // For servers deployed before mods support. Adds `m:mods:...` to every component's
