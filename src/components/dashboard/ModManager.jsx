@@ -7,7 +7,7 @@ import secureStorage from '../../utils/secureStorage';
 import apiService from '../../services/apiService';
 import { computeRemainingExpire } from '../../utils/appSpecHelpers';
 import { restartApp } from '../../utils/appPower';
-import { jobFailureMessage, pollOperation, readVolumeResponse } from '../../utils/volumeOperations';
+import { isAlreadyExists, jobFailureMessage, pollOperation, readVolumeResponse } from '../../utils/volumeOperations';
 import { MODS_VOLUME_PATH, MOD_CATALOG, fileNameFromUrl, withModsMount } from '../../config/modsConfig';
 
 /**
@@ -136,13 +136,29 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       // and is ignored; a refusal is not, and used to be swallowed here - fetch
       // does not throw on a 503, so a busy node passed silently and the upload
       // below then failed for a reason that looked unrelated.
+      //
+      // isAlreadyExists rather than a bare EEXIST check: only a node carrying
+      // FluxOS #1778 names the refusal. Everything on the network today answers
+      // an existing folder with mkdir's own words and the exit status in the
+      // code field, and reading only the code turns the second mod a customer
+      // uploads into a hard failure.
       const folderRes = await fetch(`${base}/apps/createfolder/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
         { headers: { zelidauth: authHeader } });
 
       const folderOutcome = await readVolumeResponse(folderRes);
       if (folderOutcome.state === 'busy') throw new Error(folderOutcome.message);
-      if (folderOutcome.state === 'error' && folderOutcome.code !== 'EEXIST') {
+      if (folderOutcome.state === 'error' && !isAlreadyExists(folderOutcome)) {
         throw new Error(`Could not create the mods folder: ${folderOutcome.message}`);
+      }
+      // A mkdir is bounded by construction and answers inline, so this is a
+      // shape the node is not expected to use here. Polled rather than assumed
+      // finished, because the cost of being wrong is uploading into a folder
+      // that does not exist yet.
+      if (folderOutcome.state === 'job') {
+        const view = await pollOperation(base, authHeader, folderOutcome.job);
+        if (view.status !== 'Succeeded' && !isAlreadyExists({ code: view.error?.code, message: jobFailureMessage(view) })) {
+          throw new Error(`Could not create the mods folder: ${jobFailureMessage(view)}`);
+        }
       }
 
       // Upload the pak as `<name>.pak.disabled` — the running server is untouched.
@@ -152,6 +168,12 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       formData.append(disabledName, blob, disabledName);
       const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: formData });
       if (!up.ok) {
+        // Upload refuses for the same reasons the operations above do, and a
+        // customer told "Upload failed (HTTP 503)" mid-flow learns nothing they
+        // can act on. Read from a clone so the raw body is still there for
+        // anything that is not a refusal we recognise.
+        const upOutcome = await readVolumeResponse(up.clone());
+        if (upOutcome.state === 'busy') throw new Error(upOutcome.message);
         const text = await up.text().catch(() => '');
         throw new Error(text || `Upload failed (HTTP ${up.status})`);
       }

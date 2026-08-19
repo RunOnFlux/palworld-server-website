@@ -25,6 +25,7 @@ import secureStorage from '../../utils/secureStorage';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
 import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore, recoverPendingRestores } from '../../utils/appPower';
+import { jobFailureMessage, pollOperation, readVolumeResponse } from '../../utils/volumeOperations';
 import { parseEnvArray } from '../../utils/appSpecHelpers';
 import { findMissingStandardEnv } from '../../config/serverMaintenance';
 import { diagnosePlacement } from '../../utils/nodeCapacity';
@@ -3483,30 +3484,34 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!masterLocation) throw new Error('Master location not available');
 
-      const [host, port = 16127] = masterLocation.ip.split(':');
+      const base = nodeApiBase(masterLocation.ip);
       const folderPath = currentPath ? `${currentPath}/${newFolderName}` : newFolderName;
-      const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/createfolder/${server.name}/${selectedComponent}/${encodeURIComponent(folderPath)}`;
+      const apiUrl = `${base}/apps/createfolder/${server.name}/${selectedComponent}/${encodeURIComponent(folderPath)}`;
 
       const response = await fetch(apiUrl, {
         cache: 'no-store',
         headers: { zelidauth: JSON.stringify(zelidauth), 'x-apicache-bypass': true },
       });
 
-      const data = await response.json();
+      const outcome = await readVolumeResponse(response);
 
       // Check for auth errors
-      const authError = checkAuthError(response, data.data?.message);
+      const authError = checkAuthError(response, outcome.message);
       if (authError) {
         throw new Error(authError);
       }
 
-      if (data.status === 'success') {
-        setNewFolderName('');
-        setShowNewFolderDialog(false);
-        fetchFiles(currentPath);
-      } else {
-        throw new Error(data.data?.message || 'Failed to create folder');
+      if (outcome.state === 'busy' || outcome.state === 'error') {
+        throw new Error(outcome.message);
       }
+      if (outcome.state === 'job') {
+        const view = await pollOperation(base, JSON.stringify(zelidauth), outcome.job);
+        if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
+      }
+
+      setNewFolderName('');
+      setShowNewFolderDialog(false);
+      fetchFiles(currentPath);
     } catch (err) {
       if (err instanceof TypeError) onMasterError();
       setError(`Failed to create folder: ${err.message}`);
@@ -3647,9 +3652,9 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!masterLocation) throw new Error('Master location not available');
 
-      const [host, port = 16127] = masterLocation.ip.split(':');
+      const base = nodeApiBase(masterLocation.ip);
       const objectPath = currentPath ? `${currentPath}/${fileToDelete.name}` : fileToDelete.name;
-      const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`;
+      const apiUrl = `${base}/apps/removeobject/${server.name}/${selectedComponent}/${encodeURIComponent(objectPath)}`;
 
       console.log('🗑️ Delete request:', {
         type: fileToDelete.type,
@@ -3666,21 +3671,31 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
 
       console.log('🗑️ Delete response:', response.status, response.statusText);
 
-      const data = await response.json();
-      console.log('🗑️ Delete data:', data);
+      const outcome = await readVolumeResponse(response);
+      console.log('🗑️ Delete outcome:', outcome);
 
       // Check for auth errors
-      const authError = checkAuthError(response, data.data?.message);
+      const authError = checkAuthError(response, outcome.message);
       if (authError) {
         throw new Error(authError);
       }
 
-      if (data.status === 'success') {
-        setError(null);
-        fetchFiles(currentPath);
-      } else {
-        throw new Error(data.data?.message || 'Failed to delete');
+      if (outcome.state === 'busy' || outcome.state === 'error') {
+        throw new Error(outcome.message);
       }
+
+      // A delete that outlives the node's inline deadline carries on as a job,
+      // and its 202 is a success envelope - so reading only `status: 'success'`
+      // refreshed the listing while rm -rf was still working, and the file the
+      // customer just deleted was still there. Deleting a large folder here is
+      // exactly that case.
+      if (outcome.state === 'job') {
+        const view = await pollOperation(base, JSON.stringify(zelidauth), outcome.job);
+        if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
+      }
+
+      setError(null);
+      fetchFiles(currentPath);
     } catch (err) {
       if (err instanceof TypeError) onMasterError();
       console.error('Delete failed:', err.message);
@@ -3700,31 +3715,35 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
       const zelidauth = await secureStorage.getItem('zelidauth');
       if (!masterLocation) throw new Error('Master location not available');
 
-      const [host, port = 16127] = masterLocation.ip.split(':');
+      const base = nodeApiBase(masterLocation.ip);
       const oldPath = currentPath ? `${currentPath}/${renameFile.name}` : renameFile.name;
-      const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/renameobject/${server.name}/${selectedComponent}/${encodeURIComponent(oldPath)}/${newFileName}`;
+      const apiUrl = `${base}/apps/renameobject/${server.name}/${selectedComponent}/${encodeURIComponent(oldPath)}/${newFileName}`;
 
       const response = await fetch(apiUrl, {
         cache: 'no-store',
         headers: { zelidauth: JSON.stringify(zelidauth), 'x-apicache-bypass': true },
       });
 
-      const data = await response.json();
+      const outcome = await readVolumeResponse(response);
 
       // Check for auth errors
-      const authError = checkAuthError(response, data.data?.message);
+      const authError = checkAuthError(response, outcome.message);
       if (authError) {
         throw new Error(authError);
       }
 
-      if (data.status === 'success') {
-        setShowRenameDialog(false);
-        setRenameFile(null);
-        setNewFileName('');
-        fetchFiles(currentPath);
-      } else {
-        throw new Error(data.data?.message || 'Failed to rename');
+      if (outcome.state === 'busy' || outcome.state === 'error') {
+        throw new Error(outcome.message);
       }
+      if (outcome.state === 'job') {
+        const view = await pollOperation(base, JSON.stringify(zelidauth), outcome.job);
+        if (view.status !== 'Succeeded') throw new Error(jobFailureMessage(view));
+      }
+
+      setShowRenameDialog(false);
+      setRenameFile(null);
+      setNewFileName('');
+      fetchFiles(currentPath);
     } catch (err) {
       if (err instanceof TypeError) onMasterError();
       setError(`Failed to rename: ${err.message}`);

@@ -22,16 +22,43 @@ const DEFAULT_RETRY_SECONDS = 5;
 const DEFAULT_POLL_SECONDS = 2;
 const DEFAULT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
+// A Retry-After is a hint from the node, and the timeout is only as strong as
+// the longest thing that can be slept on the strength of one. Capped so an
+// absurd value cannot park the poll for hours past the deadline it was given.
+const MAX_POLL_INTERVAL_SECONDS = 30;
+
+// A poll that cannot be read is not a failed operation. The node.api proxy
+// answers 502 under load and a restarted node forgets its jobs, so a single bad
+// read says nothing about whether the work is still going - only a run of them
+// does.
+const MAX_CONSECUTIVE_POLL_FAILURES = 3;
+
 function delay(ms) {
   return new Promise(resolve => {
     setTimeout(resolve, ms);
   });
 }
 
-function secondsFrom(headerValue, fallback) {
+function secondsFrom(headerValue, fallback, max = Infinity) {
   const seconds = Number(headerValue);
 
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : fallback;
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, max) : fallback;
+}
+
+/**
+ * The path a job is polled at.
+ *
+ * The node offers one in the body, and it is used only when it is a path on the
+ * node we already called. Taken as given, `@elsewhere` would make
+ * `${base}${statusUrl}` a URL whose host is somebody else's, and the zelidauth
+ * header would go there with it. `//host` is the same trick without the userinfo.
+ */
+function statusPathFor(payload) {
+  const offered = payload?.statusUrl;
+
+  return typeof offered === 'string' && offered.startsWith('/') && !offered.startsWith('//')
+    ? offered
+    : `/apps/operations/${payload.jobId}`;
 }
 
 /**
@@ -67,7 +94,7 @@ export async function readVolumeResponse(res) {
       state: 'job',
       job: {
         jobId: payload.jobId,
-        statusUrl: payload.statusUrl || `/apps/operations/${payload.jobId}`,
+        statusUrl: statusPathFor(payload),
       },
     };
   }
@@ -100,22 +127,53 @@ export async function readVolumeResponse(res) {
 export async function pollOperation(base, authHeader, job, options = {}) {
   const { timeoutMs = DEFAULT_POLL_TIMEOUT_MS } = options;
   const giveUpAt = Date.now() + timeoutMs;
+  let failures = 0;
+  let lastFailure = null;
 
   for (;;) {
-    const res = await fetch(`${base}${job.statusUrl}`, { headers: { zelidauth: authHeader } });
-    if (!res.ok) throw new Error(`Could not read the operation (HTTP ${res.status})`);
+    let waitSeconds = DEFAULT_POLL_SECONDS;
 
-    const body = await res.json().catch(() => null);
-    const view = body?.data ?? {};
+    try {
+      const res = await fetch(`${base}${job.statusUrl}`, { headers: { zelidauth: authHeader } });
+      if (!res.ok) throw new Error(`Could not read the operation (HTTP ${res.status})`);
 
-    if (TERMINAL_STATUSES.includes(view.status)) return view;
+      const body = await res.json().catch(() => null);
+      const view = body?.data ?? {};
+
+      if (TERMINAL_STATUSES.includes(view.status)) return view;
+
+      failures = 0;
+      waitSeconds = secondsFrom(res.headers.get('retry-after'), DEFAULT_POLL_SECONDS, MAX_POLL_INTERVAL_SECONDS);
+    } catch (error) {
+      failures += 1;
+      lastFailure = error;
+      // Thrown as it arrived when it is the master node itself that has gone:
+      // callers read a TypeError as "this node is no longer the master" and go
+      // looking for the new one, and wrapping it takes that away from them.
+      if (failures >= MAX_CONSECUTIVE_POLL_FAILURES) throw lastFailure;
+    }
 
     if (Date.now() >= giveUpAt) {
       throw new Error('The operation is taking longer than expected. It is still running on the node.');
     }
 
-    await delay(secondsFrom(res.headers.get('retry-after'), DEFAULT_POLL_SECONDS) * 1000);
+    await delay(waitSeconds * 1000);
   }
+}
+
+/**
+ * Whether a refused operation was refused because the name is already taken.
+ *
+ * Two shapes, because the node that answers is not necessarily the one this was
+ * written against. FluxOS #1778 attaches `EEXIST`; a node without it reports
+ * whatever `mkdir` said, with the exit status where the code should be - so the
+ * wording is all there is to go on there. Wording is the weaker signal and is
+ * only consulted when there is no code to read.
+ */
+export function isAlreadyExists(outcome) {
+  if (outcome?.code === 'EEXIST') return true;
+
+  return typeof outcome?.message === 'string' && /(already exists|file exists)/i.test(outcome.message);
 }
 
 /** The message for a job that reached a terminal state other than Succeeded. */
