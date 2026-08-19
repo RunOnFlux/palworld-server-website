@@ -93,16 +93,24 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
 
   useEffect(() => { loadInstalled(); }, [loadInstalled]);
 
-  // List the mod files (.pak / .pak.disabled) currently in ~mods.
-  const listMods = useCallback(async (base, authHeader) => {
+  // The mod files (.pak / .pak.disabled) currently in ~mods, with their sizes - which is how
+  // an upload is confirmed to have landed, since the upload endpoint will not say.
+  const listModEntries = useCallback(async (base, authHeader) => {
     const res = await fetch(`${base}/apps/getfolderinfo/${server.name}/${selectedComponent}/${encodeURIComponent(MODS_VOLUME_PATH)}`,
       { headers: { zelidauth: authHeader, 'x-apicache-bypass': true } });
     const data = await res.json();
     if (data.status === 'success' && Array.isArray(data.data)) {
-      return data.data.filter((f) => /\.pak(\.disabled)?$/i.test(f.name)).map((f) => f.name);
+      return data.data.filter((f) => /\.pak(\.disabled)?$/i.test(f.name));
     }
     return [];
   }, [server?.name, selectedComponent]);
+
+  // List the mod file names currently in ~mods.
+  const listMods = useCallback(async (base, authHeader) => {
+    const entries = await listModEntries(base, authHeader);
+
+    return entries.map((f) => f.name);
+  }, [listModEntries]);
 
   const renameObj = useCallback(async (base, authHeader, from, to) => {
     if (from === to) return;
@@ -210,6 +218,20 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
         throw new Error(text || `Upload failed (HTTP ${up.status})`);
       }
 
+      // Confirm the file actually landed BEFORE anything is removed on the strength of it.
+      //
+      // `up.ok` does not answer that. The upload endpoint streams progress down the body and
+      // writes its refusal - unauthorized, volume not found, a formidable error - into that
+      // same body, leaving the status at 200. Both FluxOS `IOUtils.fileUpload` and the
+      // `fileSystemManager.uploadAppsFiles` that replaces it in #1778 do this. So a failed
+      // upload reads as a successful one, and removing the copy the customer already had on
+      // the strength of it would lose them the mod. The listing is asked instead, which
+      // answers the same on a node carrying #1778 and one that does not.
+      const landed = (await listModEntries(base, authHeader)).find((f) => f.name === disabledName);
+      if (!landed || (typeof landed.size === 'number' && landed.size !== blob.size)) {
+        throw new Error(`"${name}" did not finish uploading — nothing on the server was changed. Try again.`);
+      }
+
       // Everything else claiming this mod's name goes, so exactly one file is left holding
       // it. The upload has already replaced a copy named identically, so that one stays.
       setStep('removing');
@@ -246,7 +268,7 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       setBusy('');
       setStep('');
     }
-  }, [nodeBase, auth, server?.name, selectedComponent, onMasterError, loadInstalled, listMods, removeObj, renameObj]);
+  }, [nodeBase, auth, server?.name, selectedComponent, onMasterError, loadInstalled, listMods, listModEntries, removeObj, renameObj]);
 
   // --- install a .pak from a direct URL (proxied download → shared upload) ---
   // Only used by DIRECT catalog entries (those with a downloadUrl).
