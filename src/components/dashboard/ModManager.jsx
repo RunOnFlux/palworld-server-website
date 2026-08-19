@@ -7,7 +7,7 @@ import secureStorage from '../../utils/secureStorage';
 import apiService from '../../services/apiService';
 import { computeRemainingExpire } from '../../utils/appSpecHelpers';
 import { restartApp } from '../../utils/appPower';
-import { isAlreadyExists, jobFailureMessage, pollOperation, readVolumeResponse } from '../../utils/volumeOperations';
+import { isAlreadyExists, jobFailureMessage, pollOperation, readUploadResponse, readVolumeResponse } from '../../utils/volumeOperations';
 import { MODS_VOLUME_PATH, MOD_CATALOG, fileNameFromUrl, withModsMount } from '../../config/modsConfig';
 
 /**
@@ -207,26 +207,18 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
       const formData = new FormData();
       formData.append(disabledName, blob, disabledName);
       const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: formData });
-      if (!up.ok) {
-        // Upload refuses for the same reasons the operations above do, and a
-        // customer told "Upload failed (HTTP 503)" mid-flow learns nothing they
-        // can act on. Read from a clone so the raw body is still there for
-        // anything that is not a refusal we recognise.
-        const upOutcome = await readVolumeResponse(up.clone());
-        if (upOutcome.state === 'busy') throw new Error(upOutcome.message);
-        const text = await up.text().catch(() => '');
-        throw new Error(text || `Upload failed (HTTP ${up.status})`);
-      }
 
-      // Confirm the file actually landed BEFORE anything is removed on the strength of it.
-      //
-      // `up.ok` does not answer that. The upload endpoint streams progress down the body and
-      // writes its refusal - unauthorized, volume not found, a formidable error - into that
-      // same body, leaving the status at 200. Both FluxOS `IOUtils.fileUpload` and the
-      // `fileSystemManager.uploadAppsFiles` that replaces it in #1778 do this. So a failed
-      // upload reads as a successful one, and removing the copy the customer already had on
-      // the strength of it would lose them the mod. The listing is asked instead, which
-      // answers the same on a node carrying #1778 and one that does not.
+      // `up.ok` says nothing about whether the file arrived: this endpoint spends its status
+      // line on the first progress tick and writes any refusal into the body afterwards.
+      // readUploadResponse reads that body - which is also what waits for the upload to
+      // finish, since fetch resolves when the headers arrive and here they go out early.
+      const upOutcome = await readUploadResponse(up);
+      if (upOutcome.state === 'busy') throw new Error(upOutcome.message);
+      if (upOutcome.state === 'error') throw new Error(`Upload failed: ${upOutcome.message}`);
+
+      // Then confirmed from the listing, because a refusal is not the only way an upload
+      // fails to land - a connection dropped mid-body leaves a short file and no envelope,
+      // and the old copy is about to be removed on the strength of this one.
       const landed = (await listModEntries(base, authHeader)).find((f) => f.name === disabledName);
       if (!landed || (typeof landed.size === 'number' && landed.size !== blob.size)) {
         throw new Error(`"${name}" did not finish uploading — nothing on the server was changed. Try again.`);

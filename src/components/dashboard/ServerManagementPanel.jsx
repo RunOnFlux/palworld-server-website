@@ -27,7 +27,7 @@ import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
 import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore } from '../../utils/appPower';
 import { reconcilePalworldIni, externalGamePort, patchPublicPort, fetchIniText } from '../../utils/palworldIni';
-import { jobFailureMessage, pollOperation, readVolumeResponse } from '../../utils/volumeOperations';
+import { jobFailureMessage, pollOperation, readUploadResponse, readVolumeResponse, uploadFailureIn } from '../../utils/volumeOperations';
 import { parseEnvArray } from '../../utils/appSpecHelpers';
 import { findMissingStandardEnv } from '../../config/serverMaintenance';
 import { diagnosePlacement } from '../../utils/nodeCapacity';
@@ -2010,10 +2010,12 @@ const ConfigTab = ({ server, masterLocation, onMasterError }) => {
             body: formData,
           });
 
-          if (!response.ok) {
-            const text = await response.text();
-            throw new Error(text || `Upload failed: HTTP ${response.status}`);
-          }
+          // The status line is spent on the first progress tick, so a refusal arrives in
+          // the body afterwards and `response.ok` is true for a write that never landed -
+          // which here means telling the customer their settings were saved when the node
+          // refused them, with the server restarted around a file that never changed.
+          const outcome = await readUploadResponse(response);
+          if (outcome.state !== 'done') throw new Error(`Upload failed: ${outcome.message}`);
         },
         { onPhase: (phase) => setSavingStep(phase === 'working' ? 'writing' : phase) },
       );
@@ -3098,7 +3100,8 @@ const useWorldAudit = (server, masterLocation, { auto = true } = {}) => {
         const fd = new FormData();
         fd.append('GameUserSettings.ini', new Blob([patchActiveWorld(ini, guid)], { type: 'text/plain' }));
         const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
-        if (!up.ok) throw new Error(`Upload failed: HTTP ${up.status}`);
+        const upOutcome = await readUploadResponse(up);
+        if (upOutcome.state !== 'done') throw new Error(`Upload failed: ${upOutcome.message}`);
 
         const verify = await readActiveWorld();
         persisted = verify.active === guid;
@@ -3858,7 +3861,13 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
         });
 
         xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
+          // The status code is spent before the outcome is known - this endpoint starts
+          // streaming progress as the bytes arrive - so a refusal comes back 2xx with the
+          // node's envelope written into the body it was already sending.
+          const refusal = uploadFailureIn(xhr.responseText);
+          if (refusal) {
+            reject(new Error(`Upload failed: ${refusal}`));
+          } else if (xhr.status >= 200 && xhr.status < 300) {
             setUploadFiles(prev => prev.map(f =>
               f === fileObj ? { ...f, uploading: false, uploaded: true, progress: 100 } : f
             ));
@@ -3972,9 +3981,8 @@ const FilesTab = ({ server, masterLocation, onMasterError }) => {
         body: formData
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to save file');
-      }
+      const outcome = await readUploadResponse(response);
+      if (outcome.state !== 'done') throw new Error(`Failed to save file: ${outcome.message}`);
 
       setShowEditDialog(false);
       setEditFile(null);
@@ -6332,10 +6340,16 @@ const BackupTab = ({ server, masterLocation, onMasterError }) => {
           xhr.addEventListener('load', () => {
             console.log(`📤 Upload response for ${fileItem.name}:`, xhr.status, xhr.statusText);
             console.log('📤 Response body:', xhr.responseText);
-            if (xhr.status >= 200 && xhr.status < 300) {
+            // A refusal is written into the body this endpoint is already streaming, and
+            // leaves the status at 2xx - so the code alone would start a restore from a
+            // backup that never finished uploading.
+            const refusal = uploadFailureIn(xhr.responseText);
+            if (!refusal && xhr.status >= 200 && xhr.status < 300) {
               resolve();
             } else {
-              const errorMsg = `Upload failed (${xhr.status}): ${xhr.statusText || xhr.responseText || 'Unknown error'}`;
+              const errorMsg = refusal
+                ? `Upload failed for ${fileItem.name}: ${refusal}`
+                : `Upload failed (${xhr.status}): ${xhr.statusText || xhr.responseText || 'Unknown error'}`;
               console.error('❌', errorMsg);
               reject(new Error(errorMsg));
             }

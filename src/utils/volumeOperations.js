@@ -180,3 +180,114 @@ export function isAlreadyExists(outcome) {
 export function jobFailureMessage(view) {
   return view.error?.detail || view.error?.title || `The operation did not finish (${view.status}).`;
 }
+
+/**
+ * The first `{"status":"error"}` envelope inside a body that is not a document.
+ *
+ * Brace-counted rather than parsed from the first `{`, because an upload's body
+ * is a concatenation with the envelope somewhere in it, and string-aware
+ * because the node's own sentence may carry a brace.
+ */
+function errorEnvelopeIn(text) {
+  for (let start = text.indexOf('{'); start !== -1; start = text.indexOf('{', start + 1)) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = start; i < text.length; i += 1) {
+      const ch = text[i];
+
+      if (escaped) {
+        escaped = false;
+      } else if (inString) {
+        if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+      } else if (ch === '"') {
+        inString = true;
+      } else if (ch === '{') {
+        depth += 1;
+      } else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            const candidate = JSON.parse(text.slice(start, i + 1));
+            if (candidate?.status === 'error') return candidate;
+          } catch { /* not an envelope - keep looking */ }
+          break;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Reads an upload's answer, which its status code does not carry.
+ *
+ * `ioutils/fileupload` streams progress down the body as the bytes arrive, so
+ * the status line is spent long before the outcome is known. A refusal that
+ * arrives after that is written INTO the body as an error envelope and the
+ * response stays 200 - so `res.ok` is true for an upload that never landed.
+ * FluxOS `IOUtils.fileUpload` does this today, and the
+ * `fileSystemManager.uploadAppsFiles` that replaces it in #1778 keeps the shape
+ * for anything that fails once the body has started.
+ *
+ * The body is a concatenation rather than a document - `[received,total]` on
+ * every progress tick, the field name as each part completes, the envelope if
+ * it fails - so it is scanned rather than parsed.
+ *
+ * Reading it to the end is also what makes the upload FINISHED. `fetch`
+ * resolves when the headers arrive, and on this endpoint the headers go out
+ * with the first progress tick - so a caller that only reads `res.ok` carries
+ * on while the file is still being written.
+ *
+ * #1778 answers properly while nothing has been written yet: a 503 with a
+ * Retry-After for a busy volume, a 200 envelope for a refusal. Both are read.
+ *
+ * @returns {{state: 'done'|'busy'|'error', ...}} the shape readVolumeResponse uses.
+ */
+export async function readUploadResponse(res) {
+  const text = await res.text().catch(() => '');
+  const envelope = errorEnvelopeIn(text);
+
+  if (res.status === 503) {
+    const seconds = secondsFrom(res.headers.get('retry-after'), DEFAULT_RETRY_SECONDS);
+    const kind = envelope?.data?.operation?.kind;
+    const running = kind ? String(kind).split('.').pop() : null;
+
+    return {
+      state: 'busy',
+      retryAfterSeconds: seconds,
+      message: running
+        ? `A ${running} is already running for this server. Try again in ${seconds} seconds.`
+        : `The node is busy. Try again in ${seconds} seconds.`,
+    };
+  }
+
+  if (envelope) {
+    return {
+      state: 'error',
+      code: envelope.data?.code ?? null,
+      message: envelope.data?.message || 'The upload did not finish.',
+    };
+  }
+
+  if (!res.ok) {
+    return { state: 'error', code: null, message: text.trim() || `HTTP ${res.status}` };
+  }
+
+  return { state: 'done' };
+}
+
+/**
+ * The node's sentence when an upload body carries a refusal, or null.
+ *
+ * For callers holding the text already - the XHR uploads, which use XHR for
+ * their progress events and so have `responseText` rather than a Response.
+ */
+export function uploadFailureIn(text) {
+  const envelope = errorEnvelopeIn(String(text || ''));
+
+  return envelope ? (envelope.data?.message || 'The upload did not finish.') : null;
+}

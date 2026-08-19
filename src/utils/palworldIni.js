@@ -30,6 +30,7 @@
 
 import { nodeApiBase, withAppStopped, recoverPendingRestores } from './appPower';
 import secureStorage from './secureStorage';
+import { readUploadResponse } from './volumeOperations';
 
 export const CONFIG_PATH = 'appdata/Config/LinuxServer/PalWorldSettings.ini';
 
@@ -255,7 +256,10 @@ export async function reconcilePalworldIni(server, masterIp, { onPhase, iniReadA
         const fd = new FormData();
         fd.append('PalWorldSettings.ini', new Blob([reconcileIni(fresh, expected, password)], { type: 'text/plain' }));
         const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
-        if (!up.ok) throw new Error(`Upload failed: HTTP ${up.status}`);
+        // `up.ok` is true for a refusal: the status line goes out with the first progress
+        // tick and the node writes what went wrong into the body afterwards.
+        const upOutcome = await readUploadResponse(up);
+        if (upOutcome.state !== 'done') throw new Error(`Upload failed: ${upOutcome.message}`);
 
         // Confirm the write landed before marking this server done (anti-loop).
         const verify = await readIni();
