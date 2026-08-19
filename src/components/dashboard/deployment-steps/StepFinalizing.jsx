@@ -77,6 +77,36 @@ const StepFinalizing = memo(({
         </p>
       </div>
 
+      {/* What happens next. The deploy has three phases and the dashboard shows which one a
+          server is in; saying so here means the wait reads as progress instead of a spinner
+          with no end — in particular the restart in phase 2, which is us finishing the setup
+          and not something going wrong. */}
+      <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-5">
+        <div className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-4">
+          What happens next
+        </div>
+        <ol className="space-y-3">
+          {[
+            ['Deploying to Flux', 'Your server is placed on nodes in the locations you chose.'],
+            ['Configuring your server', 'We set the address players connect to and your admin access. Your server restarts once.'],
+            ['Ready to play', 'The address above starts answering, and your server appears in the in-game community list.'],
+          ].map(([title, body], index) => (
+            <li key={title} className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-500/20 border border-blue-500/40 text-[10px] font-bold text-blue-300">
+                {index + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-white">{title}</span>
+                <span className="block text-xs text-gray-400 mt-0.5">{body}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+        <p className="text-[11px] text-gray-500 mt-4">
+          Your dashboard shows which step your server is on. It usually takes a few minutes.
+        </p>
+      </div>
+
       {/* Server Connection Info */}
       <div className="bg-gradient-to-br from-blue-500/10 to-blue-500/10 border-2 border-blue-500/30 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-blue-400 mb-4 flex items-center gap-2">

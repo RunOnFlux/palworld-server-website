@@ -46,6 +46,8 @@
  * https://github.com/thijsvanloef/palworld-server-docker/pull/931
  */
 
+import { parseEnvArray } from '../utils/appSpecHelpers';
+
 export const REBOOT_ENV_KEYS = {
   enabled: 'AUTO_REBOOT_ENABLED',
   cron: 'AUTO_REBOOT_CRON_EXPRESSION',
@@ -356,4 +358,23 @@ export function standardEnvPatch(envObj) {
     }
   }
   return patch;
+}
+
+/**
+ * How many standard settings a server in the dashboard list is missing.
+ *
+ * Reads the env off the spec the list already holds, so a badge on every row costs no
+ * extra request. Answers 0 — rather than "everything is missing" — for the cases where
+ * the env is not visible or not settled yet: an enterprise spec ships an empty compose
+ * until it is decrypted, and a server that is still installing (or on its way out) has
+ * nothing to apply an update to.
+ *
+ * @param {object} server a dashboard server (see transformFluxAppToServer)
+ */
+export function pendingStandardUpdates(server) {
+  if (!server || server.enterprise) return 0;
+  if (server.status && server.status !== 'running') return 0;
+  const env = server.compose?.[0]?.environmentParameters;
+  if (!Array.isArray(env)) return 0;
+  return findMissingStandardEnv(parseEnvArray(env)).length;
 }

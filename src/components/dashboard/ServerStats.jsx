@@ -4,6 +4,21 @@ import { BarChart3 } from 'lucide-react';
 import secureStorage from '../../utils/secureStorage';
 
 /**
+ * Real memory a container is using, the way `docker stats` reports it.
+ *
+ * FluxOS hands back Docker's raw `memory_stats`, whose `usage` counts the container's
+ * file page cache on top of the process's own memory. A container that has merely READ
+ * a few GB of files reports those GB as "used", and the figure only drops when the
+ * container is restarted - which reads to a customer as a memory leak. The kernel
+ * reclaims that cache the moment anything needs it, so subtract it like `docker stats`
+ * does: cgroup v2 exposes it as `inactive_file`, cgroup v1 as `cache`.
+ */
+const containerMemoryUsage = (memStats) => {
+  const cache = memStats?.stats?.inactive_file ?? memStats?.stats?.cache ?? 0;
+  return Math.max(0, (memStats?.usage || 0) - cache);
+};
+
+/**
  * Beautiful segmented usage bars for server stats
  * Shows CPU, RAM, and Disk usage with gradient colors
  */
@@ -99,7 +114,7 @@ const ServerStats = ({ server, masterLocation, containerName, refreshKey }) => {
         const memStats = data.data.memory_stats || {};
         const hasMemoryData = Object.keys(memStats).length > 0;
 
-        const memoryUsed = hasMemoryData ? (memStats.usage || 0) : 0;
+        const memoryUsed = hasMemoryData ? containerMemoryUsage(memStats) : 0;
         const memoryLimit = hasMemoryData ? (memStats.limit || 0) : 0;
 
         const memoryPercent = (memoryLimit > 0 && memoryUsed > 0)

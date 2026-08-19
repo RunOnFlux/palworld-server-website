@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useCallback, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X, User, LogOut, LayoutDashboard, ChevronDown, CircleDollarSign, HelpCircle, CreditCard, Globe, TicketCheck, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -24,13 +24,79 @@ const logoStyle = {
   fontWeight: '900',
 };
 
+// ── Finding your servers after logging in ───────────────────────────────────────────
+// The account control carries the customer's OWN name, which reads as a label rather than
+// as a menu, so the servers they had just paid for sat one unexplained click inside it.
+// Two fixes: "My Servers" is its own button now, at the same weight "Get Started" has
+// before logging in, and a first-time customer gets exactly one pointer at it.
+//
+// Seen-state is per account AND per browser: a shared machine must not swallow the hint
+// for the next person, and it is only recorded once the hint has actually been on screen
+// for a while — a reload two seconds after logging in should not burn it.
+const HINT_STORE = 'flux:seenDashboardHint';
+const HINT_LIFETIME_MS = 20000;
+
+const hintKeyFor = (user) => user?.zelid || user?.email || user?.uid || 'anon';
+
+const hasSeenHint = (user) => {
+  try {
+    return JSON.parse(localStorage.getItem(HINT_STORE) || '{}')[hintKeyFor(user)] === true;
+  } catch { return false; }
+};
+
+const markHintSeen = (user) => {
+  try {
+    const store = JSON.parse(localStorage.getItem(HINT_STORE) || '{}');
+    store[hintKeyFor(user)] = true;
+    localStorage.setItem(HINT_STORE, JSON.stringify(store));
+  } catch { /* storage disabled — the hint simply shows again next time */ }
+};
+
+/**
+ * The pointer itself. Rendered twice (desktop and mobile anchor their own copy) and each
+ * copy is hidden at the other breakpoint, so only one is ever on screen.
+ */
+const DashboardHint = ({ onDismiss, className = '' }) => (
+  <div
+    role="status"
+    className={`absolute right-0 top-full mt-3 w-64 z-50 rounded-xl border border-primary/40 bg-surface shadow-xl shadow-black/40 p-3 animate-fade-in ${className}`}
+  >
+    <span className="absolute -top-1.5 right-6 w-3 h-3 rotate-45 border-l border-t border-primary/40 bg-surface" />
+    <div className="flex items-start gap-2.5">
+      <span className="flex w-7 h-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/15 border border-primary/30">
+        <LayoutDashboard className="w-3.5 h-3.5 text-primary" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-text">Your servers are here</p>
+        <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+          Manage, configure and renew everything you have deployed.
+        </p>
+      </div>
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        className="flex-shrink-0 -mt-1 -mr-1 p-1 rounded-md text-text-muted hover:text-text hover:bg-surface-hover/50 transition-colors cursor-pointer"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  </div>
+);
+
+DashboardHint.propTypes = {
+  onDismiss: PropTypes.func.isRequired,
+  className: PropTypes.string,
+};
+
 /**
  * Header/Navbar Component
  * Shows logo, navigation, and user menu
  */
 const Header = ({ onLoginClick }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, loading, logout } = useAuth();
+  const [showHint, setShowHint] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
@@ -127,11 +193,32 @@ const Header = ({ onLoginClick }) => {
     scrollToSection('faq');
   }, [scrollToSection]);
 
+  const dismissHint = useCallback(() => {
+    setShowHint(false);
+    markHintSeen(user);
+  }, [user]);
+
   const goToDashboard = useCallback(() => {
     setUserMenuOpen(false);
     setMobileMenuOpen(false);
+    dismissHint();
     navigate('/dashboard');
-  }, [navigate]);
+  }, [navigate, dismissHint]);
+
+  // Show the pointer once, shortly after a session appears, and never on the dashboard
+  // itself — there is nothing to point at once the customer is already there.
+  useEffect(() => {
+    if (loading || !isAuthenticated || location.pathname.startsWith('/dashboard') || hasSeenHint(user)) {
+      setShowHint(false);
+      return undefined;
+    }
+    // A hint that animates in during the login redirect is read as page furniture and
+    // ignored, so it waits for the page to settle. It then retires itself: an undismissed
+    // card following someone around the site is worse than never having pointed at all.
+    const appear = setTimeout(() => setShowHint(true), 900);
+    const retire = setTimeout(() => { setShowHint(false); markHintSeen(user); }, 900 + HINT_LIFETIME_MS);
+    return () => { clearTimeout(appear); clearTimeout(retire); };
+  }, [loading, isAuthenticated, location.pathname, user]);
 
   const goToSupport = useCallback(() => {
     setUserMenuOpen(false);
@@ -189,6 +276,24 @@ const Header = ({ onLoginClick }) => {
               </span>
               FAQ
             </button>
+
+            {/* My Servers — the destination a logged-in customer actually wants, at the
+                same weight "Get Started" carries before logging in. It used to live only
+                inside the account menu, behind a control labelled with the customer's own
+                name, which is not a place anyone thinks to look for their servers. */}
+            {!loading && isAuthenticated && (
+              <div className="relative">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={goToDashboard}
+                  leftIcon={<LayoutDashboard size={16} />}
+                >
+                  My Servers
+                </Button>
+                {showHint && <DashboardHint onDismiss={dismissHint} />}
+              </div>
+            )}
 
             {/* User Menu or Login Button */}
             {loading ? (
@@ -291,13 +396,29 @@ const Header = ({ onLoginClick }) => {
             )}
           </div>
 
-          {/* Mobile Menu Button */}
-          <button
-            onClick={toggleMobileMenu}
-            className="lg:hidden p-2 rounded-lg hover:bg-surface transition-colors cursor-pointer"
-          >
-            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          {/* Mobile: the same shortcut, outside the hamburger. Everything a customer
+              owns was one unlabelled menu away on the smaller screen. */}
+          <div className="lg:hidden flex items-center gap-1">
+            {!loading && isAuthenticated && (
+              <div className="relative">
+                <button
+                  onClick={goToDashboard}
+                  aria-label="My servers"
+                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-primary text-white font-semibold text-sm transition-colors cursor-pointer"
+                >
+                  <LayoutDashboard size={18} />
+                  <span className="hidden sm:inline">My Servers</span>
+                </button>
+                {showHint && <DashboardHint onDismiss={dismissHint} />}
+              </div>
+            )}
+            <button
+              onClick={toggleMobileMenu}
+              className="p-2 rounded-lg hover:bg-surface transition-colors cursor-pointer"
+            >
+              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Menu */}
@@ -309,7 +430,7 @@ const Header = ({ onLoginClick }) => {
                 { icon: <Globe size={18} />, label: 'Locations', onClick: () => { document.getElementById('locations')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); } },
                 { icon: <HelpCircle size={18} />, label: 'FAQ', onClick: scrollToFAQ },
                 ...(loading ? [] : isAuthenticated ? [
-                  { icon: <LayoutDashboard size={18} />, label: 'Dashboard', onClick: goToDashboard },
+                  { icon: <LayoutDashboard size={18} />, label: 'My Servers', onClick: goToDashboard, primary: true },
                   { icon: <CreditCard size={18} />, label: billingLoading ? 'Opening...' : 'Billing Portal', onClick: handleBillingPortal, disabled: billingLoading },
                   ...(canChangePassword ? [{ icon: <KeyRound size={18} />, label: 'Change Password', onClick: openChangePassword }] : []),
                   { icon: <TicketCheck size={18} />, label: 'Support', onClick: goToSupport },

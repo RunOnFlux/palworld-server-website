@@ -6,7 +6,7 @@ import { MdMemory, MdSpeed, MdStorage, MdFolder, MdDownload, MdEdit, MdDelete, M
 import { RiFolderReceivedFill } from 'react-icons/ri';
 import { GrPlan } from 'react-icons/gr';
 import { FaFileImage, FaFileVideo, FaFileAudio, FaFileArchive, FaFileAlt, FaFileCode, FaFilePdf, FaFile } from 'react-icons/fa';
-import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package } from 'lucide-react';
+import { BarChart3, Terminal, Folder, RefreshCw, DatabaseBackup, CheckCircle, XCircle, ArrowLeft, Settings, Database, Copy, Check, Server, Upload, Home, X, ChevronRight, Tag, Clock, Pause, Play, ExternalLink, Info, CreditCard, AlertTriangle, Globe, Trash2, Gamepad2, TrendingUp, Hammer, MapPin, SlidersHorizontal, ShieldCheck, Eye, EyeOff, Square, Cpu, Package, Sparkles } from 'lucide-react';
 import EnvironmentTab from './EnvironmentTab';
 import GeolocationTab from './GeolocationTab';
 import HardwareTab from './HardwareTab';
@@ -21,10 +21,12 @@ import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walle
 import marketplaceService from '../../services/marketplaceService';
 import ServerTerminal from './ServerTerminal';
 import ServerStats from './ServerStats';
+import { useClientLatency, latencyClass, LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import secureStorage from '../../utils/secureStorage';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
-import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore, recoverPendingRestores } from '../../utils/appPower';
+import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore } from '../../utils/appPower';
+import { reconcilePalworldIni, externalGamePort, patchPublicPort, fetchIniText } from '../../utils/palworldIni';
 import { jobFailureMessage, pollOperation, readVolumeResponse } from '../../utils/volumeOperations';
 import { parseEnvArray } from '../../utils/appSpecHelpers';
 import { findMissingStandardEnv } from '../../config/serverMaintenance';
@@ -61,135 +63,6 @@ const getExpirationClass = (expiresAt) => {
   if (diff < 0) return 'text-red-400';
   if (days < 7) return 'text-orange-400';
   return 'text-emerald-400';
-};
-
-// ── PublicPort reconcile bookkeeping (see the effect in ServerManagementPanel) ──────
-// Apps whose reconcile is running right now. Module scope, not a ref: the dashboard keys
-// this panel on the server name, so closing it unmounts the component and would wipe a
-// ref-based guard while the container is still stopped.
-const publicPortReconcileInFlight = new Set();
-
-// The reconcile stops the container, so it must not be able to run on every visit forever.
-// A server that keeps rewriting its ini gets at most this many restarts, then we give up.
-const PORT_RECONCILE_MAX_ATTEMPTS = 3;
-const PORT_RECONCILE_STORE = 'palworld:publicPortReconcile';
-
-const readPublicPort = (ini) => /PublicPort=(\d+)/.exec(ini)?.[1];
-
-// Surgical patch — replace only the PublicPort value; the rest of the user-owned ini is
-// one big OptionSettings=(...) line and must survive untouched.
-const patchPublicPort = (ini, port) => (
-  /PublicPort=\d+/.test(ini)
-    ? ini.replace(/PublicPort=\d+/, `PublicPort=${port}`)
-    : ini.replace(/OptionSettings=\(/, `OptionSettings=(PublicPort=${port},`)
-);
-
-// ── REST API + AdminPassword ────────────────────────────────────────────────────────
-// The ini the server boots with is the GAME's DefaultPalWorldSettings.ini (start.sh copies
-// it verbatim, because DISABLE_GENERATE_SETTINGS=true stops compile-settings.sh running),
-// which ships RESTAPIEnabled=False and an empty AdminPassword. So every server we sell
-// starts with no admin API at all, and the Remote Control tab is dead until the customer
-// finds the two fields — in different sections of the Server Settings tab — and sets both.
-// Reconciling them costs nothing extra: the port pass already has the file open.
-//
-// Booleans are written `True`/`False` to match what the Config tab's toggles write
-// (see the toggle handler in ConfigTab) and what the game's own default file uses.
-// Values are matched as "anything up to the next , or )" rather than \w+ / a quoted string,
-// so a key that is present but malformed (`RESTAPIEnabled=`, an unquoted password) is still
-// recognised as PRESENT and gets replaced in place. Matching narrowly would fall through to
-// the insert branch and leave the same key in the line twice.
-const REST_ENABLED_RE = /RESTAPIEnabled=[^,)]*/;
-const ADMIN_PASSWORD_RE = /AdminPassword=(?:"([^"]*)"|([^,)]*))/;
-
-const readRestApiEnabled = (ini) => /RESTAPIEnabled=([^,)]*)/.exec(ini)?.[1];
-const patchRestApiEnabled = (ini) => (
-  REST_ENABLED_RE.test(ini)
-    ? ini.replace(REST_ENABLED_RE, 'RESTAPIEnabled=True')
-    : ini.replace(/OptionSettings=\(/, 'OptionSettings=(RESTAPIEnabled=True,')
-);
-
-// Unquoted values count too: a hand-edited `AdminPassword=hunter2` is a real password, and
-// reading it as absent would overwrite it — the one thing this must never do.
-const readAdminPassword = (ini) => {
-  const m = ADMIN_PASSWORD_RE.exec(ini);
-  return m ? (m[1] !== undefined ? m[1] : m[2]) : undefined;
-};
-// Present AND non-blank. `AdminPassword=""` is the game's default and counts as absent.
-const hasAdminPassword = (ini) => !!readAdminPassword(ini)?.trim();
-// Only ever fills a BLANK password. A customer who set their own keeps it — this must not
-// be able to lock someone out of their own admin API, or invalidate a password they wrote
-// down. Written quoted, like every string in the ini.
-const patchAdminPassword = (ini, password) => (
-  ADMIN_PASSWORD_RE.test(ini)
-    ? ini.replace(ADMIN_PASSWORD_RE, `AdminPassword="${password}"`)
-    : ini.replace(/OptionSettings=\(/, `OptionSettings=(AdminPassword="${password}",`)
-);
-
-// 24 chars of crypto-random base58-ish alphabet (no look-alikes). The customer never has to
-// type it — the Remote Control tab reads it straight out of the ini — but it is visible and
-// editable in Server Settings, so it stays readable.
-const generateAdminPassword = () => {
-  const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = new Uint32Array(24);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
-};
-
-// The external game port Flux registered for this app (index 0 of the game component).
-// PublicPort in the ini MUST equal this: it is the address the server hands out to the
-// in-game community browser, and the node only forwards this port to the container's 8211.
-const externalGamePort = (server) => server?.ports?.[0] || server?.compose?.[0]?.ports?.[0];
-
-// Everything the reconcile owns, in one predicate and one patch so they can never drift:
-// the write is verified by re-running the predicate, not by re-checking a subset.
-// RESTAPIPort is deliberately absent — it is the container's INTERNAL bind port (Flux maps
-// the external port onto 8212), so it must keep its default or the REST proxy breaks.
-const iniNeedsReconcile = (ini, expectedPort) => (
-  readPublicPort(ini) !== expectedPort
-  || String(readRestApiEnabled(ini)).toLowerCase() !== 'true'
-  || !hasAdminPassword(ini)
-);
-
-// `password` is generated once per reconcile run, not per call: this runs twice (before the
-// stop, then again on the copy re-read while stopped) and both must agree on the value.
-const reconcileIni = (ini, expectedPort, password) => {
-  let out = ini;
-  if (readPublicPort(out) !== expectedPort) out = patchPublicPort(out, expectedPort);
-  if (String(readRestApiEnabled(out)).toLowerCase() !== 'true') out = patchRestApiEnabled(out);
-  if (!hasAdminPassword(out)) out = patchAdminPassword(out, password);
-  return out;
-};
-
-// Read the live PalWorldSettings.ini off a node. Cache-bypassed on purpose — the node API
-// caches downloads, and acting on a stale copy is exactly how one writer silently reverts
-// another. Returns null (never throws) when the file is missing or not yet generated.
-const fetchIniText = async (nodeBase, appName, component, authHeader) => {
-  try {
-    const url = `${nodeBase}/apps/downloadfile/${appName}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
-    const res = await fetch(url, { headers: { zelidauth: authHeader, 'x-apicache-bypass': true } });
-    if (!res.ok) return null;
-    const text = await res.text();
-    return text && text.includes('OptionSettings=') ? text : null;
-  } catch { return null; }
-};
-
-// Persisted so the marker survives page reloads and panel remounts — the previous
-// in-memory guard reset on every close, which is how one server could be restarted
-// repeatedly across a session. Keyed by port so a redeploy (new random port) re-runs.
-const readPortReconcileMark = (appName, port) => {
-  try {
-    const entry = JSON.parse(localStorage.getItem(PORT_RECONCILE_STORE) || '{}')[appName];
-    if (entry?.port === port) return { done: !!entry.done, attempts: entry.attempts || 0 };
-  } catch { /* unreadable/disabled storage — behave as a fresh server */ }
-  return { done: false, attempts: 0 };
-};
-
-const writePortReconcileMark = (appName, port, patch) => {
-  try {
-    const store = JSON.parse(localStorage.getItem(PORT_RECONCILE_STORE) || '{}');
-    store[appName] = { ...readPortReconcileMark(appName, port), ...patch, port };
-    localStorage.setItem(PORT_RECONCILE_STORE, JSON.stringify(store));
-  } catch { /* storage full or disabled — the attempt cap degrades, nothing breaks */ }
 };
 
 // Language detection for Monaco Editor
@@ -405,10 +278,17 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // player-facing domain is not routing to it yet.
   const [domainRouted, setDomainRouted] = useState(true);
 
+  // Whether the resolved node is running the container. The panel deliberately falls back to
+  // an instance that is only INSTALLED so that a crashed server can still be managed — but
+  // that node is not hosting anyone, so anything that describes the play experience (latency)
+  // has to stay quiet rather than report the path to a stopped container.
+  const [masterLive, setMasterLive] = useState(false);
+
   // Resolve master node via FDM API (same as FluxOS) - called on panel open and on error
   const resolveMaster = useCallback(async (signal) => {
     const srv = serverRef.current;
     if (!srv?.locations || srv.locations.length === 0) {
+      setMasterLive(false);
       setMasterLocationStable(null);
       setMasterLoading(false);
       return;
@@ -438,6 +318,9 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           if (locHost === masterIp) {
             console.log(`✅ [Master] Found at location ${i}:`, locHost);
             setDomainRouted(true);
+            // FDM only lists instances that answer the game port, so a master from FDM is by
+            // definition the live one.
+            setMasterLive(true);
             setMasterLocationStable(srv.locations[i]);
             masterResolvingRef.current = false;
             setMasterLoading(false);
@@ -495,6 +378,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
         console.log('📍 [Master] FDM unavailable — using node', resolved.ip, running ? '(container running)' : '(installed, not running)');
         setDomainRouted(false);
       }
+      setMasterLive(!!running);
       setMasterLocationStable(resolved || null);
       masterResolvingRef.current = false;
       setMasterLoading(false);
@@ -505,6 +389,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       }
       console.error('❌ [Master] FDM failed:', error);
       if (signal?.aborted) { masterResolvingRef.current = false; return; }
+      setMasterLive(false);
       setMasterLocationStable(null);
       masterResolvingRef.current = false;
       setMasterLoading(false);
@@ -675,174 +560,46 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   }, [masterLocation, server?.name]);
 
   // ── Auto-reconcile the ini to what this deploy actually needs ─────────────────
-  // Three fields, one pass, because they all need the same expensive thing: the file
-  // read, the container stopped, and a restart.
+  // The write itself lives in utils/palworldIni — a new deploy is reconciled by the
+  // dashboard, before the server is ever announced as ready, so this is now the FALLBACK
+  // for every other case: a server bought before that existed, a browser that was closed
+  // during the deploy, or a redeploy that moved the server to a new external port.
   //
-  //  - PublicPort. Randomized deploys expose a high external game port (e.g. 57356), but
-  //    the persisted PalWorldSettings.ini is seeded from the image default
-  //    (PublicPort=8211) and DISABLE_GENERATE_SETTINGS=true means env vars never
-  //    rewrite it. A stale PublicPort makes the in-game community browser hand out
-  //    IP:8211 (unreachable) instead of IP:<externalPort>, so joining fails.
-  //    Direct-connect is unaffected either way.
-  //  - RESTAPIEnabled + AdminPassword. Both ship off/blank in the game's default file, and
-  //    the Remote Control tab needs both. See the helpers at the top of this file.
-  //
-  // Runs on EVERY panel open, for EVERY server — NOT gated on COMMUNITY, and NOT gated on
-  // the port being a randomized one — so the advertised address is always correct.
-  //
-  // ONLY these three are touched. RCONPort / RESTAPIPort in the ini are the
-  // container's INTERNAL bind ports — Flux maps the external ports onto them
-  // (e.g. 59025→8212), so the server must keep listening on the defaults; changing
-  // them would break the REST proxy. Same reason PORT/QUERY_PORT are never set.
-  // ServerPassword is never touched either: writing one would lock existing players out.
-  //
-  // Two safeguards, because this stops a container the user did not ask to stop:
-  //  - The restart is guaranteed by withAppStopped (finally + retries + unload rescue),
-  //    so an unmount, a failed upload or a network blip can never strand the app `exited`.
-  //  - WRITES are attempt-capped via a persisted (localStorage) marker, so a server that
-  //    keeps rewriting its ini gets a bounded number of restarts instead of one per visit.
-  //    Reads are never gated: the comparison must happen on every open, or a port that
-  //    drifts after a successful fix goes unnoticed forever.
+  // Still runs on EVERY panel open, for EVERY server — the read is one cache-bypassed GET,
+  // and only a real divergence costs a restart. It has to stay ungated: a PublicPort that
+  // drifts after a successful fix (a later config save writing the stale value back) would
+  // otherwise go unnoticed forever.
   useEffect(() => {
-    if (!isOpen || !masterLocation || !server?.name) return;
-    const appName = server.name;
-    // Module-scoped, unlike a ref: closing the panel unmounts this component (the parent
-    // keys it on the server name), which would otherwise reset an in-flight guard.
-    if (publicPortReconcileInFlight.has(appName)) return;
-    publicPortReconcileInFlight.add(appName);
-    let cancelled = false;
+    if (!isOpen || !masterLocation || !server?.name) return undefined;
 
-    const reconcile = async () => {
-      // 1. Expected PublicPort = the external game port (index 0) actually in use.
-      //    The only reason to skip is not knowing the port: a queued deploy has no on-chain
-      //    spec yet. Emphatically NOT skipped when that port is 8211 — an app deployed
-      //    before port randomization is served on 8211 and its ini still has to say 8211,
-      //    which is exactly the case an earlier "nothing to fix" shortcut here missed.
-      const expected = String(externalGamePort(server) || '');
-      if (!expected) return;
-
-      // 2. Retried too often? A server that keeps rewriting its ini must not earn a restart
-      //    on every visit, so writes stay capped. This deliberately no longer short-circuits
-      //    on `done`: the ini is re-read every time instead. A sticky "done" flag (a) lives
-      //    in this browser's localStorage only, and (b) hid the case that produced this
-      //    check — a later config save putting the stale PublicPort back — forever.
-      //    Reading is one cache-bypassed GET; only the write stops the container.
-      const mark = readPortReconcileMark(appName, expected);
-      if (mark.attempts >= PORT_RECONCILE_MAX_ATTEMPTS) return;
-
-      // 3. Node + paths (master node; Syncthing replicates the write to the slaves).
-      const zelidauth = await secureStorage.getItem('zelidauth');
-      if (!zelidauth) return;
-      const authHeader = JSON.stringify(zelidauth);
-      const nodeBase = nodeApiBase(masterLocation.ip);
-
-      // Settle any restart still owed to THIS server before deciding anything: a server
-      // left stopped by an earlier write must come back up, not be treated as an
-      // intentional stop by the write-while-stopped path below.
-      await recoverPendingRestores(authHeader, { appName });
-
-      const component = server?.version >= 4 && server?.compose?.length > 0 ? server.compose[0].name : 'null';
-      const readIni = () => fetchIniText(nodeBase, appName, component, authHeader);
-
-      // 4. Read the persisted ini — retry a few times in case the container's first
-      //    boot is still generating the default config, so it works on first open.
-      let ini = null;
-      for (let attempt = 0; attempt < 4 && !cancelled && !ini; attempt += 1) {
-        if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
-        ini = await readIni();
-      }
-      // Nothing has been touched yet, so bailing out here is free — retry on next open.
-      if (cancelled || !ini) return;
-
-      // 5. Already correct on all three? The common case after the first fix — no restart.
-      //    Generated once here and reused below, so the value written while stopped is the
-      //    same one this comparison was made against.
-      const password = generateAdminPassword();
-      if (!iniNeedsReconcile(ini, expected)) {
-        writePortReconcileMark(appName, expected, { done: true });
-        return;
-      }
-      if (reconcileIni(ini, expected, password) === ini) {
-        writePortReconcileMark(appName, expected, { done: true }); // nothing patchable
-        return;
-      }
-
-      // What we are about to change, for the toasts. Read off the pre-stop copy: the write
-      // uses the copy re-read while stopped, but for telling the customer why their server
-      // is restarting this is the honest answer.
-      const changes = [
-        readPublicPort(ini) !== expected && 'public port',
-        String(readRestApiEnabled(ini)).toLowerCase() !== 'true' && 'admin API',
-        !hasAdminPassword(ini) && 'admin password',
-      ].filter(Boolean);
-      const summary = changes.join(', ');
-
-      // 6. Write while stopped so the running game can't clobber the file. Past this point
-      //    `cancelled` is deliberately ignored: the work must finish even if the panel is
-      //    closed mid-flight, and withAppStopped owns bringing the container back.
-      //    A server the user has stopped is written to but left stopped, and never toasts
-      //    about a restart that isn't happening.
-      let persisted = false;
-      let busy = false;
-      let startState;
-      try {
-        ({ startState } = await withAppStopped(nodeBase, appName, authHeader, async ({ wasRunning }) => {
-          // Count the attempt only once the container has actually been touched.
-          if (wasRunning) writePortReconcileMark(appName, expected, { attempts: mark.attempts + 1 });
-
-          // Re-read while stopped: Palworld flushes its own settings on shutdown, so
-          // patching the copy read before the stop would revert whatever it just wrote.
-          const fresh = (await readIni()) || ini;
-          if (!iniNeedsReconcile(fresh, expected)) { persisted = true; return; }
-
-          const uploadUrl = `${nodeBase}/ioutils/fileupload/volume/${appName}/${component}/${encodeURIComponent('appdata/Config/LinuxServer')}`;
-          const fd = new FormData();
-          fd.append('PalWorldSettings.ini', new Blob([reconcileIni(fresh, expected, password)], { type: 'text/plain' }));
-          const up = await fetch(uploadUrl, { method: 'POST', headers: { zelidauth: authHeader }, body: fd });
-          if (!up.ok) throw new Error(`Upload failed: HTTP ${up.status}`);
-
-          // Confirm the write landed before marking this server done (anti-loop).
-          const verify = await readIni();
-          persisted = verify ? !iniNeedsReconcile(verify, expected) : false;
-        }, {
-          // Announce the restart exactly when the stop is issued — never when the lock was
-          // taken by another operation, nor when the server was already down.
-          onPhase: (phase) => {
-            if (phase === 'stopping') {
-              toast(`Applying ${changes.length > 1 ? 'automatic config changes' : 'an automatic config change'} (${summary}) — restarting your server…`, { icon: '🔧', duration: 6000 });
-            }
-          },
-        }));
-      } catch (err) {
-        // AppBusyError: a save/restart is already running — leave it alone, retry next open.
-        busy = err?.name === 'AppBusyError';
-        startState = err?.startState;
-        persisted = false;
-      }
-      if (busy) return;
-
+    let changes = [];
+    reconcilePalworldIni(server, masterLocation.ip, {
+      onPhase: (phase, ctx) => {
+        changes = ctx.changes;
+        // Announce the restart exactly when the stop is issued — never when the lock was
+        // taken by another operation, nor when the server was already down.
+        if (phase === 'stopping') {
+          toast(`Applying ${changes.length > 1 ? 'automatic config changes' : 'an automatic config change'} (${changes.join(', ')}) — restarting your server…`, { icon: '🔧', duration: 6000 });
+        }
+      },
+    }).then((result) => {
+      const summary = (result.changes || changes).join(', ');
       // The restart is guaranteed to be attempted, but if the node refused it the user has
       // to know rather than discover an `exited` server later.
-      if (startState === 'stopped') {
+      if (result.startState === 'stopped') {
         toast.error('Your server did not come back up automatically — press Start on the Overview tab.', { duration: 10000 });
       }
-
-      if (persisted) {
-        writePortReconcileMark(appName, expected, { done: true });
+      if (result.status === 'done') {
         toast.success(`Server settings updated automatically (${summary}) — server restarting.`);
         if (onUpdate) onUpdate();
-      } else if (readPortReconcileMark(appName, expected).attempts >= PORT_RECONCILE_MAX_ATTEMPTS) {
+      } else if (result.status === 'exhausted' && summary) {
         toast.error(`Could not update your server settings automatically (${summary}). Your server still runs — contact support if the community browser or the Remote Control tab misbehaves.`);
-      } else {
+      } else if (result.status === 'failed') {
         toast.error('Automatic config change did not persist — will retry.');
       }
-    };
+    }).catch(() => { /* transient/network — allow a retry on the next panel open */ });
 
-    reconcile()
-      .catch(() => { /* transient/network — allow a retry on the next panel open */ })
-      .finally(() => { publicPortReconcileInFlight.delete(appName); });
-
-    return () => { cancelled = true; };
+    return undefined;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, masterLocation, server?.name]);
 
@@ -1301,9 +1058,11 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
                 {tab.label}
                 {tab.id === 'environment' && pendingEnvUpdates > 0 && (
                   <span
-                    className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"
+                    className="flex-shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-blue-500 text-white text-[10px] font-bold leading-none"
                     title={`${pendingEnvUpdates} recommended ${pendingEnvUpdates === 1 ? 'setting' : 'settings'} available`}
-                  />
+                  >
+                    {pendingEnvUpdates}
+                  </span>
                 )}
                 {tab.id === 'geolocation' && placementIssue && placementIssue.severity !== 'waiting' && (
                   <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title={placementIssue.title} />
@@ -1424,6 +1183,34 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
             </button>
           )}
 
+          {/* Standard settings this server predates. The dot on the tab only ever reached
+              customers who happened to look at the tab strip, so the offer is made on every
+              tab instead — except the one that already shows it in full, and Billing, where
+              the customer is in the middle of paying for something. */}
+          {pendingEnvUpdates > 0 && activeTab !== 'environment' && activeTab !== 'billing' && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('environment')}
+              className="mx-1 mt-0.5 mb-3 w-[calc(100%-0.5rem)] flex items-center gap-3 rounded-xl border border-blue-500/40 bg-blue-500/[0.10] px-4 py-3 text-left hover:bg-blue-500/[0.16] transition-colors"
+            >
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-blue-500/30 bg-blue-500/15">
+                <Sparkles className="h-4 w-4 text-blue-300" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-blue-200">Server update available</span>
+                <span className="block mt-0.5 text-xs text-blue-200/75">
+                  Your server predates {pendingEnvUpdates} recommended{' '}
+                  {pendingEnvUpdates === 1 ? 'setting' : 'settings'} that keep Palworld servers healthy. Applying
+                  them leaves your world and your own settings untouched.
+                </span>
+              </span>
+              <span className="hidden sm:inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-100">
+                Review and apply
+              </span>
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-blue-300/70" />
+            </button>
+          )}
+
           {/* Domain sync banner — masterLocation found but domain DNS hasn't propagated yet */}
           {masterLocation && server?.domainReady === false && activeTab !== 'billing' && (
             <div className="mx-1 mt-0.5 mb-3 px-4 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-lg flex items-center gap-3">
@@ -1493,7 +1280,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           )}
           {activeTab === 'overview' && (
             <div key="overview" className="animate-fade-in">
-              <OverviewTab server={server} masterLocation={masterLocation} onMasterError={retryResolveMaster} statsRefreshKey={statsRefreshKey} onSwitchTab={setActiveTab} />
+              <OverviewTab server={server} masterLocation={masterLocation} masterLive={masterLive} onMasterError={retryResolveMaster} statsRefreshKey={statsRefreshKey} onSwitchTab={setActiveTab} />
             </div>
           )}
           {activeTab === 'config' && (
@@ -1693,10 +1480,12 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 };
 
 // Overview Tab - Shows server info and status
-const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, statsRefreshKey }) => {
+const OverviewTab = ({ server, masterLocation, masterLive, onMasterError: _onMasterError, statsRefreshKey }) => {
   // masterLocation is passed down from parent - no DNS resolution needed
 
-  // Live Palworld status — poll every 30s while overview tab is active
+  // Live Palworld status — poll every 30s while overview tab is active.
+  // Liveness only: this probe is sent by our own backend, so its timing measures the path from
+  // whichever node serves this site to the game node. Latency is measured in the browser below.
   const [livePalworld, setLivePalworld] = useState(null);
   useEffect(() => {
     if (!masterLocation) { setLivePalworld(null); return; }
@@ -1722,6 +1511,69 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
   const containerName = server?.version >= 4 && server?.compose?.length > 0
     ? `${server.compose[0].name}_${server.name}`
     : server?.name;
+  const componentName = server?.version >= 4 && server?.compose?.length > 0
+    ? server.compose[0].name
+    : 'null';
+
+  // Latency measured from this browser to the node running the game — the customer's own
+  // network path, which is what they mean when they ask about ping. Only the live instance is
+  // worth timing: the standby ones are not carrying the game, and on a stopped container the
+  // number would describe a machine the player never touches.
+  const [nodeHost, nodePort = 16127] = (masterLocation?.ip || '').split(':');
+  const { latency: clientLatency, measuring: measuringLatency } = useClientLatency(
+    nodeHost || null,
+    nodePort,
+    { enabled: masterLive && server?.status === 'running' },
+  );
+
+  // The real in-game ping: the Palworld REST API reports a `ping` per connected player,
+  // measured by the game server itself. Nothing we probe from outside can beat it — but it
+  // only exists while someone is playing, and only if the server has an Admin Password.
+  const [playerPing, setPlayerPing] = useState(null);
+  useEffect(() => {
+    if (!masterLocation || server?.status !== 'running') { setPlayerPing(null); return undefined; }
+
+    let cancelled = false;
+    let timer = null;
+    const host = masterLocation.ip.split(':')[0];
+    const port = restApiPort(server);
+
+    const poll = async (password) => {
+      try {
+        const res = await fetch(`/api/palworld-rest/${host}/players?port=${port}&password=${encodeURIComponent(password)}`);
+        if (!res.ok || cancelled) return;
+
+        const data = await res.json();
+        const pings = (data.players || [])
+          .map((p) => Number(p.ping))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        if (cancelled) return;
+
+        setPlayerPing(pings.length > 0
+          ? {
+            avg: Math.round(pings.reduce((sum, n) => sum + n, 0) / pings.length),
+            worst: Math.round(Math.max(...pings)),
+            count: pings.length,
+          }
+          : null);
+      } catch { /* a failed poll keeps the last known value */ }
+    };
+
+    // The password is read once, not on every tick: it means downloading the config file from
+    // the node, and a server without an Admin Password would otherwise re-download it forever
+    // to learn the same nothing. No password simply means no in-game ping to show.
+    (async () => {
+      const password = await loadAdminPasswordFromConfig(server, masterLocation, componentName)
+        .catch(() => null);
+      if (!password || cancelled) return;
+      await poll(password);
+      if (cancelled) return;
+      timer = setInterval(() => poll(password), 30000);
+    })();
+
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [masterLocation, server?.status, server?.name]);
 
   return (
     <div className="p-4 space-y-3">
@@ -1781,7 +1633,6 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
       {/* Palworld Server Status */}
       {server.status === 'running' && (server.palworldOnline !== undefined || livePalworld) && (() => {
         const mcOnline = livePalworld ? livePalworld.online : server.palworldOnline;
-        const mcLatency = livePalworld ? livePalworld.latency : server.palworldLatency;
         return (
           <div className="rounded-xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.9))', border: '1px solid rgba(51,65,85,0.5)' }}>
             <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(51,65,85,0.3)' }}>
@@ -1790,7 +1641,7 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
               </div>
               <h3 className="text-sm font-semibold text-white">Palworld Server Status</h3>
             </div>
-            <div className="grid grid-cols-3 gap-2 p-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
               <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }}>
                 <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Status</div>
                 <div className={`text-sm font-bold flex items-center justify-center gap-1.5 ${mcOnline ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -1798,10 +1649,22 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
                   {mcOnline ? 'Online' : 'Offline'}
                 </div>
               </div>
-              <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }}>
-                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Latency</div>
-                <div className={`text-sm font-bold ${mcLatency && mcLatency < 200 ? 'text-emerald-400' : mcLatency && mcLatency < 500 ? 'text-yellow-400' : mcLatency ? 'text-red-400' : 'text-slate-500'}`}>
-                  {mcLatency ? `${mcLatency}ms` : '-'}
+              <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }} title={LATENCY_TOOLTIP}>
+                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Your Latency</div>
+                <div className={`text-sm font-bold ${clientLatency ? latencyClass(clientLatency) : 'text-slate-500'}`}>
+                  {clientLatency ? `${clientLatency}ms` : measuringLatency ? 'Measuring...' : '-'}
+                </div>
+              </div>
+              <div
+                className="rounded-lg px-3 py-2.5 text-center"
+                style={{ background: 'rgba(15,23,42,0.5)' }}
+                title={playerPing
+                  ? `Reported by the game server for ${playerPing.count} connected player${playerPing.count === 1 ? '' : 's'} (worst: ${playerPing.worst}ms).`
+                  : 'The exact ping the game server measures for connected players. Needs someone online and an Admin Password set.'}
+              >
+                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">In-Game Ping</div>
+                <div className={`text-sm font-bold ${playerPing ? latencyClass(playerPing.avg) : 'text-slate-500'}`}>
+                  {playerPing ? `${playerPing.avg}ms` : '-'}
                 </div>
               </div>
               <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }}>
@@ -1809,11 +1672,16 @@ const OverviewTab = ({ server, masterLocation, onMasterError: _onMasterError, st
                 <div className="text-sm font-bold text-slate-400">Latest</div>
               </div>
             </div>
-            {(livePalworld?.lastCheck || server.palworldLastCheck) && (
-              <div className="px-4 py-2 text-xs text-slate-600" style={{ borderTop: '1px solid rgba(51,65,85,0.2)' }}>
-                Last checked: {new Date(livePalworld?.lastCheck || server.palworldLastCheck).toLocaleString()}
+            <div className="px-4 py-2 text-xs text-slate-600 space-y-1" style={{ borderTop: '1px solid rgba(51,65,85,0.2)' }}>
+              <div>
+                Your latency is measured from this browser to the node hosting your server, so it
+                reflects your own connection. In-game ping comes from the game server itself and
+                shows while players are online — see Remote Control for the per-player figures.
               </div>
-            )}
+              {(livePalworld?.lastCheck || server.palworldLastCheck) && (
+                <div>Last checked: {new Date(livePalworld?.lastCheck || server.palworldLastCheck).toLocaleString()}</div>
+              )}
+            </div>
           </div>
         );
       })()}
@@ -1932,6 +1800,33 @@ function parseIniSettings(content) {
     settings[m[1]] = m[3] !== undefined ? m[3] : (m[4] !== undefined ? m[4] : m[5]);
   }
   return settings;
+}
+
+/**
+ * Read AdminPassword out of the server's PalWorldSettings.ini. Both Remote Control and the
+ * Overview tab (for the in-game ping) need it, and neither can ask the customer: the password
+ * is generated at deploy time and only ever lives in the config file on the node.
+ * Returns null whenever it cannot be read — no password is a normal state, not an error.
+ */
+async function loadAdminPasswordFromConfig(server, masterLocation, component) {
+  if (!masterLocation) return null;
+  const zelidauth = await secureStorage.getItem('zelidauth');
+  if (!zelidauth) return null;
+
+  const [host, port = 16127] = masterLocation.ip.split(':');
+  const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/downloadfile/${server.name}/${component}/${encodeURIComponent(CONFIG_PATH)}`;
+  const response = await fetch(apiUrl, {
+    headers: { zelidauth: JSON.stringify(zelidauth) },
+  });
+  if (!response.ok) return null;
+
+  const parsed = parseIniSettings(await response.text());
+  return parsed.AdminPassword?.trim() || null;
+}
+
+/** External REST port (index 2 = the 8212 slot); randomized deploys expose a high port. */
+function restApiPort(server) {
+  return server?.ports?.[2] || server?.compose?.[0]?.ports?.[2] || 8212;
 }
 
 function buildIniContent(settings, originalContent) {
@@ -2489,18 +2384,9 @@ const RemoteControlTab = ({ server, masterLocation }) => {
     const loadPassword = async () => {
       if (!masterLocation) { setConfigLoading(false); return; }
       try {
-        const zelidauth = await secureStorage.getItem('zelidauth');
-        if (!zelidauth) { setConfigLoading(false); setConfigHasPassword(false); return; }
-        const [host, port = 16127] = masterLocation.ip.split(':');
-        const apiUrl = `https://${host.replace(/\./g, '-')}-${port}.node.api.runonflux.io/apps/downloadfile/${server.name}/${selectedComponent}/${encodeURIComponent(CONFIG_PATH)}`;
-        const response = await fetch(apiUrl, {
-          headers: { zelidauth: JSON.stringify(zelidauth) },
-        });
-        if (!response.ok) { setConfigLoading(false); setConfigHasPassword(false); return; }
-        const text = await response.text();
-        const parsed = parseIniSettings(text);
-        if (parsed.AdminPassword && parsed.AdminPassword.trim()) {
-          setAdminPassword(parsed.AdminPassword);
+        const password = await loadAdminPasswordFromConfig(server, masterLocation, selectedComponent);
+        if (password) {
+          setAdminPassword(password);
           setConfigHasPassword(true);
         } else {
           setConfigHasPassword(false);
@@ -2533,9 +2419,7 @@ const RemoteControlTab = ({ server, masterLocation }) => {
   const apiCall = async (endpoint, method = 'GET', body = null) => {
     const host = getHost();
     if (!host) throw new Error('No server IP available');
-    // External REST port (index 2 = the 8212 slot). Randomized deploys expose a
-    // high port; fall back to 8212 for legacy servers / missing spec.
-    const port = server?.ports?.[2] || server?.compose?.[0]?.ports?.[2] || 8212;
+    const port = restApiPort(server);
     const url = method === 'GET'
       ? `/api/palworld-rest/${host}/${endpoint}?port=${port}&password=${encodeURIComponent(adminPassword)}`
       : `/api/palworld-rest/${host}/${endpoint}?port=${port}&password=${encodeURIComponent(adminPassword)}`;
@@ -2829,6 +2713,17 @@ const RemoteControlTab = ({ server, masterLocation }) => {
                         <div className="text-sm font-medium text-white truncate">{player.name || 'Unknown'}</div>
                         <div className="text-[10px] text-slate-500 font-mono truncate">{player.playerId || player.userId || ''}</div>
                       </div>
+                      {/* The genuine in-game ping: the game server measures this itself, so it is
+                          the same number the player sees in game. */}
+                      {Number.isFinite(Number(player.ping)) && Number(player.ping) > 0 && (
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${latencyClass(Math.round(Number(player.ping)))}`}
+                          style={{ background: 'rgba(15,23,42,0.6)' }}
+                          title="Ping between this player and the server, reported by the game."
+                        >
+                          {Math.round(Number(player.ping))}ms
+                        </span>
+                      )}
                     </div>
                     <div className="flex gap-1 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
                       <button
