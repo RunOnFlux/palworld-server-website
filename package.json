@@ -7,11 +7,12 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "client": "vite",
     "server": "node server.js",
-    "build": "vite build && npm run build:ssr && npm run prerender",
+    "build": "npm run sync:snapshots && vite build && npm run build:ssr && npm run prerender",
     "build:ssr": "vite build --ssr src/entry-server.jsx --outDir .ssr",
     "prerender": "node scripts/prerender.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync:snapshots": "node scripts/sync-snapshots.mjs"
   },
   "dependencies": {
     "@iconify/react": "^6.0.2",

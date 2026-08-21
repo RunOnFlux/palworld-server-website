@@ -72,6 +72,22 @@ app.use(express.json());
 
 // In production, serve the built frontend
 if (process.env.NODE_ENV === 'production') {
+  // Canonicalise the trailing slash with a 301, so a page is reachable on exactly one URL.
+  //
+  // This has to sit BEFORE express.static: the prerendered shells live at
+  // dist/setup-guide/index.html, and serve-static answers a request for /setup-guide/ with
+  // that directory's index — 200, never reaching the catch-all below. The result was the
+  // same page on both /setup-guide and /setup-guide/. <link rel="canonical"> already named
+  // the slash-less form, but a canonical is a hint; a redirect is not, and it stops a
+  // crawler paying for both.
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    const path = req.path.replace(/\/+$/, '');
+    // '' means the request was for '/' (or '//'), which is already canonical.
+    if (!path || path === req.path || req.path.startsWith('/api/')) return next();
+    return res.redirect(301, `${path}${req.originalUrl.slice(req.path.length)}`);
+  });
+
   // Cache headers tuned for SEO + repeat-visit performance:
   //  - /assets/* are content-hashed by Vite -> cache forever (immutable).
   //  - *.html (incl. prerendered route shells) must revalidate.
@@ -402,7 +418,8 @@ if (process.env.NODE_ENV === 'production') {
   };
 
   app.get('*path', (req, res) => {
-    const path = req.path.replace(/\/$/, '') || '/';
+    // Already canonicalised by the redirect middleware above; the strip is belt-and-braces.
+    const path = req.path.replace(/\/+$/, '') || '/';
     if (prerendered[path]) {
       return res.sendFile(join(distRoot, prerendered[path]));
     }

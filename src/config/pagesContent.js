@@ -19,6 +19,7 @@ const SITE = 'https://palworld.runonflux.com';
 export const pagesContent = {
   'rent-palworld-server': {
     slug: '/rent-palworld-server',
+    published: '2026-07-19',
     title: 'Rent a Palworld Server',
     metaTitle: 'Rent a Palworld Dedicated Server — from $2.61/mo',
     description:
@@ -92,6 +93,7 @@ export const pagesContent = {
 
   'setup-guide': {
     slug: '/setup-guide',
+    published: '2026-07-04',
     title: 'How to Make a Palworld Dedicated Server (2026 Guide)',
     metaTitle: 'How to Make a Palworld Dedicated Server (2026 Guide)',
     description:
@@ -161,6 +163,7 @@ export const pagesContent = {
 
   'server-requirements': {
     slug: '/server-requirements',
+    published: '2026-07-04',
     title: 'Palworld Dedicated Server Requirements (CPU, RAM, Ports)',
     metaTitle: 'Palworld 1.0 Dedicated Server Requirements (CPU, RAM, Ports)',
     description:
@@ -224,6 +227,7 @@ export const pagesContent = {
 
   pricing: {
     slug: '/pricing',
+    published: '2026-07-04',
     title: 'Palworld Server Hosting Pricing & Plans',
     metaTitle: 'Palworld 1.0 Server Hosting Pricing — Plans from $2.61/mo',
     description:
@@ -281,6 +285,7 @@ export const pagesContent = {
 
   'guides/join-server': {
     slug: '/guides/join-server',
+    published: '2026-07-04',
     title: "How to Join a Friend's Palworld Server (incl. Crossplay)",
     metaTitle: "How to Join a Friend's Palworld Server (Crossplay Guide)",
     description:
@@ -336,6 +341,7 @@ export const pagesContent = {
 
   'guides/server-settings': {
     slug: '/guides/server-settings',
+    published: '2026-07-04',
     title: 'Best Palworld Server Settings (PalWorldSettings.ini)',
     metaTitle: 'Best Palworld Server Settings (PalWorldSettings.ini)',
     description:
@@ -393,6 +399,7 @@ export const pagesContent = {
 
   'decentralized-palworld-hosting': {
     slug: '/decentralized-palworld-hosting',
+    published: '2026-07-04',
     title: 'Why Host Your Palworld Server on a Decentralized Cloud',
     metaTitle: 'Decentralized Palworld Server Hosting on Flux Cloud',
     description:
@@ -462,6 +469,7 @@ export const pagesContent = {
 
   'nitrado-alternative': {
     slug: '/nitrado-alternative',
+    published: '2026-07-08',
     title: 'Nitrado Alternative for Palworld',
     metaTitle: 'Nitrado Alternative for Palworld — Deploy from $2.61/mo',
     description:
@@ -513,6 +521,7 @@ export const pagesContent = {
 
   'gportal-alternative': {
     slug: '/gportal-alternative',
+    published: '2026-07-08',
     title: 'GPORTAL Alternative for Palworld',
     metaTitle: 'GPORTAL Alternative for Palworld — Deploy from $2.61/mo',
     description:
@@ -632,6 +641,19 @@ export const pageAnchors = {
   'decentralized-palworld-hosting': 'Why host on the Flux decentralized cloud',
 };
 
+/**
+ * Content pages as sitewide footer links.
+ *
+ * Built from `pagesContent` + `pageAnchors` so there is exactly one list of content pages
+ * in this repo. Before the footer carried these, each page was reachable only from the
+ * homepage cross-link block and from whatever sibling pages happened to mention it, so
+ * nothing else on the site passed them any internal link.
+ */
+export const footerPageLinks = Object.entries(pagesContent).map(([key, page]) => ({
+  to: page.slug,
+  label: pageAnchors[key] || page.title,
+}));
+
 // Map short related keys to full page keys.
 const relatedKeyMap = {
   'join-server': 'guides/join-server',
@@ -675,6 +697,44 @@ export function buildFaqSchema(page) {
       name: f.question,
       acceptedAnswer: { '@type': 'Answer', text: f.answer },
     })),
+  };
+}
+
+/**
+ * Article schema for a content page.
+ *
+ * Nothing emitted one before, so none of these pages carried any signal of when they were
+ * written or last touched — on a set that includes a page titled "(2026 Guide)".
+ *
+ * `published` is stated per page in this file rather than derived from git, because .git is
+ * in .dockerignore and the release build has no history to read. It came from the commit
+ * that introduced each page; update it only if a page is genuinely rewritten.
+ *
+ * `dateModified` is passed in by scripts/prerender.mjs as the build timestamp: a release
+ * rebuilds every shell from the current source, so that is the honest claim. It is a
+ * parameter rather than a default so this builder stays pure — React renders the other
+ * schemas into the SSR body, and a value that differed between server and browser would be
+ * a hydration mismatch.
+ */
+export function buildArticleSchema(page, dateModified) {
+  if (!page.published) return null;
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: page.title,
+    description: page.description,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}${page.slug}` },
+    url: `${SITE}${page.slug}`,
+    inLanguage: 'en',
+    datePublished: page.published,
+    ...(dateModified ? { dateModified } : {}),
+    author: { '@type': 'Organization', name: 'Palworld on Flux', url: `${SITE}/` },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Palworld on Flux',
+      url: `${SITE}/`,
+      logo: { '@type': 'ImageObject', url: `${SITE}/games/palworld/logo.webp` },
+    },
   };
 }
 

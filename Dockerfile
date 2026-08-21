@@ -10,6 +10,15 @@ COPY . .
 ENV VITE_APP_URL=https://palworld.runonflux.com
 ENV VITE_ENABLE_ANALYTICS=true
 ENV VITE_GA_MEASUREMENT_ID=G-MFX916BY5S
+
+# Search-engine ownership verification. Read by scripts/prerender.mjs, which stamps the meta
+# tags into every route shell. Empty by default: leave them unset if the property is verified
+# by DNS instead. These are public tokens, not secrets.
+ARG GOOGLE_SITE_VERIFICATION=
+ARG BING_SITE_VERIFICATION=
+ENV GOOGLE_SITE_VERIFICATION=$GOOGLE_SITE_VERIFICATION
+ENV BING_SITE_VERIFICATION=$BING_SITE_VERIFICATION
+
 RUN npm run build
 
 # Stage 2: Production image

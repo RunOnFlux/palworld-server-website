@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, memo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import locationsSnapshot from '../../config/snapshots/locations.json';
 import {
   ComposableMap,
   Geographies,
@@ -204,7 +205,14 @@ const InfraCarousel = ({ data, onHoverCountry }) => {
 };
 
 const ServerLocations = () => {
-  const [data, setData] = useState(null);
+  // Seeded from src/config/snapshots/locations.json (refreshed at build time by
+  // scripts/sync-snapshots.mjs) rather than from null. fetchNodeLocations() only runs in an
+  // effect, which never fires during renderToString — so with a null start this whole
+  // section hit the `!data` guard below and vanished from the prerendered HTML, taking the
+  // "N servers across M countries" line, the country list and the <h2> with it. The effect
+  // still replaces this with live data on mount; the snapshot is only the first paint, on
+  // the server and in the browser alike, which is also what keeps hydration matching.
+  const [data, setData] = useState(locationsSnapshot);
   const [hoveredCluster, setHoveredCluster] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [highlightedCountry, setHighlightedCountry] = useState(null);
@@ -213,7 +221,11 @@ const ServerLocations = () => {
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef(null);
   useEffect(() => {
-    fetchNodeLocations().then(setData);
+    // Keep the snapshot on screen if the live call comes back empty (API down, or a
+    // cached-but-stale payload) — an accurate old count beats no section at all.
+    fetchNodeLocations().then((live) => {
+      if (live?.total > 0 && live.clusters?.length) setData(live);
+    });
   }, []);
 
   const [zoomedCountry, setZoomedCountry] = useState(null);

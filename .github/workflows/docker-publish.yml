@@ -35,6 +35,9 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
+          build-args: |
+            GOOGLE_SITE_VERIFICATION=${{ vars.GOOGLE_SITE_VERIFICATION }}
+            BING_SITE_VERIFICATION=${{ vars.BING_SITE_VERIFICATION }}
           tags: |
             ${{ env.DOCKERHUB_REPO }}:${{ steps.version.outputs.tag }}
             ${{ env.DOCKERHUB_REPO }}:latest

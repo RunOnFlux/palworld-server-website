@@ -9,6 +9,7 @@ import { Helmet } from 'react-helmet-async';
 import { Star, Users, Cpu, HardDrive, Network, Flame, Check, BarChart3, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import marketplaceService from '../../services/marketplaceService';
+import plansSnapshot from '../../config/snapshots/plans.json';
 import { gameConfig } from '../../config/gameConfig';
 import { useAuth } from '../../context/AuthContext';
 import Card, { CardBody, CardFooter, CardHeader } from '../common/Card';
@@ -78,13 +79,27 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
   const { isAuthenticated } = useAuth();
   const planCardsRef = useRef([]);
 
-  // Fetch server plans from API
-  const { data: plans = [], isLoading, error } = useQuery({
+  // Fetch server plans from API.
+  //
+  // The placeholder falls back to src/config/snapshots/plans.json (refreshed at build time
+  // by scripts/sync-snapshots.mjs). Without it the query has no data during
+  // renderToString — nothing fetches on the server — so the prerendered HTML shipped a
+  // "Loading pricing plans..." spinner instead of the plan tiers, the specs and the Offer
+  // JSON-LD below. It is placeholderData rather than initialData on purpose: placeholder
+  // data is never written to the cache and never counts as fresh, so the live fetch still
+  // runs on mount and overwrites it.
+  const { data: plans = [], isPlaceholderData, error } = useQuery({
     queryKey: ['serverPlans'],
     queryFn: () => marketplaceService.getServerPlans(),
     staleTime: 10 * 60 * 1000, // 10 min - after this, show cached + refetch silently
     gcTime: Infinity, // never garbage collect - cache lives for entire session
+    placeholderData: (prev) => prev ?? plansSnapshot,
   });
+
+  // Snapshot plans carry display fields only — the compose spec the deploy dialog needs
+  // (`_config` / `_app`) is deliberately not snapshotted, so checkout stays disabled until
+  // the live fetch lands. In practice that is the first few hundred ms.
+  const plansPending = isPlaceholderData || plans.some((p) => p.snapshot);
 
   // GSAP scroll-driven 3D tilt for pricing cards
   useEffect(() => {
@@ -119,6 +134,12 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
   }, [plans]);
 
   const handleSelectPlan = (plan) => {
+    // Snapshot plans have no compose spec to deploy from. The button is disabled in that
+    // state; this is the belt-and-braces for a programmatic call.
+    if (plan.snapshot) {
+      return;
+    }
+
     if (!isAuthenticated) {
       onGetStarted(); // Show login modal
       return;
@@ -133,7 +154,10 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
     }
   };
 
-  if (isLoading && plans.length === 0) {
+  // No isLoading branch: the snapshot means `plans` is populated from the very first
+  // render, on the server and in the browser. An empty list now only happens when the
+  // snapshot is missing AND the API failed, which the error branch below covers.
+  if (plans.length === 0) {
     return (
       <section id="pricing" className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4">
@@ -143,7 +167,7 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
     );
   }
 
-  if (error) {
+  if (error && plans.length === 0) {
     return (
       <section id="pricing" className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 text-center">
@@ -471,6 +495,12 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
                       size="md"
                       fullWidth
                       onClick={() => handleSelectPlan(plan)}
+                      // Greyed for the few hundred ms until the live fetch replaces the
+                      // snapshot with plans that carry a deployable compose spec. The label
+                      // deliberately stays the real CTA rather than "Loading…": this markup
+                      // is what crawlers read, and a card whose button says "Loading" reads
+                      // like a broken page.
+                      disabled={plansPending && !plan.contactRequired}
                       style={{
                         boxShadow: plan.popular
                           ? '0 4px 12px rgba(33, 150, 243, 0.4), inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -2px 0 rgba(0,0,0,0.2)'

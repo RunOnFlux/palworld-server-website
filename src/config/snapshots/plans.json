@@ -1,0 +1,82 @@
+[
+  {
+    "id": "palworld4slot",
+    "name": "Palworld 5GB",
+    "description": "5GB RAM, 2 CPU cores, 30GB SSD - up to 4 players",
+    "popular": false,
+    "price": {
+      "monthly": 261,
+      "currency": "USD",
+      "displayPrice": "$2.61"
+    },
+    "playerLimit": 4,
+    "specs": {
+      "players": "~4 players",
+      "ram": "5 GB",
+      "storage": "30 GB SSD/NVMe",
+      "cpu": "2 vCores",
+      "bandwidth": "Unlimited"
+    },
+    "snapshot": true
+  },
+  {
+    "id": "palworld8slot",
+    "name": "Palworld 8GB",
+    "description": "8GB RAM, 3 CPU cores, 30GB SSD - up to 8 players",
+    "popular": false,
+    "price": {
+      "monthly": 438,
+      "currency": "USD",
+      "displayPrice": "$4.38"
+    },
+    "playerLimit": 8,
+    "specs": {
+      "players": "~8 players",
+      "ram": "8 GB",
+      "storage": "30 GB SSD/NVMe",
+      "cpu": "3 vCores",
+      "bandwidth": "Unlimited"
+    },
+    "snapshot": true
+  },
+  {
+    "id": "palworld16slot",
+    "name": "Palworld 12GB",
+    "description": "12GB RAM, 4 CPU cores, 35GB SSD - up to 16 players",
+    "popular": true,
+    "price": {
+      "monthly": 611,
+      "currency": "USD",
+      "displayPrice": "$6.11"
+    },
+    "playerLimit": 16,
+    "specs": {
+      "players": "~16 players",
+      "ram": "12 GB",
+      "storage": "35 GB SSD/NVMe",
+      "cpu": "4 vCores",
+      "bandwidth": "Unlimited"
+    },
+    "snapshot": true
+  },
+  {
+    "id": "palworld32slot",
+    "name": "Palworld 16GB",
+    "description": "16GB RAM, 6 CPU cores, 40GB SSD - up to 32 players",
+    "popular": false,
+    "price": {
+      "monthly": 855.0000000000001,
+      "currency": "USD",
+      "displayPrice": "$8.55"
+    },
+    "playerLimit": 32,
+    "specs": {
+      "players": "~32 players",
+      "ram": "16 GB",
+      "storage": "40 GB SSD/NVMe",
+      "cpu": "6 vCores",
+      "bandwidth": "Unlimited"
+    },
+    "snapshot": true
+  }
+]

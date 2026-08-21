@@ -20,15 +20,22 @@
 // here any more: the React components emit it themselves via <SEO>, and it now
 // survives into the SSR body. Injecting it here too would duplicate every entity.
 // The Service + AggregateOffer / Organization / WebSite schemas stay in index.html:
-// nothing in React emits those.
+// nothing in React emits those. Article is the exception — it is stamped here per
+// content route, because its dateModified is the build timestamp and React cannot
+// know that without producing a value that differs between server and browser.
 //
-// server.js maps the routes to these files.
+// server.js maps the routes to these files, and it is the only thing that does. The
+// netlify.toml / vercel.json that used to sit alongside it were deleted: both rewrote
+// /* to /index.html, which would have served the homepage shell — wrong <title>, wrong
+// canonical, wrong schema — for every content URL, and turned every 404 into a soft 200.
+// Production is the Docker image that runs server.js.
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pagesContent, buildFaqSchema } from '../src/config/pagesContent.js';
+import { pagesContent, buildFaqSchema, buildArticleSchema } from '../src/config/pagesContent.js';
+import plansSnapshot from '../src/config/snapshots/plans.json' with { type: 'json' };
 import { gameConfig } from '../src/config/gameConfig.js';
 // The SSR bundle, built by `vite build --ssr src/entry-server.jsx`. Rendering the
 // real React components means the crawler-visible HTML and the app can no longer
@@ -46,7 +53,55 @@ if (!existsSync(indexPath)) {
   process.exit(1);
 }
 
-const baseHtml = await readFile(indexPath, 'utf8');
+/**
+ * Search-engine ownership verification, stamped into every shell.
+ *
+ * Left out of index.html because the tokens are per-property, not per-repo: set
+ * GOOGLE_SITE_VERIFICATION / BING_SITE_VERIFICATION at build time (Dockerfile build-args)
+ * and the tags appear. Unset, nothing is emitted — which is correct if the property is
+ * already verified by DNS TXT record. The tokens are public strings, not secrets.
+ */
+const verificationTags = [
+  ['google-site-verification', process.env.GOOGLE_SITE_VERIFICATION],
+  ['msvalidate.01', process.env.BING_SITE_VERIFICATION],
+]
+  .filter(([, value]) => value)
+  .map(([name, value]) => `<meta name="${name}" content="${value.replace(/"/g, '&quot;')}" />`);
+
+const rawIndexHtml = await readFile(indexPath, 'utf8');
+const withVerification = verificationTags.length
+  ? rawIndexHtml.replace(/<\/head>/i, `    ${verificationTags.join('\n    ')}\n  </head>`)
+  : rawIndexHtml;
+
+// Used as `dateModified` on the content pages. A release rebuilds every shell from the
+// current source, so "modified when this bundle was cut" is the honest claim.
+const BUILD_DATE = new Date().toISOString();
+
+/**
+ * Keep the AggregateOffer in index.html honest.
+ *
+ * lowPrice / highPrice / offerCount were hand-written, so they were a set of prices with no
+ * link to the marketplace they claim to describe — correct on the day they were typed and
+ * silently wrong after any repricing. They are now derived from the same build-time
+ * snapshot the pricing section renders from (scripts/sync-snapshots.mjs), so the schema and
+ * the cards can no longer disagree.
+ */
+function syncAggregateOffer(html) {
+  const prices = plansSnapshot.map((p) => p.price?.monthly).filter((m) => typeof m === 'number');
+  if (!prices.length) {
+    console.warn('[prerender] AggregateOffer: no priced plans in the snapshot, leaving index.html as authored');
+    return html;
+  }
+  const low = (Math.min(...prices) / 100).toFixed(2);
+  const high = (Math.max(...prices) / 100).toFixed(2);
+  console.log(`[prerender] AggregateOffer: ${prices.length} offers, $${low} - $${high}`);
+  return html
+    .replace(/("lowPrice":\s*)"[^"]*"/, `$1"${low}"`)
+    .replace(/("highPrice":\s*)"[^"]*"/, `$1"${high}"`)
+    .replace(/("offerCount":\s*)"[^"]*"/, `$1"${prices.length}"`);
+}
+
+const baseHtml = syncAggregateOffer(withVerification);
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -86,19 +141,50 @@ const withRoot = (html, path, rootBody) =>
     () => `<div id="root" data-ssr-path="${esc(path)}">${rootBody}</div>`,
   );
 
-function buildHtml({ path, ssrPath, title, description, canonical, robots, rootBody }) {
+function injectJsonLd(html, schemas) {
+  const blocks = (schemas || []).filter(Boolean);
+  if (!blocks.length) return html;
+  return html.replace(
+    /<\/head>/i,
+    `    ${blocks.map((b) => `<script type="application/ld+json">${JSON.stringify(b)}</script>`).join('\n    ')}\n  </head>`,
+  );
+}
+
+/**
+ * Drop the commercial JSON-LD from a shell that should not carry it.
+ *
+ * index.html holds Service + AggregateOffer, Organization and WebSite, and every shell here
+ * is built from index.html — so /support, /success, /cancel and the 404 page were each
+ * repeating a priced service entity on a noindex page. The homepage and the content pages
+ * keep it.
+ */
+const stripServiceSchema = (html) =>
+  html.replace(
+    /\s*<!-- Static JSON-LD so non-JS crawlers[\s\S]*?<\/script>(?=\s*<!-- FAQPage schema)/i,
+    '',
+  );
+
+function buildHtml({
+  path, ssrPath, title, description, canonical, robots, rootBody,
+  ogType = 'website', jsonLd, service = true,
+}) {
   let html = baseHtml;
+  if (!service) html = stripServiceSchema(html);
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`);
   html = html.replace(/<meta name="title"[^>]*>/i, `<meta name="title" content="${esc(title)}" />`);
   html = html.replace(/<meta name="description"[^>]*>/i, `<meta name="description" content="${esc(description)}" />`);
   html = html.replace(/<meta property="og:title"[^>]*>/i, `<meta property="og:title" content="${esc(title)}" />`);
   html = html.replace(/<meta property="og:description"[^>]*>/i, `<meta property="og:description" content="${esc(description)}" />`);
   html = html.replace(/<meta property="og:url"[^>]*>/i, `<meta property="og:url" content="${esc(canonical)}" />`);
+  // Content pages are articles. Without this every shell inherited the homepage's
+  // og:type="website".
+  html = html.replace(/<meta property="og:type"[^>]*>/i, `<meta property="og:type" content="${esc(ogType)}" />`);
   html = html.replace(/<meta name="twitter:title"[^>]*>/i, `<meta name="twitter:title" content="${esc(title)}" />`);
   html = html.replace(/<meta name="twitter:description"[^>]*>/i, `<meta name="twitter:description" content="${esc(description)}" />`);
   html = html.replace(/<meta name="twitter:url"[^>]*>/i, `<meta name="twitter:url" content="${esc(canonical)}" />`);
   html = html.replace(/<meta name="robots"[^>]*>/i, `<meta name="robots" content="${esc(robots)}" />`);
   html = html.replace(/<link rel="canonical"[^>]*>/i, `<link rel="canonical" href="${esc(canonical)}" />`);
+  html = injectJsonLd(html, jsonLd);
   return rootBody ? withRoot(html, ssrPath || path, rootBody) : html;
 }
 
@@ -117,6 +203,7 @@ const utilityRoutes = [
     description: 'The page you are looking for does not exist. Return to Palworld on Flux to deploy a dedicated Palworld server on the Flux decentralized cloud.',
     canonical: `${SITE_URL}/`,
     robots: 'noindex, follow',
+    service: false,
   },
   {
     slug: 'support/index.html',
@@ -125,6 +212,7 @@ const utilityRoutes = [
     description: 'Get help with your Palworld server on Flux. Submit a support ticket for billing, deployment, or server issues and our team will respond by email.',
     canonical: `${SITE_URL}/support`,
     robots: 'noindex, follow',
+    service: false,
   },
   {
     slug: 'success/index.html',
@@ -133,6 +221,7 @@ const utilityRoutes = [
     description: 'Your Palworld server is being deployed on the Flux decentralized cloud.',
     canonical: `${SITE_URL}/`,
     robots: 'noindex, nofollow',
+    service: false,
   },
   {
     slug: 'cancel/index.html',
@@ -141,6 +230,7 @@ const utilityRoutes = [
     description: 'Your checkout was cancelled.',
     canonical: `${SITE_URL}/`,
     robots: 'noindex, nofollow',
+    service: false,
   },
 ];
 
@@ -155,6 +245,9 @@ const contentRoutes = Object.entries(pagesContent).map(([key, page]) => ({
   description: page.description,
   canonical: `${SITE_URL}${page.slug}`,
   robots: INDEXABLE_ROBOTS,
+  ogType: 'article',
+  // The only schema React does not emit for these pages. See buildArticleSchema().
+  jsonLd: [buildArticleSchema(page, BUILD_DATE)],
 }));
 
 const allRoutes = [...utilityRoutes, ...contentRoutes];
