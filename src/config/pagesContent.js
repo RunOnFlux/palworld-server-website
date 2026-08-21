@@ -158,7 +158,7 @@ export const pagesContent = {
         { name: 'Configure and invite', text: 'Edit PalWorldSettings.ini from the dashboard and share your server address with your friends.' },
       ],
     },
-    related: ['server-requirements', 'server-settings', 'join-server', 'pricing'],
+    related: ['server-requirements', 'server-settings', 'join-server', 'pricing', 'rent-palworld-server'],
   },
 
   'server-requirements': {
@@ -222,7 +222,7 @@ export const pagesContent = {
       { question: 'How many CPU cores does a Palworld server need?', answer: 'Pocketpair asks for four cores or more. Past that, Palworld favors strong single-core performance over extra cores — a modern CPU with good per-core speed handles the Pal AI and base simulation best. Managed plans scale vCPU with the player tier.' },
       { question: 'How much disk space does a Palworld server use?', answer: 'The server build is a few gigabytes and the save grows with world size and base count. Allow headroom for the build plus a growing world and backups. Use an SSD: Pocketpair warns that low-performance storage can corrupt save data.' },
     ],
-    related: ['setup-guide', 'pricing', 'server-settings', 'join-server'],
+    related: ['setup-guide', 'pricing', 'server-settings', 'join-server', 'rent-palworld-server'],
   },
 
   pricing: {
@@ -280,7 +280,7 @@ export const pagesContent = {
       highPrice: '8.55',
       offerCount: '3',
     },
-    related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server', 'decentralized-palworld-hosting'],
+    related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server', 'decentralized-palworld-hosting', 'rent-palworld-server', 'nitrado-alternative', 'gportal-alternative'],
   },
 
   'guides/join-server': {
@@ -464,7 +464,7 @@ export const pagesContent = {
       { question: 'How do I pay for a decentralized Palworld server?', answer: 'Billing is month-to-month with no contract and the first month free. You can pay by card, Apple Pay, or Google Pay through Stripe, or in crypto with FLUX. Plans start at $2.61/month and scale to a full 32-player server.' },
       { question: 'What does no vendor lock-in actually mean?', answer: 'No long-term contract, no prepaid credit tied to one provider, and full access to your world save and config files so you can back them up or move them at any time. You rent capacity on an open network rather than signing into a walled garden, and you can cancel whenever you like.' },
     ],
-    related: ['pricing', 'setup-guide', 'server-requirements', 'server-settings'],
+    related: ['pricing', 'setup-guide', 'server-requirements', 'server-settings', 'rent-palworld-server', 'nitrado-alternative', 'gportal-alternative'],
   },
 
   'nitrado-alternative': {
@@ -639,6 +639,8 @@ export const pageAnchors = {
   'join-server': "How to join a friend's Palworld server",
   'server-settings': 'Best Palworld server settings',
   'decentralized-palworld-hosting': 'Why host on the Flux decentralized cloud',
+  'nitrado-alternative': 'Nitrado alternative for Palworld',
+  'gportal-alternative': 'GPORTAL alternative for Palworld',
 };
 
 // Map short related keys to full page keys.
