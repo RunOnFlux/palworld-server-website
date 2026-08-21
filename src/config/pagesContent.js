@@ -641,19 +641,6 @@ export const pageAnchors = {
   'decentralized-palworld-hosting': 'Why host on the Flux decentralized cloud',
 };
 
-/**
- * Content pages as sitewide footer links.
- *
- * Built from `pagesContent` + `pageAnchors` so there is exactly one list of content pages
- * in this repo. Before the footer carried these, each page was reachable only from the
- * homepage cross-link block and from whatever sibling pages happened to mention it, so
- * nothing else on the site passed them any internal link.
- */
-export const footerPageLinks = Object.entries(pagesContent).map(([key, page]) => ({
-  to: page.slug,
-  label: pageAnchors[key] || page.title,
-}));
-
 // Map short related keys to full page keys.
 const relatedKeyMap = {
   'join-server': 'guides/join-server',

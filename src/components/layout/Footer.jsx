@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Github, MessageCircle, ExternalLink } from 'lucide-react';
 import { RiTwitterXFill } from 'react-icons/ri';
 import { gameConfig } from '../../config/gameConfig';
-import { footerPageLinks } from '../../config/pagesContent';
 import { version } from '../../../package.json';
 import { CookieSettingsDialog } from '../common';
 
@@ -14,7 +12,7 @@ const currentYear = new Date().getFullYear();
 
 /**
  * Footer Component
- * Social links, internal content-page links, and cross-links to the sibling Flux sites.
+ * Compact footer with social links
  */
 const Footer = () => {
   const [showCookieSettings, setShowCookieSettings] = useState(false);
@@ -98,30 +96,6 @@ const Footer = () => {
         </div>
 
         {/* Cross-links: explore the other Flux hosting products (SEO) */}
-        {/* Palworld guides — internal links, on every page.
-            Until this block existed the nine content pages were reachable from the homepage
-            cross-link block and from each other, and from nowhere else on the site. */}
-        <nav
-          aria-label="Palworld guides and hosting pages"
-          className="mb-6 pt-6 border-t border-border/30"
-        >
-          <h4 className="text-sm font-semibold text-text mb-3 text-center md:text-left">
-            Palworld guides &amp; hosting
-          </h4>
-          <ul className="flex flex-wrap justify-center md:justify-start gap-x-5 gap-y-2">
-            {footerPageLinks.map((link) => (
-              <li key={link.to}>
-                <Link
-                  to={link.to}
-                  className="text-text-secondary hover:text-primary text-sm transition-colors"
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
         <nav
           aria-label="Explore other Flux hosting"
           className="mb-6 pt-6 border-t border-border/30"
