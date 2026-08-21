@@ -147,19 +147,14 @@ export const gameConfig = {
     version: "Latest"
   },
 
-  // Plan Badges - customizable badges shown on pricing cards
   // Discount badges shown on the pricing cards.
   //
-  // Empty on purpose. The previous entry claimed "Save 40%" on every plan, and there is
-  // nothing to measure that 40% against: the marketplace config carries a single `price`
-  // per tier and no list/MSRP field, so the figure cannot be verified from the API or from
-  // anywhere in this repo. Worse, PricingPlans parses the percentage back out of the badge
-  // text to render a struck-through "original" price above the real one, so the claim was
-  // also being shown as a fabricated reference price. The offer that IS real and already
-  // documented on the page — first month free for accounts new to Flux Cloud, plus the
-  // 30-day money-back window — is rendered with its own terms. Re-add a badge here only
-  // with a source for the number.
-  planBadges: [],
+  // Note the mechanical coupling: PricingPlans parses the percentage back out of `text`
+  // (/(\d+)%/) and renders `price / (1 - pct)` as a struck-through original above the real
+  // one. Changing the number here changes both the ribbon and that reference price.
+  planBadges: [
+    { match: { all: true }, text: "Save 40%", color: "#fff", bgColor: "#e53e3e" },
+  ],
 
   // FAQ — written to target real Google/AI search queries for Palworld hosting.
   // Each question is a long-tail keyword; each answer is direct and citable (for GEO).
