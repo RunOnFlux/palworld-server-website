@@ -244,6 +244,7 @@ const contentRoutes = Object.entries(pagesContent).map(([key, page]) => ({
   title: page.metaTitle || page.title,
   description: page.description,
   canonical: `${SITE_URL}${page.slug}`,
+  published: page.published,
   robots: INDEXABLE_ROBOTS,
   ogType: 'article',
   // The only schema React does not emit for these pages. See buildArticleSchema().
@@ -279,3 +280,30 @@ for (const route of allRoutes) {
 }
 
 console.log(`[prerender] done - ${allRoutes.length + 1} routes server-rendered`);
+
+// ---------------------------------------------------------------------------
+// Sitemap.
+//
+// Written here rather than by a Vite plugin, because the route table above is already the
+// single source of truth for which URLs exist and when each one last changed. The plugin
+// needed a second, hand-maintained copy of the route list, and could only stamp one build-time
+// lastmod across every entry: a claim that every page changed on every release, which is the
+// kind of lastmod Google learns to ignore.
+//
+// No <changefreq> or <priority>: Google has said for years that it ignores both.
+// ---------------------------------------------------------------------------
+// Last time the homepage's own content changed. Stated, not derived from the build.
+const HOME_MODIFIED = '2026-08-22';
+const sitemapEntries = [
+  { loc: `${SITE_URL}/`, lastmod: HOME_MODIFIED },
+  ...(contentRoutes)
+    .map((r) => ({ loc: r.canonical, lastmod: r.modified || r.published || HOME_MODIFIED }))
+    .filter((e) => e.loc),
+];
+const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${sitemapEntries.map((e) => `  <url>\n    <loc>${esc(e.loc)}</loc>\n    <lastmod>${e.lastmod}</lastmod>\n  </url>`).join('\n')}
+</urlset>
+`;
+await writeFile(join(distDir, 'sitemap.xml'), sitemapXml, 'utf8');
+console.log(`[prerender] wrote sitemap.xml (${sitemapEntries.length} URLs)`);

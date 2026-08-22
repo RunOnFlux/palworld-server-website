@@ -3,14 +3,26 @@
     {
       "lat": 50.4777,
       "lon": 12.3649,
-      "count": 1317,
+      "count": 1321,
       "country": "Germany"
     },
     {
-      "lat": 59.3141,
-      "lon": 18.2517,
-      "count": 33,
-      "country": "Sweden"
+      "lat": 43.5973,
+      "lon": 1.44558,
+      "count": 669,
+      "country": "France"
+    },
+    {
+      "lat": 55.7056,
+      "lon": 12.5683,
+      "count": 502,
+      "country": "Denmark"
+    },
+    {
+      "lat": 51.7783,
+      "lon": 0.1061,
+      "count": 111,
+      "country": "United Kingdom"
     },
     {
       "lat": 60.1719,
@@ -19,118 +31,52 @@
       "country": "Finland"
     },
     {
-      "lat": 43.6883,
-      "lon": -79.3868,
-      "count": 349,
-      "country": "Canada"
+      "lat": 41.1459,
+      "lon": -8.6169,
+      "count": 18,
+      "country": "Portugal"
     },
     {
-      "lat": 59.4116,
-      "lon": 5.2677,
-      "count": 83,
-      "country": "Norway"
+      "lat": 51.102,
+      "lon": 17.0504,
+      "count": 139,
+      "country": "Poland"
     },
     {
-      "lat": 55.7056,
-      "lon": 12.5683,
-      "count": 495,
-      "country": "Denmark"
+      "lat": 42.5967,
+      "lon": 23.0332,
+      "count": 16,
+      "country": "Bulgaria"
     },
     {
-      "lat": 38.6781,
-      "lon": -121.3747,
-      "count": 926,
+      "lat": 40.7523,
+      "lon": -74.2172,
+      "count": 969,
       "country": "United States"
     },
     {
-      "lat": 38.3692,
-      "lon": -0.4907,
-      "count": 101,
-      "country": "Spain"
+      "lat": 48.827,
+      "lon": -67.5217,
+      "count": 343,
+      "country": "Canada"
     },
     {
-      "lat": 26.194,
-      "lon": 127.7271,
-      "count": 47,
-      "country": "Japan"
-    },
-    {
-      "lat": 56.9486,
-      "lon": 24.1182,
-      "count": 52,
-      "country": "Latvia"
-    },
-    {
-      "lat": 51.5055,
-      "lon": 31.2933,
-      "count": 50,
-      "country": "Ukraine"
-    },
-    {
-      "lat": 43.5445,
-      "lon": 2.35406,
-      "count": 668,
-      "country": "France"
-    },
-    {
-      "lat": -27.6634,
-      "lon": 152.898,
-      "count": 33,
-      "country": "Australia"
-    },
-    {
-      "lat": 1.37611,
-      "lon": 103.902,
-      "count": 28,
-      "country": "Singapore"
-    },
-    {
-      "lat": 26.2235,
-      "lon": 50.5813,
-      "count": 51,
-      "country": "Bahrain"
-    },
-    {
-      "lat": 54.6876,
-      "lon": 25.2806,
-      "count": 7,
-      "country": "Lithuania"
-    },
-    {
-      "lat": 47.5048,
-      "lon": 8.5866,
+      "lat": 46.1912,
+      "lon": 6.13048,
       "count": 62,
       "country": "Switzerland"
     },
     {
-      "lat": 10.8455,
-      "lon": 106.726,
-      "count": 4,
-      "country": "Vietnam"
-    },
-    {
       "lat": 47.2189,
       "lon": 38.9168,
-      "count": 216,
+      "count": 218,
       "country": "Russia"
     },
     {
-      "lat": 59.4381,
-      "lon": 24.7369,
-      "count": 7,
-      "country": "Estonia"
-    },
-    {
-      "lat": 25.0693,
-      "lon": 121.4626,
-      "count": 22,
-      "country": "Taiwan"
-    },
-    {
-      "lat": 55.4754,
-      "lon": -4.6062,
-      "count": 111,
-      "country": "United Kingdom"
+      "lat": -37.7953,
+      "lon": 144.9767,
+      "count": 33,
+      "country": "Australia"
     },
     {
       "lat": -33.3637,
@@ -139,28 +85,40 @@
       "country": "Chile"
     },
     {
-      "lat": 48.161,
-      "lon": 17.1001,
+      "lat": 47.4979,
+      "lon": 19.0402,
+      "count": 9,
+      "country": "Hungary"
+    },
+    {
+      "lat": 35.6916,
+      "lon": 139.768,
+      "count": 47,
+      "country": "Japan"
+    },
+    {
+      "lat": 1.43801,
+      "lon": 103.789,
+      "count": 28,
+      "country": "Singapore"
+    },
+    {
+      "lat": 56.1625,
+      "lon": 15.5801,
+      "count": 33,
+      "country": "Sweden"
+    },
+    {
+      "lat": 56.9486,
+      "lon": 24.1182,
+      "count": 52,
+      "country": "Latvia"
+    },
+    {
+      "lat": 48.157,
+      "lon": 17.0915,
       "count": 27,
       "country": "Slovakia"
-    },
-    {
-      "lat": -34.6142,
-      "lon": -58.3811,
-      "count": 13,
-      "country": "Argentina"
-    },
-    {
-      "lat": 22.3702,
-      "lon": 114.13,
-      "count": 11,
-      "country": "Hong Kong"
-    },
-    {
-      "lat": 52.3066,
-      "lon": 4.8812,
-      "count": 66,
-      "country": "The Netherlands"
     },
     {
       "lat": 25.3412,
@@ -169,22 +127,22 @@
       "country": "United Arab Emirates"
     },
     {
-      "lat": 42.6661,
-      "lon": 23.5993,
-      "count": 16,
-      "country": "Bulgaria"
+      "lat": 50.0766,
+      "lon": 14.4464,
+      "count": 6,
+      "country": "Czechia"
     },
     {
-      "lat": -33.914,
-      "lon": 18.4129,
+      "lat": -26.2309,
+      "lon": 28.0583,
       "count": 20,
       "country": "South Africa"
     },
     {
-      "lat": 45.5002,
-      "lon": 9.18347,
-      "count": 28,
-      "country": "Italy"
+      "lat": -34.6142,
+      "lon": -58.3811,
+      "count": 13,
+      "country": "Argentina"
     },
     {
       "lat": 51.2192,
@@ -193,40 +151,22 @@
       "country": "Belgium"
     },
     {
-      "lat": 47.4979,
-      "lon": 19.0402,
-      "count": 9,
-      "country": "Hungary"
+      "lat": 52.3066,
+      "lon": 4.8812,
+      "count": 66,
+      "country": "The Netherlands"
     },
     {
-      "lat": 44.447,
-      "lon": 26.0185,
-      "count": 33,
-      "country": "Romania"
+      "lat": 26.2235,
+      "lon": 50.5813,
+      "count": 51,
+      "country": "Bahrain"
     },
     {
-      "lat": 40.6439,
-      "lon": 22.9358,
-      "count": 3,
-      "country": "Greece"
-    },
-    {
-      "lat": 50.0948,
-      "lon": 14.4785,
-      "count": 6,
-      "country": "Czechia"
-    },
-    {
-      "lat": 51.102,
-      "lon": 17.0504,
-      "count": 138,
-      "country": "Poland"
-    },
-    {
-      "lat": 41.1459,
-      "lon": -8.6169,
-      "count": 18,
-      "country": "Portugal"
+      "lat": 59.9907,
+      "lon": 9.9907,
+      "count": 83,
+      "country": "Norway"
     },
     {
       "lat": 53.3416,
@@ -235,10 +175,58 @@
       "country": "Ireland"
     },
     {
+      "lat": 38.3692,
+      "lon": -0.4907,
+      "count": 101,
+      "country": "Spain"
+    },
+    {
+      "lat": 40.6439,
+      "lon": 22.9358,
+      "count": 3,
+      "country": "Greece"
+    },
+    {
+      "lat": 44.9316,
+      "lon": 25.4622,
+      "count": 31,
+      "country": "Romania"
+    },
+    {
+      "lat": 54.6876,
+      "lon": 25.2806,
+      "count": 7,
+      "country": "Lithuania"
+    },
+    {
+      "lat": 59.4381,
+      "lon": 24.7369,
+      "count": 7,
+      "country": "Estonia"
+    },
+    {
       "lat": -23.5475,
       "lon": -46.6361,
       "count": 6,
       "country": "Brazil"
+    },
+    {
+      "lat": 25.0693,
+      "lon": 121.4626,
+      "count": 23,
+      "country": "Taiwan"
+    },
+    {
+      "lat": 50.458,
+      "lon": 30.5303,
+      "count": 50,
+      "country": "Ukraine"
+    },
+    {
+      "lat": 10.8455,
+      "lon": 106.726,
+      "count": 4,
+      "country": "Vietnam"
     },
     {
       "lat": 15.2915,
@@ -247,10 +235,16 @@
       "country": "Dominica"
     },
     {
-      "lat": 1.4834,
-      "lon": 103.6339,
-      "count": 10,
-      "country": "Malaysia"
+      "lat": 22.3702,
+      "lon": 114.13,
+      "count": 11,
+      "country": "Hong Kong"
+    },
+    {
+      "lat": 45.5002,
+      "lon": 9.18347,
+      "count": 28,
+      "country": "Italy"
     },
     {
       "lat": 46.8631,
@@ -265,6 +259,12 @@
       "country": "Israel"
     },
     {
+      "lat": 1.4834,
+      "lon": 103.6339,
+      "count": 10,
+      "country": "Malaysia"
+    },
+    {
       "lat": 41.0108,
       "lon": 28.9482,
       "count": 4,
@@ -273,11 +273,11 @@
     {
       "lat": 0,
       "lon": 0,
-      "count": 101,
+      "count": 64,
       "country": "Unknown"
     }
   ],
   "cityClusters": [],
-  "total": 6156,
+  "total": 6170,
   "countryCount": 57
 }

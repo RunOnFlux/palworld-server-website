@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import sitemap from 'vite-plugin-sitemap'
 import { ViteImageOptimizer } from 'vite-plugin-image-optimizer'
 
 // https://vite.dev/config/
@@ -14,54 +13,9 @@ export default defineConfig(({ isSsrBuild }) => {
   return {
     plugins: [
       react(),
-      !isSsrBuild && sitemap({
-        // Hardcoded so the sitemap <loc> (and the plugin-generated robots.txt
-        // Sitemap URL) is never the localhost dev proxy target from .env.
-        hostname: 'https://palworld.runonflux.com',
-        // SPA routes the plugin can't discover from the single index.html entry.
-        // These are the indexable content/guide pages plus /support.
-        dynamicRoutes: [
-          '/rent-palworld-server',
-          '/pricing',
-          '/setup-guide',
-          '/server-requirements',
-          '/guides/join-server',
-          '/guides/server-settings',
-          '/decentralized-palworld-hosting',
-          '/nitrado-alternative',
-          '/gportal-alternative',
-        ],
-        exclude: [
-          '/dashboard',
-          '/success',
-          '/cancel',
-        ],
-        changefreq: 'weekly',
-        priority: 0.7,
-        lastmod: new Date(),
-        robots: [
-          {
-            userAgent: '*',
-            allow: '/',
-            disallow: ['/dashboard/', '/admin/', '/success', '/cancel'],
-            crawlDelay: 1,
-          },
-          // Explicitly allow the major AI crawlers so the site can be cited in
-          // generative answers (ChatGPT, Claude, Perplexity, Google AI Overviews).
-          { userAgent: 'GPTBot', allow: '/' },
-          { userAgent: 'OAI-SearchBot', allow: '/' },
-          { userAgent: 'ChatGPT-User', allow: '/' },
-          { userAgent: 'ClaudeBot', allow: '/' },
-          { userAgent: 'Claude-Web', allow: '/' },
-          { userAgent: 'anthropic-ai', allow: '/' },
-          { userAgent: 'PerplexityBot', allow: '/' },
-          { userAgent: 'Perplexity-User', allow: '/' },
-          { userAgent: 'Google-Extended', allow: '/' },
-          { userAgent: 'Applebot-Extended', allow: '/' },
-          { userAgent: 'CCBot', allow: '/' },
-          { userAgent: 'Bytespider', allow: '/' },
-        ],
-      }),
+      // The sitemap is written by scripts/prerender.mjs, from the same route table that
+      // decides which shells exist. The plugin needed its own hand-maintained copy of
+      // that list and could only stamp one build-time lastmod across every URL.
       !isSsrBuild && ViteImageOptimizer({
         png: { quality: 80 },
         jpeg: { quality: 80 },
