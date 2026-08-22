@@ -237,6 +237,25 @@ export function nodesInGeolocation(nodes, geolocation) {
   });
 }
 
+
+/**
+ * The unique public IPs an app already occupies, from an `/apps/location/<name>` or
+ * `/apps/installinglocation/<name>` list (both return `{ ip: 'x.x.x.x:port', ... }`).
+ *
+ * The API port is dropped on purpose. FluxOS decides placement per IP, not per node:
+ * a node whose IP already runs or is installing the app refuses to spawn another copy
+ * (`trySpawningGlobalApplication`), so every node behind that IP is spent, however many
+ * of them share it.
+ */
+export function occupiedIps(locations) {
+  const ips = new Set();
+  (locations || []).forEach((loc) => {
+    const raw = typeof loc === 'string' ? loc : loc?.ip;
+    if (typeof raw === 'string' && raw) ips.add(raw.split(':')[0]);
+  });
+  return ips;
+}
+
 /**
  * How much room the customer's locations leave for THIS app.
  *
@@ -244,16 +263,29 @@ export function nodesInGeolocation(nodes, geolocation) {
  * public IPs, so two nodes behind one IP can only ever host one instance. `freeIpCount`
  * is the subset of those IPs with a node that can take the app right now.
  *
+ * `excludeIps` is how a diagnosis asks the question that actually matters for an app
+ * that is already partly placed: not "does the network have room for three copies" but
+ * "is there anywhere left for the copies still missing". The IPs already hosting it are
+ * removed from the count entirely and reported back as `takenIpCount`, because FluxOS
+ * will never place a second copy there no matter how empty those nodes are.
+ *
  * Both are plain arithmetic over the already-fetched list, so this is synchronous and
  * costs nothing to recompute on every keystroke of a location picker.
  */
-export function capacityForGeolocation(nodes, geolocation, hw, isEnterprise = false) {
+export function capacityForGeolocation(nodes, geolocation, hw, isEnterprise = false, excludeIps = null) {
   const inGeo = nodesInGeolocation(nodes, geolocation);
-  const candidates = inGeo.filter((n) => nodeFitsApp(n, hw, isEnterprise));
+  const fitting = inGeo.filter((n) => nodeFitsApp(n, hw, isEnterprise));
+  const candidates = [];
   const ips = new Set();
   const freeIps = new Set();
-  candidates.forEach((n) => {
+  const takenIps = new Set();
+  fitting.forEach((n) => {
     if (!n.ip) return;
+    if (excludeIps && excludeIps.has(n.ip)) {
+      takenIps.add(n.ip);
+      return;
+    }
+    candidates.push(n);
     ips.add(n.ip);
     if (nodeHasRoom(n, hw, isEnterprise)) freeIps.add(n.ip);
   });
@@ -262,18 +294,49 @@ export function capacityForGeolocation(nodes, geolocation, hw, isEnterprise = fa
     nodeCount: candidates.length,
     ipCount: ips.size,
     freeIpCount: freeIps.size,
+    takenIpCount: takenIps.size,
   };
 }
+
+const plural = (n, one, many) => (n === 1 ? one : many);
 
 /**
  * Diagnose why an app has fewer running instances than it should, in terms of the
  * one thing the customer can act on: their chosen locations.
  *
- * @returns {Promise<null|{severity,title,message,nodeCount,ipCount,freeIpCount,instances,running,worldwide}>}
- *          null when the locations are not the problem (or we cannot tell).
+ * The question is asked about the copies that are MISSING, not about the app as a whole.
+ * A server sold for three copies that runs one does not need three free host servers, it
+ * needs two more, on IPs other than the one it is already on. Counting the whole plan
+ * against the whole selection got this wrong in both directions: it called a perfectly
+ * healthy selection "too narrow" whenever the app's own instances had filled the last
+ * spare IPs, and it stayed silent when a two-IP selection could genuinely never carry a
+ * third copy. Passing the real locations is what fixes it, so prefer `runningLocations`
+ * over the bare `running` count.
+ *
+ * `installingLocations` (`/apps/installinglocation/<name>`) is the network already acting
+ * on the shortfall: those IPs are claimed, and an app whose every missing copy is claimed
+ * is not a problem, it is a deploy in progress.
+ *
+ * @returns {Promise<null|{severity,title,message,nodeCount,ipCount,freeIpCount,takenIpCount,instances,running,missing,worldwide}>}
+ *          null when we cannot tell. `severity` is 'blocked' or 'full' when the locations
+ *          are the cause, 'degraded' when they are not, and 'placing'/'waiting' when the
+ *          shortfall is simply not settled yet.
  */
-export async function diagnosePlacement({ geolocation, compose, instances = 1, isEnterprise = false, running = 0 }) {
-  if (running >= instances) return null;
+export async function diagnosePlacement({
+  geolocation,
+  compose,
+  instances = 1,
+  isEnterprise = false,
+  running = 0,
+  runningLocations = null,
+  installingLocations = null,
+}) {
+  const placedIps = occupiedIps(runningLocations);
+  // Unique IPs, not location entries: two nodes behind one IP are one copy to FluxOS,
+  // and counting them twice would hide a real shortfall.
+  const placed = runningLocations ? placedIps.size : running;
+  const missing = instances - placed;
+  if (missing <= 0) return null;
 
   const hw = appHardware(compose);
   if (!hw.cpu && !hw.ramGB) return null; // no spec to reason about
@@ -281,44 +344,128 @@ export async function diagnosePlacement({ geolocation, compose, instances = 1, i
   const nodes = await fetchFluxNodes();
   if (!nodes.length) return null; // stats unavailable — say nothing rather than guess
 
-  const worldwide = !(geolocation || []).length;
-  const { nodeCount, ipCount, freeIpCount } = capacityForGeolocation(nodes, geolocation, hw, isEnterprise);
+  const claimedIps = occupiedIps(installingLocations);
+  placedIps.forEach((ip) => claimedIps.delete(ip));
+  const spent = new Set([...placedIps, ...claimedIps]);
 
-  // Not enough distinct IPs to ever satisfy the instance count: a hard configuration
+  const worldwide = !(geolocation || []).length;
+  const { nodeCount, ipCount, freeIpCount, takenIpCount } = capacityForGeolocation(
+    nodes, geolocation, hw, isEnterprise, spent.size ? spent : null,
+  );
+  const base = {
+    nodeCount, ipCount, freeIpCount, takenIpCount, instances, running: placed, missing, worldwide,
+  };
+
+  // Every copy the app is short is already being installed somewhere. Nothing is wrong
+  // and nothing needs saying.
+  const unclaimed = missing - claimedIps.size;
+  if (unclaimed <= 0) {
+    return {
+      severity: 'placing',
+      title: 'The missing copies are being installed',
+      message: `${claimedIps.size} more ${plural(claimedIps.size, 'copy is', 'copies are')} being installed right now.`,
+      ...base,
+    };
+  }
+
+  const copies = plural(unclaimed, 'copy', 'copies');
+  const totalIps = ipCount + takenIpCount;
+
+  // Not enough distinct IPs LEFT to ever satisfy the missing copies: a hard configuration
   // problem that no amount of waiting fixes.
-  if (ipCount < instances) {
+  if (ipCount < unclaimed) {
     return {
       severity: 'blocked',
       title: worldwide
         ? 'No host server can take this plan right now'
         : 'Your locations are too narrow for this plan',
       message: worldwide
-        ? `Only ${ipCount} host server${ipCount === 1 ? '' : 's'} on the network currently fit this plan's hardware, and your server runs on ${instances} copies.`
-        : `The locations you picked cover ${ipCount} host server${ipCount === 1 ? '' : 's'} able to run this plan, but your server runs on ${instances} copies. Add another location so every copy has somewhere to go.`,
-      nodeCount, ipCount, freeIpCount, instances, running, worldwide,
+        ? `Only ${totalIps} host ${plural(totalIps, 'server', 'servers')} on the network currently fit this plan's hardware${takenIpCount ? `, and your server is already on ${takenIpCount} of them` : ''}. That leaves ${ipCount === 0 ? 'none' : ipCount} for the ${unclaimed} ${copies} still missing.`
+        : `The locations you picked cover ${totalIps} host ${plural(totalIps, 'server', 'servers')} able to run this plan${takenIpCount ? `, and your server already runs on ${takenIpCount} of them` : ''}. Flux never puts two copies on the same host server, so ${ipCount === 0 ? 'there is none' : `only ${ipCount} ${plural(ipCount, 'is', 'are')}`} left for the ${unclaimed} ${copies} still missing. Add another location so every copy has somewhere to go.`,
+      ...base,
     };
   }
 
-  // Enough nodes exist on paper — the usual cause is that they are all already full.
-  if (freeIpCount < instances) {
+  // Enough other nodes exist on paper — the usual cause is that they are all already full.
+  if (freeIpCount < unclaimed) {
     return {
       severity: 'full',
       title: 'The host servers in your locations are full',
-      message: `Your locations cover ${ipCount} host server${ipCount === 1 ? '' : 's'}, but ${freeIpCount === 0 ? 'none of them has' : `only ${freeIpCount} has`} room for this plan right now, and your server runs on ${instances} copies. Adding another location gives it more to choose from.`,
-      nodeCount, ipCount, freeIpCount, instances, running, worldwide,
+      message: `Of the ${ipCount} other host ${plural(ipCount, 'server', 'servers')} your locations cover, ${freeIpCount === 0 ? 'none has' : `only ${freeIpCount} has`} room for this plan right now, and ${unclaimed} ${copies} still ${plural(unclaimed, 'needs', 'need')} somewhere to go. Adding another location gives it more to choose from.`,
+      ...base,
     };
   }
 
-  // Room exists: the app is probably still being placed. Only say something once the
-  // customer is clearly stuck (nothing running at all), and say it softly.
-  if (running === 0) {
+  // Room exists on other IPs: the locations are not the problem. Only say something once
+  // the customer is clearly stuck, and say it softly.
+  if (placed === 0) {
     return {
       severity: 'waiting',
       title: 'Your server has not been placed yet',
-      message: `${freeIpCount} host server${freeIpCount === 1 ? '' : 's'} in your locations ${freeIpCount === 1 ? 'has' : 'have'} room for this plan, so it should come up shortly. If it stays like this, adding another location usually gets it placed faster.`,
-      nodeCount, ipCount, freeIpCount, instances, running, worldwide,
+      message: `${freeIpCount} host ${plural(freeIpCount, 'server', 'servers')} in your locations ${plural(freeIpCount, 'has', 'have')} room for this plan, so it should come up shortly. If it stays like this, adding another location usually gets it placed faster.`,
+      ...base,
     };
   }
 
-  return null;
+  // Running, but on fewer host servers than it was paid for, with room to spare for the
+  // rest. Widening the locations would not help and telling the customer to do it would
+  // be wrong: Flux re-places missing copies by itself, and a redeploy forces the issue.
+  return {
+    severity: 'degraded',
+    title: 'Running with less redundancy than you paid for',
+    message: `Your server is on ${placed} of ${instances} host servers. ${freeIpCount} other ${plural(freeIpCount, 'host server in your locations has', 'host servers in your locations have')} room for the ${unclaimed} missing ${copies}, so the network should place ${plural(unclaimed, 'it', 'them')} on its own. If it has not by the time you read this, redeploying places ${plural(unclaimed, 'it', 'them')} straight away and keeps your data.`,
+    ...base,
+  };
+}
+
+const DEGRADED_KEY = 'placementDegradedSince';
+/**
+ * How long a shortfall that the network can fix on its own is left alone.
+ *
+ * `trySpawningGlobalApplication` runs on every node continuously and picks missing apps
+ * at random, so a copy that has somewhere to go usually gets claimed within minutes.
+ * Half an hour is well past that and still far short of a billing cycle.
+ */
+const DEGRADED_GRACE_MS = 30 * 60 * 1000;
+
+function readDegradedSince(appName) {
+  try {
+    const all = JSON.parse(localStorage.getItem(DEGRADED_KEY) || '{}');
+    return typeof all[appName] === 'number' ? all[appName] : null;
+  } catch { return null; }
+}
+
+function writeDegradedSince(appName, at) {
+  try {
+    const all = JSON.parse(localStorage.getItem(DEGRADED_KEY) || '{}');
+    if (at === null) delete all[appName]; else all[appName] = at;
+    localStorage.setItem(DEGRADED_KEY, JSON.stringify(all));
+  } catch { /* quota or private mode — the grace just restarts */ }
+}
+
+/**
+ * The issue a customer should actually be shown, or null.
+ *
+ * 'waiting' and 'placing' describe a deploy that is progressing normally and are for the
+ * caller's benefit, not the customer's. 'degraded' is real but self-healing, so it is held
+ * back until it has persisted: the first minutes after a node drops out look identical to
+ * a permanent loss, and an alert that clears itself before anyone can act on it is noise.
+ * The timestamp lives in localStorage because the customer is not watching the dashboard
+ * during those minutes; a session-only clock would never elapse.
+ */
+export function surfacePlacementIssue(appName, issue) {
+  if (!issue || issue.severity === 'waiting' || issue.severity === 'placing') {
+    writeDegradedSince(appName, null);
+    return null;
+  }
+  if (issue.severity !== 'degraded') {
+    writeDegradedSince(appName, null);
+    return issue;
+  }
+  const since = readDegradedSince(appName);
+  if (since === null) {
+    writeDegradedSince(appName, Date.now());
+    return null;
+  }
+  return Date.now() - since >= DEGRADED_GRACE_MS ? issue : null;
 }

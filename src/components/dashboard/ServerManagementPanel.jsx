@@ -30,7 +30,7 @@ import { reconcilePalworldIni, externalGamePort, patchPublicPort, fetchIniText }
 import { jobFailureMessage, pollOperation, readUploadResponse, readVolumeResponse, uploadFailureIn } from '../../utils/volumeOperations';
 import { parseEnvArray } from '../../utils/appSpecHelpers';
 import { findMissingStandardEnv } from '../../config/serverMaintenance';
-import { diagnosePlacement } from '../../utils/nodeCapacity';
+import { diagnosePlacement, surfacePlacementIssue } from '../../utils/nodeCapacity';
 
 // Helper functions for expiration display
 const formatExpiration = (expiresAt) => {
@@ -241,16 +241,22 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 
       if (cancelled || !spec?.name) return;
       try {
-        const locations = await apiService.getAppLocations(server.name).catch(() => []);
-        const running = Array.isArray(locations) ? locations.length : 0;
+        // The real locations, not a count: the IPs the server already occupies cannot take
+        // another copy, so they are exactly what has to come off the available capacity
+        // before asking whether the missing copies have anywhere to go.
+        const [locations, installing] = await Promise.all([
+          apiService.getAppLocations(server.name).catch(() => []),
+          apiService.getAppInstallingLocations(server.name).catch(() => []),
+        ]);
         const diagnosis = await diagnosePlacement({
           geolocation: spec.geolocation,
           compose: spec.compose,
           instances: spec.instances || 1,
           isEnterprise: !!spec.enterprise,
-          running,
+          runningLocations: locations,
+          installingLocations: installing,
         });
-        if (!cancelled) setPlacementIssue(diagnosis);
+        if (!cancelled) setPlacementIssue(surfacePlacementIssue(server.name, diagnosis));
       } catch { /* diagnosis is a bonus — never break the panel over it */ }
     })();
     return () => { cancelled = true; };
@@ -1064,7 +1070,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
                     {pendingEnvUpdates}
                   </span>
                 )}
-                {tab.id === 'geolocation' && placementIssue && placementIssue.severity !== 'waiting' && (
+                {tab.id === 'geolocation' && placementIssue && (
                   <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" title={placementIssue.title} />
                 )}
               </button>
@@ -1091,7 +1097,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           <div className="w-16 h-16 rounded-full border-2 border-transparent border-t-blue-400/70 animate-spin" style={{ animationDuration: '1.5s' }} />
           <p className="text-sm text-gray-400">Locating your server...</p>
         </div>
-      ) : !masterLocation && !tabWorksOffline && placementIssue && placementIssue.severity !== 'waiting' ? (
+      ) : !masterLocation && !tabWorksOffline && placementIssue && placementIssue.severity !== 'degraded' ? (
         // The app is not merely slow to answer: it has nowhere to run. Saying "waiting for
         // domain access" here would be a lie the customer could stare at forever, when the
         // fix is one tab away.
@@ -1163,8 +1169,9 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       ) : (
         <>
           {/* Reachable, but running on fewer nodes than it was paid for — the redundancy the
-              customer bought is silently missing, and the cause is the location selection. */}
-          {placementIssue && placementIssue.severity !== 'waiting' && activeTab !== 'geolocation' && activeTab !== 'billing' && (
+              customer bought is silently missing. The cause is usually the location selection;
+              when it is not, the tab is still where the redeploy that fixes it lives. */}
+          {placementIssue && activeTab !== 'geolocation' && activeTab !== 'billing' && (
             <button
               type="button"
               onClick={() => setActiveTab('geolocation')}
@@ -1176,7 +1183,8 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-amber-300">{placementIssue.title}</span>
                 <span className="block mt-0.5 text-xs text-amber-200/80">
-                  Running on {placementIssue.running} of {placementIssue.instances} nodes — tap to add more locations.
+                  Running on {placementIssue.running} of {placementIssue.instances} nodes — tap to{' '}
+                  {placementIssue.severity === 'degraded' ? 'redeploy and place the rest' : 'add more locations'}.
                 </span>
               </span>
               <ChevronRight className="h-4 w-4 flex-shrink-0 text-amber-400/70" />

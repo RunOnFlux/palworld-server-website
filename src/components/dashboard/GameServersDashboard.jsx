@@ -10,7 +10,7 @@ import apiService, { parseAddress } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
 import secureStorage from '../../utils/secureStorage';
 import { recoverPendingRestores } from '../../utils/appPower';
-import { diagnosePlacement } from '../../utils/nodeCapacity';
+import { diagnosePlacement, surfacePlacementIssue } from '../../utils/nodeCapacity';
 import { LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import { pendingStandardUpdates } from '../../config/serverMaintenance';
 import { reconcilePalworldIni } from '../../utils/palworldIni';
@@ -751,13 +751,13 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
             }
 
             // A server can be reachable and still be running on fewer nodes than it was
-            // paid for — the redundancy is silently missing, with the same cause and the
-            // same fix as one that never got placed at all. Only diagnosed once we have
+            // paid for — the redundancy is silently missing, and the diagnosis works out
+            // whether the customer's locations are to blame. Only diagnosed once we have
             // seen at least one real location: an empty list here is more likely a failed
             // lookup than a server that lost every node, and guessing would cry wolf.
             const placed = Array.isArray(locations) ? locations.length : 0;
             if (placed > 0 && placed < (server.instances || 1)) {
-              await checkPlacement(server, placed);
+              await checkPlacement(server, locations);
             } else if (server.placementIssue) {
               updateServerInList(server.name, { placementIssue: null });
             }
@@ -822,27 +822,34 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
    * tell them. Throttled per server: the answer changes on the scale of hours.
    *
    * The same cause also produces a quieter failure: a server that DID come up, but on
-   * fewer nodes than it was paid for. Pass the real placed count as `running` so the
-   * diagnosis can tell the two apart (0 = never placed, 1-of-3 = short on redundancy).
+   * fewer nodes than it was paid for. Pass the real locations (not just how many) so the
+   * diagnosis can tell the two apart AND measure what is left for the copies still
+   * missing: the IPs the server already occupies are spent, because FluxOS refuses to put
+   * a second copy on a host IP that already has one.
+   *
+   * The installing list is fetched alongside, so a shortfall the network has already
+   * claimed reads as a deploy in progress rather than a configuration problem.
    */
-  const checkPlacement = async (server, running = 0) => {
+  const checkPlacement = async (server, locations = []) => {
     const last = placementCheckedRef.current.get(server.name) || 0;
     if (nowMs() - last < PLACEMENT_RECHECK_MS) return;
     placementCheckedRef.current.set(server.name, nowMs());
     try {
       const spec = await apiService.getAppSpecs(server.name);
       if (!spec?.name) return;
+      const installing = await apiService.getAppInstallingLocations(server.name).catch(() => []);
       const issue = await diagnosePlacement({
         geolocation: spec.geolocation,
         compose: spec.compose,
         instances: spec.instances || 1,
         isEnterprise: !!spec.enterprise,
-        running,
+        runningLocations: locations,
+        installingLocations: installing,
       });
-      // 'waiting' means there IS room and it is simply not placed yet — that is what
-      // "Installing on network" already says, so it stays as is.
+      // The util decides what is worth showing: a deploy that is simply progressing says
+      // nothing, and a shortfall the network can fix itself waits out its grace period.
       updateServerInList(server.name, {
-        placementIssue: issue && issue.severity !== 'waiting' ? issue : null,
+        placementIssue: surfacePlacementIssue(server.name, issue),
       });
     } catch { /* diagnosis is advisory — never disturb the status loop */ }
   };
@@ -898,7 +905,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
       const locations = await apiService.getAppLocations(server.name);
 
       if (!Array.isArray(locations) || locations.length === 0) {
-        await checkPlacement(server, 0);
+        await checkPlacement(server, []);
       } else if (server.placementIssue) {
         updateServerInList(server.name, { placementIssue: null });
       }
@@ -1499,7 +1506,8 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                         onClick={(e) => { e.stopPropagation(); handleManage(server, 'geolocation'); }}
                         className="mt-1.5 text-[11px] font-semibold text-amber-200 underline underline-offset-2 hover:text-white"
                       >
-                        Add more locations
+                        {/* Widening the locations only helps when they are the cause. */}
+                        {server.placementIssue.severity === 'degraded' ? 'Redeploy to place them' : 'Add more locations'}
                       </button>
                     </div>
                   </div>
@@ -1794,7 +1802,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                         >
                           <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
                           <span className="text-xs font-medium text-amber-300 whitespace-nowrap">
-                            Running on {server.placementIssue.running} of {server.placementIssue.instances} nodes — add locations
+                            Running on {server.placementIssue.running} of {server.placementIssue.instances} nodes — {server.placementIssue.severity === 'degraded' ? 'redeploy to fix' : 'add locations'}
                           </span>
                         </button>
                       )}

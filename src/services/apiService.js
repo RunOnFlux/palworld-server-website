@@ -325,7 +325,9 @@ class ApiService {
 
   /**
    * Get app installing locations (nodes currently installing the app)
-   * Used for crypto payment monitoring phase 2
+   * Used for crypto payment monitoring phase 2, and by the placement diagnosis, where a
+   * claimed IP is the difference between a deploy in progress and one with nowhere to go.
+   * Entries expire on their own after 15 minutes.
    * @param {string} appName - App name
    * @returns {Promise<Array>} List of installing locations
    */

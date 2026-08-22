@@ -6,7 +6,7 @@ import geolocationData from '../../utils/geolocation';
 import StepLocation from './deployment-steps/StepLocation';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import { encryptAppSpec, computeRemainingExpire } from '../../utils/appSpecHelpers';
-import { capacityForGeolocation, fetchFluxNodes, nodeFitsApp, nodeHasRoom, IP_HEADROOM } from '../../utils/nodeCapacity';
+import { capacityForGeolocation, fetchFluxNodes, nodeFitsApp, nodeHasRoom, occupiedIps, IP_HEADROOM } from '../../utils/nodeCapacity';
 
 // Flux free-update rate limits — mirror of EnvironmentTab / backend checkFreeAppUpdate.
 // Windows are in blocks; post-PON-fork the target block time is 30s.
@@ -87,6 +87,12 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
   const [geolocationForm, setGeolocationForm] = useState({ continent: '', country: '', region: '' });
   const [allowedLocations, setAllowedLocations] = useState([]);
   const [originalGeo, setOriginalGeo] = useState(''); // sorted key of the on-chain geolocation
+  // The IPs the server is running on right now. Not part of the capacity judgement (that
+  // stays on the whole selection, because a redeploy can move every copy), only of the
+  // sentence that reconciles this screen's count with the "N other host servers" the
+  // placement warning quotes: without it the customer sees two different numbers for the
+  // same locations and neither explains the other.
+  const [placedIps, setPlacedIps] = useState(() => new Set());
 
   // Kept for the save step.
   const specRef = useRef(null);
@@ -145,6 +151,12 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
       // Nodes for the picker (enterprise apps need arcaneVersion → the flux projection).
       // Shared, session-cached fetch: the placement diagnosis pulls the same multi-MB list.
       setNodes(await fetchFluxNodes());
+
+      // Where it actually runs — advisory, so a failed lookup just means the line is
+      // not shown rather than the tab failing to load.
+      try {
+        setPlacedIps(occupiedIps(await apiService.getAppLocations(server.name)));
+      } catch { /* non-fatal */ }
 
       // Free-update rate-limit status — non-fatal.
       try {
@@ -322,15 +334,21 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
     const { nodeCount, ipCount, freeIpCount } = capacityForGeolocation(
       nodes, allowedLocations, hardwareRef.current, isEnterpriseRef.current,
     );
+    // Second pass, same arithmetic with the running IPs held out: how many of the host
+    // servers counted above are already spent on this server. Deliberately NOT fed back
+    // into the numbers above, which judge the whole selection.
+    const { takenIpCount } = placedIps.size
+      ? capacityForGeolocation(nodes, allowedLocations, hardwareRef.current, isEnterpriseRef.current, placedIps)
+      : { takenIpCount: 0 };
     setSelectionCapacity({
-      nodeCount, ipCount, freeIpCount, instances: inst,
+      nodeCount, ipCount, freeIpCount, takenIpCount, instances: inst,
       // Three distinct facts: cannot fit at all, fits but every node is occupied, or
       // fits with nothing to spare. The first is permanent, the other two are about now.
       short: ipCount < inst,
       full: ipCount >= inst && freeIpCount < inst,
       tight: freeIpCount < inst + IP_HEADROOM,
     });
-  }, [nodes, allowedLocations]);
+  }, [nodes, allowedLocations, placedIps]);
 
   /**
    * Saving a selection too small for the instance count takes a RUNNING server apart, so
@@ -424,6 +442,21 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
               server runs on <span className="font-semibold text-white">{selectionCapacity.instances}</span> copies.
               Flux places each copy on a separate IP address, so host servers sharing one count once here.
             </p>
+            {/* Reconciles this count with the placement warning, which only ever talks about
+                the host servers still available to the copies that are missing. */}
+            {selectionCapacity.takenIpCount > 0 && (
+              <p className={`mt-1 ${selectionCapacity.tight ? 'text-amber-200/70' : 'text-slate-400'}`}>
+                {selectionCapacity.takenIpCount === 1
+                  ? '1 of them already runs a copy of your server'
+                  : `${selectionCapacity.takenIpCount} of them already run copies of your server`}
+                {selectionCapacity.instances > selectionCapacity.takenIpCount
+                  ? `, so the ${selectionCapacity.instances - selectionCapacity.takenIpCount} still missing ${
+                    selectionCapacity.instances - selectionCapacity.takenIpCount === 1
+                      ? `needs one of the other ${selectionCapacity.ipCount - selectionCapacity.takenIpCount}`
+                      : `need the other ${selectionCapacity.ipCount - selectionCapacity.takenIpCount}`}.`
+                  : '.'}
+              </p>
+            )}
             {selectionCapacity.short ? (
               <p className="text-amber-200/70 mt-1">
                 That is not enough to run every copy: {selectionCapacity.instances - selectionCapacity.ipCount}{' '}
