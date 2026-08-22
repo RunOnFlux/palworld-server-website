@@ -114,6 +114,20 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const [currentStep, setCurrentStep] = useState(preSelectedPlan ? 2 : 1);
   const skippedStep1Ref = useRef(!!preSelectedPlan);
   const stepDirectionRef = useRef(1); // 1 = forward, -1 = back
+  /**
+   * Selections the customer has already been warned about and accepted, keyed by the plan,
+   * the locations AND the verdict: a modal that reappears on every Back/Continue is one
+   * people learn to dismiss without reading. Changing any of the three earns a fresh ask.
+   *
+   * Declared here with the other refs because closing the dialog has to clear it. This
+   * component is mounted for the whole page (Home and Dashboard both render it with
+   * `isOpen` as a prop), so without that reset an acceptance from one deploy silently
+   * covered every later deploy in the same page load, and the second customer to pick a
+   * full location was never warned at all.
+   */
+  const acceptedCapacityRef = useRef(new Set());
+  // Same idea for the "you never added that location" question, keyed by the location.
+  const acceptedUnaddedRef = useRef(new Set());
 
   // Ref to store popup monitoring intervals for cleanup
   const popupIntervalsRef = useRef([]);
@@ -665,6 +679,8 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       setShowAdvanced(false);
       setGeolocationForm({ continent: '', country: '', region: '' });
       setAllowedLocations([]);
+      acceptedCapacityRef.current.clear();
+      acceptedUnaddedRef.current.clear();
       setAvailableLocations([]);
       setAvailableContinents([]);
       setAvailableCountries([]);
@@ -734,30 +750,63 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const handleBackToStep3OrSkip = useCallback(() => { stepDirectionRef.current = -1; setCurrentStep(hasEnvironmentStep ? 3 : 2); }, [hasEnvironmentStep]);
   const handleBackToStep4 = useCallback(() => { stepDirectionRef.current = -1; setCurrentStep(4); }, []);
   const handleContinueToStep4 = useCallback(() => { stepDirectionRef.current = 1; setCurrentStep(4); }, []);
-  /**
-   * Selections the customer has already been warned about and accepted, keyed by the
-   * locations AND the verdict: a modal that reappears on every Back/Continue is one people
-   * learn to dismiss without reading. Changing the selection, or the verdict changing
-   * under it, earns a fresh ask.
-   */
-  const acceptedCapacityRef = useRef(new Set());
   const [capacityPrompt, setCapacityPrompt] = useState(null);
+  // Keyed by the plan too: the same locations are a different bet on a bigger plan, and
+  // a warning accepted on the cheap tier must not cover the expensive one.
   const capacityKey = useCallback(
-    (kind) => `${[...allowedLocations].sort().join('|') || '*'}::${kind}`,
-    [allowedLocations],
+    (kind) => `${selectedPlan?.id || '?'}::${[...allowedLocations].sort().join('|') || '*'}::${kind}`,
+    [allowedLocations, selectedPlan],
   );
 
   const goToStep5 = useCallback(() => { stepDirectionRef.current = 1; setCurrentStep(5); }, []);
 
+  /**
+   * A location chosen in the pickers but never added with the button.
+   *
+   * The dropdowns are where the customer reads how full each place is, so choosing one
+   * there feels like choosing it, and the deploy then goes out worldwide because the
+   * selection is still empty. Nothing on the screen contradicts them: an empty selection
+   * is a legitimate answer, so every check downstream passes. Null when the pick is
+   * already covered, by itself or by a broader entry that absorbs it.
+   */
+  const pendingGeoCode = useMemo(() => {
+    if (!geolocationForm.continent) return null;
+    let code = `ac${geolocationForm.continent}`;
+    if (geolocationForm.country) {
+      code += `_${geolocationForm.country}`;
+      if (geolocationForm.region) code += `_${geolocationForm.region}`;
+    }
+    const covered = allowedLocations.some((c) => c === code || code.startsWith(`${c}_`));
+    return covered ? null : code;
+  }, [geolocationForm, allowedLocations]);
+
+  const [unaddedPrompt, setUnaddedPrompt] = useState(null);
+
   // The inline notice on the location step is easy to walk past; this is the same fact
   // where it cannot be. Still not a block — the customer can say yes and go on.
-  const handleContinueToStep5 = useCallback(() => {
+  const continueFromLocations = useCallback(() => {
     if (capacityBlocker && !acceptedCapacityRef.current.has(capacityKey(capacityBlocker.kind))) {
       setCapacityPrompt(capacityBlocker);
       return;
     }
     goToStep5();
   }, [capacityBlocker, capacityKey, goToStep5]);
+
+  // Asked before the capacity question, because the answer changes it: adding the pick
+  // is what gives the capacity check something to judge.
+  const handleContinueToStep5 = useCallback(() => {
+    if (pendingGeoCode && !acceptedUnaddedRef.current.has(pendingGeoCode)) {
+      setUnaddedPrompt(pendingGeoCode);
+      return;
+    }
+    continueFromLocations();
+  }, [pendingGeoCode, continueFromLocations]);
+
+  const continueWithoutPending = useCallback(() => {
+    if (unaddedPrompt) acceptedUnaddedRef.current.add(unaddedPrompt);
+    setUnaddedPrompt(null);
+    continueFromLocations();
+  }, [unaddedPrompt, continueFromLocations]);
 
   const acceptCapacityWarning = useCallback(() => {
     if (capacityPrompt) acceptedCapacityRef.current.add(capacityKey(capacityPrompt.kind));
@@ -1614,6 +1663,48 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       {/* Capacity confirmation — the last thing between a selection we know is short and
           a payment. Two different facts, two different messages: 'short' is arithmetic and
           does not improve on its own; 'full' is a measurement of right now. */}
+      {/* Asked before the capacity prompt, and never at the same time as it: this one is
+          about a selection that does not exist yet, and answering it is what makes the
+          capacity question answerable. */}
+      {unaddedPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-amber-500/40 shadow-xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-7 h-7 text-amber-400 flex-shrink-0" />
+              <div className="min-w-0">
+                <h4 className="text-lg font-semibold text-amber-300 mb-2">
+                  You have not added {formatLocationLabel(unaddedPrompt)}
+                </h4>
+                <p className="text-sm text-gray-300 leading-relaxed">
+                  It is picked in the dropdown but not in your allowed locations, so as things
+                  stand your server can be deployed anywhere in the world.
+                </p>
+                <p className="text-sm text-gray-400 mt-3">
+                  Deploying worldwide is a perfectly good choice. It is just not the one the
+                  dropdown suggests you were making.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 mt-5">
+              <button
+                type="button"
+                onClick={continueWithoutPending}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-gray-600 text-sm text-gray-300 hover:bg-gray-700/60 transition-colors"
+              >
+                Deploy worldwide
+              </button>
+              <button
+                type="button"
+                onClick={() => { handleAddLocation(); setUnaddedPrompt(null); }}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-gray-900 hover:bg-amber-400 transition-colors"
+              >
+                Add {formatLocationLabel(unaddedPrompt)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {capacityPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full border border-amber-500/40 shadow-xl">
