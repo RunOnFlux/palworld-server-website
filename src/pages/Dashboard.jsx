@@ -65,7 +65,7 @@ const Dashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8">
           {/* Game Style Title */}
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             className="mb-3"
@@ -114,7 +114,7 @@ const Dashboard = () => {
 
           {/* Header */}
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
             className="mb-5"
@@ -126,7 +126,7 @@ const Dashboard = () => {
 
           {/* Action Bar */}
           <motion.div
-            initial={{ opacity: 0 }}
+            initial={false}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
             className="flex justify-between items-center mb-4"
@@ -154,7 +154,7 @@ const Dashboard = () => {
 
           {/* Server List - Game Servers Dashboard */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
           >

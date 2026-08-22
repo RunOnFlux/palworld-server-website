@@ -191,6 +191,10 @@ const InfraCarousel = ({ data, onHoverCountry }) => {
                 <img
                   src={`https://flagcdn.com/w40/${code}.png`}
                   alt={cluster.country}
+                  // Intrinsic size of the w40 asset. CSS still decides the rendered size;
+                  // these let the browser reserve the box before the image arrives.
+                  width={40}
+                  height={30}
                   className="w-4 h-3 sm:w-5 sm:h-3.5 rounded-[2px] object-cover"
                   loading="lazy"
                 />
@@ -335,7 +339,7 @@ const ServerLocations = () => {
         {/* Header */}
         <motion.div
           className="text-center mb-12"
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7 }}
@@ -344,7 +348,7 @@ const ServerLocations = () => {
             src="/games/palworld/features/global-network.webp"
             alt="Decentralized Infrastructure"
             className="w-52 h-52 sm:w-64 sm:h-64 mx-auto mb-6"
-            initial={{ opacity: 0, scale: 0.8 }}
+            initial={{ scale: 0.8 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
             transition={{ delay: 0.25, type: 'spring', stiffness: 150 }}
@@ -364,7 +368,7 @@ const ServerLocations = () => {
         {/* Stats bar */}
         <motion.div
             className="grid grid-cols-3 gap-4 max-w-lg mx-auto mb-10"
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.3 }}
@@ -389,7 +393,7 @@ const ServerLocations = () => {
       <div className="relative max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           className="relative overflow-hidden rounded-2xl border-2 border-primary/20 bg-transparent"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8, delay: 0.2 }}
@@ -533,7 +537,7 @@ const ServerLocations = () => {
                   left: tooltipPos.x + 16,
                   top: tooltipPos.y - 16,
                 }}
-                initial={{ opacity: 0, scale: 0.9, y: 4 }}
+                initial={{ scale: 0.9, y: 4 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.15 }}

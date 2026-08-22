@@ -105,7 +105,7 @@ const Hero = ({ onGetStarted }) => {
             <motion.div
               className="relative flex w-fit max-w-full mx-auto items-center justify-center gap-2.5 px-4 sm:px-5 py-2 mb-5 rounded-full overflow-hidden text-xs sm:text-sm font-bold text-white text-center leading-snug border border-white/40 shadow-[0_0_30px_rgba(33,150,243,0.55),0_0_70px_rgba(33,150,243,0.3)]"
               style={{ background: 'linear-gradient(135deg, rgba(33,150,243,0.9), rgba(76,175,80,0.85))' }}
-              initial={{ opacity: 0, y: -14, scale: 0.9 }}
+              initial={{ y: -14, scale: 0.9 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ delay: 0.1, duration: 0.6, ease: 'backOut' }}
             >
@@ -120,7 +120,7 @@ const Hero = ({ onGetStarted }) => {
           {/* Badge */}
           <motion.div
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary/70 border border-primary rounded-full text-white text-sm font-semibold mb-8 shadow-[0_0_20px_rgba(33,150,243,0.6),0_0_40px_rgba(33,150,243,0.3)]"
-            initial={{ opacity: 0, scale: 0.8 }}
+            initial={{ scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
           >
@@ -130,9 +130,13 @@ const Hero = ({ onGetStarted }) => {
 
           {/* Main heading — GSAP text split target */}
           <h1 className="text-3xl sm:text-5xl lg:text-7xl font-bold mb-4 sm:mb-6 leading-tight drop-shadow-2xl">
+            {/* No opacity-0 class and an explicit space: the second half of the heading used
+                to ship invisible and glued to the first, because <br /> contributes no
+                whitespace to textContent and gsap.fromTo below already starts it at 0. */}
             <span ref={headingRef} className="text-white drop-shadow-lg inline-block">{gameConfig.serverName}</span>
+            {' '}
             <br />
-            <span ref={subheadingRef} className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent drop-shadow-lg inline-block opacity-0">
+            <span ref={subheadingRef} className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent drop-shadow-lg inline-block">
               On the Decentralized Cloud
             </span>
           </h1>
@@ -140,7 +144,7 @@ const Hero = ({ onGetStarted }) => {
           {/* Tagline */}
           <motion.p
             className="text-base sm:text-xl lg:text-2xl text-white mb-3 sm:mb-4 max-w-3xl mx-auto drop-shadow-lg"
-            initial={{ opacity: 0 }}
+            initial={false}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.2 }}
           >
@@ -150,7 +154,7 @@ const Hero = ({ onGetStarted }) => {
           {/* Description */}
           <motion.p
             className="text-sm sm:text-base lg:text-lg text-white/90 mb-8 sm:mb-12 max-w-2xl mx-auto drop-shadow-lg"
-            initial={{ opacity: 0 }}
+            initial={false}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.4 }}
           >
@@ -166,7 +170,7 @@ const Hero = ({ onGetStarted }) => {
               boxShadow: '0 0 40px rgba(33,150,243,0.4), 0 0 80px rgba(33,150,243,0.2), inset 0 1px 0 rgba(255,255,255,0.2)',
               backdropFilter: 'blur(12px)',
             }}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.4, duration: 0.8 }}
           >
@@ -180,7 +184,7 @@ const Hero = ({ onGetStarted }) => {
           {/* CTA Buttons */}
           <motion.div
             className="flex flex-row gap-3 sm:gap-4 justify-center items-center mb-8 sm:mb-12"
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.6 }}
           >
@@ -214,7 +218,7 @@ const Hero = ({ onGetStarted }) => {
               <motion.div
                 key={stat.label}
                 className="text-center bg-primary/20 backdrop-blur-md border border-white/10 rounded-xl py-3 px-4"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: stat.delay }}
               >

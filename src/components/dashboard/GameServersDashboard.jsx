@@ -1308,7 +1308,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
           {servers.map((server) => (
             <motion.div
               key={server.name}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-lg"
@@ -1640,7 +1640,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
               {servers.map((server) => (
                 <motion.tr
                   key={server.name}
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   className="hover:bg-gray-700/30 transition-colors"

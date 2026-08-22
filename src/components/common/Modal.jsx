@@ -96,7 +96,7 @@ const Modal = ({
           {/* Backdrop with enhanced blur */}
           <motion.div
             className="fixed inset-0 bg-gradient-to-br from-black/90 via-black/85 to-black/90"
-            initial={{ opacity: 0 }}
+            initial={false}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={closeOnOverlayClick ? onClose : undefined}
@@ -110,7 +110,7 @@ const Modal = ({
             style={{
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset'
             }}
-            initial={{ opacity: 0 }}
+            initial={false}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15, ease: "easeOut" }}

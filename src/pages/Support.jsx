@@ -195,7 +195,7 @@ const Support = () => {
           <motion.div
             className="bg-surface border border-border/30 rounded-2xl p-6 shadow-xl shadow-black/20"
             style={{ borderTop: '2px solid rgb(33,150,243)', boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(33,150,243,0.08), 0 4px 24px rgba(33,150,243,0.06)' }}
-            initial={{ opacity: 0, y: 24 }}
+            initial={{ y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, ease: 'easeOut' }}
           >

@@ -61,7 +61,7 @@ const GuideLinks = () => {
               // With an odd number of cards, stretch the last one across both
               // columns so the grid has no orphan cell.
               className={guides.length % 2 === 1 && i === guides.length - 1 ? 'sm:col-span-2' : undefined}
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.06 }}

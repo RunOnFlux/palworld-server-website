@@ -140,7 +140,7 @@ const PalworldParticles = () => {
           style={{
             background: `radial-gradient(ellipse at ${bolt.x} 50%, rgba(33,150,243,0.12), transparent 50%)`,
           }}
-          initial={{ opacity: 0 }}
+          initial={false}
           animate={{ opacity: [0, 0.8, 0] }}
           transition={{
             duration: 0.35,

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useMemo } from 
 import PropTypes from 'prop-types';
 import toast from 'react-hot-toast';
 import authService from '../services/authService';
-import { auth, onAuthStateChanged } from '../utils/firebase';
+import { subscribeToAuth, getUser } from '../utils/firebase';
 import secureStorage from '../utils/secureStorage';
 import SessionTimer from '../components/auth/SessionTimer';
 
@@ -73,7 +73,9 @@ export const AuthProvider = ({ children }) => {
       }
 
       // ALWAYS listen to Firebase auth state (needed for Google/email login to work)
-      unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // subscribeToAuth loads the SDK only when there is a persisted session to restore, or
+      // once a login call pulls it in; with neither it reports null and downloads nothing.
+      unsubscribe = subscribeToAuth(async (firebaseUser) => {
         console.log('🔔 AuthContext: Auth state changed, user:', firebaseUser?.email || 'null');
 
         // Check if user is currently using ZelCore login
@@ -138,7 +140,7 @@ export const AuthProvider = ({ children }) => {
             const timeoutId = setTimeout(() => {
               const loginType = localStorage.getItem('loginType');
               // Only clear if no Firebase user AND no active login session (firebase or zelcore)
-              if (!auth.currentUser && loginType !== 'zelcore' && loginType !== 'firebase') {
+              if (!getUser() && loginType !== 'zelcore' && loginType !== 'firebase') {
                 console.log('🔔 AuthContext: No Firebase user after delay, clearing session');
                 setUser(null);
                 setIsAuthenticated(false);

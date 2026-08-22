@@ -30,7 +30,7 @@ const HomeContent = () => {
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Why host on Flux */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
@@ -59,7 +59,7 @@ const HomeContent = () => {
         {/* How it works */}
         <motion.div
           className="mt-12"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
@@ -80,7 +80,7 @@ const HomeContent = () => {
         {/* Features explained */}
         <motion.div
           className="mt-12"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >

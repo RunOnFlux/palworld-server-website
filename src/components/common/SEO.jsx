@@ -9,6 +9,25 @@ import { hasGAConsent } from './CookieConsent';
  * Following Google, Bing, and social media best practices
  * Properly integrated with HelmetProvider for SSR/CSR compatibility
  */
+// The canonical origin used by every URL in the structured data below.
+//
+// VITE_APP_URL is localhost in .env, because that is what the dev proxy needs. A production
+// build that inherits it publishes localhost inside Organization, WebSite, BreadcrumbList and
+// the rest, and nothing complains. The Dockerfile does set the real value, so the shipped
+// image was always correct, but only because one build path was the only one anybody used.
+// A production build now refuses a loopback origin rather than trusting the variable.
+const CANONICAL_ORIGIN = 'https://palworld.runonflux.com';
+const isLoopback = (url) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url || '');
+
+function resolveSiteUrl() {
+  const configured = import.meta.env.VITE_APP_URL;
+  if (import.meta.env.PROD) {
+    if (!configured || isLoopback(configured)) return CANONICAL_ORIGIN;
+    return configured;
+  }
+  return configured || 'http://localhost:5173';
+}
+
 const SEO = ({
   title,
   description,
@@ -22,7 +41,7 @@ const SEO = ({
   breadcrumbs = null,
   schemas = null,
 }) => {
-  const siteUrl = import.meta.env.VITE_APP_URL || 'http://localhost:5173';
+  const siteUrl = resolveSiteUrl();
   const siteName = gameConfig.serverName;
   const game = gameConfig.gameName;
   const defaultKeywords = [

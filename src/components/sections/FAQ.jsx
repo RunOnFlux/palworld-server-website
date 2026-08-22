@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ChevronDown } from 'lucide-react';
 import { gameConfig } from '../../config/gameConfig';
 
 /**
@@ -12,24 +12,14 @@ import { gameConfig } from '../../config/gameConfig';
  * crawlers and appears exactly once. This component therefore renders only the
  * visible accordion and does not emit schema itself.
  */
-const PER_PAGE = 6;
 
 const FAQ = () => {
   const [openIndex, setOpenIndex] = useState(null);
-  const [page, setPage] = useState(0);
 
   const faqs = gameConfig.faq;
-  const totalPages = Math.ceil(faqs.length / PER_PAGE);
-  const start = page * PER_PAGE;
-  const pageItems = faqs.slice(start, start + PER_PAGE);
 
   const toggleQuestion = (index) => {
     setOpenIndex(openIndex === index ? null : index);
-  };
-
-  const goToPage = (p) => {
-    setPage(p);
-    setOpenIndex(null); // close any open item when switching pages
   };
 
   return (
@@ -93,7 +83,7 @@ const FAQ = () => {
         {/* Section header */}
         <motion.div
           className="text-center mb-8"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
@@ -107,12 +97,13 @@ const FAQ = () => {
 
         {/* FAQ Accordion */}
         <div className="space-y-4">
-          {pageItems.map((item, i) => {
-            const index = start + i;
+          {faqs.map((item, index) => {
+            // Cap the stagger so a late item is not still waiting after it is on screen.
+            const i = Math.min(index, 5);
             return (
             <motion.div
               key={index}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
             >
@@ -135,66 +126,40 @@ const FAQ = () => {
                   </motion.div>
                 </button>
 
-                <AnimatePresence>
-                  {openIndex === index && (
-                    <motion.div
-                      id={`faq-answer-${index}`}
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      <div className="px-6 pb-4 text-text-secondary leading-relaxed border-t border-border pt-4">
-                        {item.answer}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+
+                {/* The answer stays mounted and collapses to height 0 rather than unmounting, so it
+
+
+                    is in the server-rendered HTML that crawlers and AI answer engines read. They do
+
+
+                    not click accordions, and the FAQPage schema stopped carrying this for them when
+
+
+                    Google dropped FAQ rich results in May 2026. */}
+                <motion.div
+                  id={`faq-answer-${index}`}
+                  initial={false}
+                  animate={{ height: openIndex === index ? 'auto' : 0, opacity: openIndex === index ? 1 : 0 }}
+
+
+                  style={{ overflow: 'hidden' }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="px-6 pb-4 text-text-secondary leading-relaxed border-t border-border pt-4">
+                    {item.answer}
+                  </div>
+                </motion.div>
               </div>
             </motion.div>
             );
           })}
         </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 mt-8">
-            <button
-              type="button"
-              onClick={() => goToPage(Math.max(0, page - 1))}
-              disabled={page === 0}
-              aria-label="Previous page"
-              className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-surface text-text-secondary hover:text-text hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            {Array.from({ length: totalPages }).map((_, p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => goToPage(p)}
-                aria-current={page === p ? 'page' : undefined}
-                className={`h-9 min-w-9 px-3 rounded-lg text-sm font-semibold border transition-colors cursor-pointer ${page === p ? 'bg-primary border-primary text-white' : 'bg-surface border-border text-text-secondary hover:text-text hover:border-primary/40'}`}
-              >
-                {p + 1}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => goToPage(Math.min(totalPages - 1, page + 1))}
-              disabled={page === totalPages - 1}
-              aria-label="Next page"
-              className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-surface text-text-secondary hover:text-text hover:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
         {/* Contact CTA */}
         <motion.div
           className="text-center mt-12"
-          initial={{ opacity: 0 }}
+          initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
         >

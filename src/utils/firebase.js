@@ -1,22 +1,17 @@
-import { initializeApp } from 'firebase/app';
-import {
-  getAuth,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  setPersistence,
-  browserLocalPersistence,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  updatePassword,
-  reauthenticateWithCredential,
-  EmailAuthProvider,
-  updateProfile,
-} from 'firebase/auth';
+/**
+ * Firebase auth, loaded on demand.
+ *
+ * Why it is lazy: the SDK is a ~148KB chunk, and importing it at module scope put it in the
+ * eager graph of every route, so a visitor landing on an article page from Google downloaded
+ * the whole authentication stack to read it. Anonymous visitors now never fetch it.
+ *
+ * How it stays correct: Firebase persists a session under a known localStorage key. If that key
+ * is absent there is no session to restore, so subscribeToAuth() reports "signed out" without
+ * loading anything. The moment anything needs auth, ensureSdk() loads the SDK, attaches the
+ * real listener and replays it to every subscriber, so a logged-in visitor behaves exactly as
+ * before, one tick later.
+ */
 
-// FluxOS Firebase Configuration
 const firebaseConfig = {
   apiKey: 'AIzaSyAtMsozWwJhhPIOd9BGkZxk5D6Wr8jVGVM',
   authDomain: 'fluxcore-prod.firebaseapp.com',
@@ -27,28 +22,97 @@ const firebaseConfig = {
   measurementId: 'G-SEGT3X2737',
 };
 
-// Initialize Firebase.
-// During the SSR prerender there is no browser: getAuth() needs window. Nothing on
-// the server ever reads `auth` (AuthProvider only touches it from effects, which do
-// not run during renderToString), so a null stand-in keeps the module importable in
-// Node.
-const app = import.meta.env.SSR ? null : initializeApp(firebaseConfig);
-const auth = import.meta.env.SSR ? null : getAuth(app);
+// Filled in by ensureSdk(). `auth` stays null until then, which is why the synchronous helpers
+// below tolerate it: before the SDK loads, "no user" is the truthful answer and the same one
+// they gave on a cold page load previously.
+let sdk = null;
+let sdkPromise = null;
+let auth = null;
 
-// Set persistence immediately on initialization (browser only — `auth` is null
-// during the SSR prerender, and persistence is a browser concern anyway).
-if (!import.meta.env.SSR) {
-  setPersistence(auth, browserLocalPersistence).catch((error) => {
-    console.error('Failed to set auth persistence:', error);
+/** The key Firebase writes its persisted session under. Absent means nobody is signed in. */
+const sessionKey = `firebase:authUser:${firebaseConfig.apiKey}:[DEFAULT]`;
+const hasStoredSession = () => {
+  try {
+    return localStorage.getItem(sessionKey) !== null;
+  } catch {
+    // Storage blocked. Assume a session might exist rather than locking someone out.
+    return true;
+  }
+};
+
+/** Load and initialise the SDK once. Resolves to the firebase/auth module namespace. */
+async function ensureSdk() {
+  if (import.meta.env.SSR) return null;
+  if (sdkPromise) return sdkPromise;
+
+  sdkPromise = (async () => {
+    const [{ initializeApp }, authMod] = await Promise.all([
+      import('firebase/app'),
+      import('firebase/auth'),
+    ]);
+    const app = initializeApp(firebaseConfig);
+    auth = authMod.getAuth(app);
+    sdk = authMod;
+    try {
+      await authMod.setPersistence(auth, authMod.browserLocalPersistence);
+    } catch (error) {
+      console.error('Failed to set auth persistence:', error);
+    }
+    attachListener();
+    return authMod;
+  })();
+
+  return sdkPromise;
+}
+
+// Subscribers registered before the SDK existed, plus the live unsubscribe once it does.
+const subscribers = new Set();
+let detach = null;
+
+function attachListener() {
+  if (detach || !auth || !sdk) return;
+  detach = sdk.onAuthStateChanged(auth, (user) => {
+    subscribers.forEach((cb) => cb(user));
   });
+}
+
+/**
+ * Subscribe to auth state. Returns an unsubscribe function synchronously.
+ *
+ * With no persisted session this reports null immediately and loads nothing. Any later login
+ * goes through ensureSdk(), which attaches the real listener and starts feeding this callback.
+ */
+export function subscribeToAuth(callback) {
+  subscribers.add(callback);
+
+  if (sdkPromise || hasStoredSession()) {
+    ensureSdk().catch((error) => {
+      console.error('Firebase failed to load:', error);
+      callback(null);
+    });
+  } else {
+    Promise.resolve().then(() => {
+      if (subscribers.has(callback)) callback(null);
+    });
+  }
+
+  return () => {
+    subscribers.delete(callback);
+    if (subscribers.size === 0 && detach) {
+      detach();
+      detach = null;
+    }
+  };
 }
 
 /**
  * Get current user
  */
 export function getUser() {
+  // Synchronous by contract, so callers outside React keep working. Null before the SDK loads,
+  // which is the same value they saw on a cold load previously.
   try {
-    return auth.currentUser;
+    return auth?.currentUser ?? null;
   } catch {
     return null;
   }
@@ -59,7 +123,8 @@ export function getUser() {
  */
 export async function reloadUser() {
   try {
-    const user = auth.currentUser;
+    await ensureSdk();
+    const user = auth?.currentUser;
     if (user) {
       await user.reload();
       return auth.currentUser;
@@ -77,6 +142,7 @@ export async function reloadUser() {
 export async function loginWithGoogle() {
   try {
     // Set persistence before login
+    const { setPersistence, browserLocalPersistence, GoogleAuthProvider, signInWithPopup } = await ensureSdk();
     await setPersistence(auth, browserLocalPersistence);
 
     const provider = new GoogleAuthProvider();
@@ -96,6 +162,7 @@ export async function loginWithGoogle() {
 export async function loginWithEmail(email, password) {
   try {
     // Set persistence before login
+    const { setPersistence, browserLocalPersistence, signInWithEmailAndPassword } = await ensureSdk();
     await setPersistence(auth, browserLocalPersistence);
 
     const result = await signInWithEmailAndPassword(auth, email, password);
@@ -111,6 +178,7 @@ export async function loginWithEmail(email, password) {
  */
 export async function createEmailAccount(email, password) {
   try {
+    const { createUserWithEmailAndPassword } = await ensureSdk();
     const result = await createUserWithEmailAndPassword(auth, email, password);
     return result;
   } catch (error) {
@@ -124,6 +192,7 @@ export async function createEmailAccount(email, password) {
  */
 export async function sendVerificationEmail(user) {
   try {
+    const { sendEmailVerification } = await ensureSdk();
     await sendEmailVerification(user);
     return { success: true };
   } catch (error) {
@@ -140,6 +209,7 @@ export async function sendVerificationEmail(user) {
  */
 export async function sendPasswordReset(email) {
   try {
+    const { sendPasswordResetEmail } = await ensureSdk();
     await sendPasswordResetEmail(auth, email);
     return { success: true };
   } catch (error) {
@@ -176,6 +246,7 @@ export async function changePassword(currentPassword, newPassword) {
   }
 
   try {
+    const { EmailAuthProvider, reauthenticateWithCredential, updatePassword } = await ensureSdk();
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, newPassword);
@@ -192,6 +263,7 @@ export async function changePassword(currentPassword, newPassword) {
  */
 export async function updateUserProfile(user, profile) {
   try {
+    const { updateProfile } = await ensureSdk();
     await updateProfile(user, profile);
     return { success: true };
   } catch (error) {
@@ -205,6 +277,7 @@ export async function updateUserProfile(user, profile) {
  */
 export async function signOut() {
   try {
+    await ensureSdk();
     await auth.signOut();
   } catch (error) {
     console.error('Sign out error:', error);
@@ -212,5 +285,7 @@ export async function signOut() {
   }
 }
 
-export { auth, onAuthStateChanged };
-export default auth;
+// `auth` and the raw onAuthStateChanged are no longer exported: reading them synchronously
+// is what forced the SDK into the eager graph. Use subscribeToAuth(), or ensureSdk() if you
+// genuinely need the module namespace.
+export { ensureSdk };

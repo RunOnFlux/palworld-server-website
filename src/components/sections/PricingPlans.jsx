@@ -180,7 +180,14 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
   // Generate structured data for search engines.
   // Each Product needs an absolute `image` URL — Google flags it as a critical
   // missing field for merchant listing rich results otherwise.
-  const siteUrl = import.meta.env.VITE_APP_URL || 'https://palworld.runonflux.com';
+  const siteUrl = (() => {
+    // Same guard as src/components/common/SEO.jsx: VITE_APP_URL is localhost in .env,
+    // and a production build that inherits it would publish localhost inside the URLs
+    // below. Refuse a loopback origin rather than trusting the variable.
+    const configured = import.meta.env.VITE_APP_URL;
+    const loopback = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(configured || '');
+    return (!configured || loopback) ? 'https://palworld.runonflux.com' : configured;
+  })();
   const productImage = `${siteUrl}${gameConfig.assets.banner}`;
   const offerUrl = `${siteUrl}/#pricing`;
   // Hosting plans are typed as Service (not Product) so Google doesn't apply
@@ -244,7 +251,7 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
         {/* Section header */}
         <motion.div
           className="text-center mb-6"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
         >
@@ -262,7 +269,7 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
               background: 'linear-gradient(135deg, rgba(33,150,243,0.15), rgba(25,118,210,0.1))',
               border: '1px solid rgba(33,150,243,0.3)',
             }}
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
             transition={{ delay: 0.3 }}
@@ -526,7 +533,7 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
         {/* Guarantees */}
         <motion.div
           className="mt-12 max-w-3xl mx-auto"
-          initial={{ opacity: 0 }}
+          initial={false}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
         >
@@ -562,7 +569,7 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
         {/* Other Games CTA */}
         <motion.div
           className="mt-10 text-center"
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.4, delay: 0.1 }}
@@ -581,7 +588,7 @@ const PricingPlans = ({ onGetStarted, onBuyNow }) => {
         {/* Why host on Flux — comparison CTA */}
         <motion.div
           className="mt-8 max-w-4xl mx-auto"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}

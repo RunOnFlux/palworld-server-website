@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join, sep } from 'path';
@@ -67,6 +68,16 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Enable CORS for frontend
+// Compress every text response.
+//
+// This is the origin and it was serving everything raw: on the sibling FiveM site that was
+// 727KB of HTML+JS+CSS on a first visit, about 210KB once gzipped. Whatever sits in front may
+// or may not compress; the origin should not depend on it.
+//
+// Mounted before express.static so the route shells and the hashed assets both go through it.
+// Images and fonts are already-compressed formats and are skipped by the default filter.
+app.use(compression());
+
 app.use(cors());
 app.use(express.json());
 

@@ -3,10 +3,7 @@
 
 User-agent: *
 Allow: /
-Disallow: /dashboard/
 Disallow: /admin/
-Disallow: /success
-Disallow: /cancel
 Crawl-delay: 1
 
 # Allow the major AI crawlers so the site can surface in generative answers
