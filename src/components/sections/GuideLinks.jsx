@@ -10,6 +10,7 @@ const guides = [
   { to: '/server-requirements', icon: Server, label: 'Palworld dedicated server requirements', desc: 'How much RAM and CPU you need, plus ports 8211 and 8212.' },
   { to: '/guides/join-server', icon: Users, label: "How to join a friend's Palworld server", desc: 'Connect by IP, use the browser, and understand crossplay.' },
   { to: '/guides/server-settings', icon: Settings, label: 'Best Palworld server settings', desc: 'Tune XP, gather, damage and PvP in PalWorldSettings.ini.' },
+  { to: '/guides/server-keeps-crashing', icon: LifeBuoy, label: 'Palworld server keeps crashing', desc: 'Diagnose the memory leak, then the four settings and restart habits that stop it.' },
   { to: '/pricing', icon: Tag, label: 'Palworld server hosting pricing', desc: 'Compare 5GB, 8GB, 12GB and 16GB plans by player count.' },
   { to: '/decentralized-palworld-hosting', icon: GitCompare, label: 'Why host on the Flux decentralized cloud →', desc: 'No single point of failure, no lock-in, dedicated resources, DDoS, 99.9% uptime and 32 players.' },
   {

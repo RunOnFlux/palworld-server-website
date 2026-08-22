@@ -42,6 +42,7 @@
 - [Palworld server requirements](https://palworld.runonflux.com/server-requirements)
 - [Palworld server settings](https://palworld.runonflux.com/guides/server-settings)
 - [How to join a Palworld server](https://palworld.runonflux.com/guides/join-server)
+- [Palworld server keeps crashing (memory leak fix)](https://palworld.runonflux.com/guides/server-keeps-crashing)
 - [Decentralized Palworld hosting](https://palworld.runonflux.com/decentralized-palworld-hosting)
 - [Nitrado alternative](https://palworld.runonflux.com/nitrado-alternative)
 - [GPORTAL alternative](https://palworld.runonflux.com/gportal-alternative)

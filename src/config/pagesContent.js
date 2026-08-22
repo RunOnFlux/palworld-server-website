@@ -158,7 +158,7 @@ export const pagesContent = {
         { name: 'Configure and invite', text: 'Edit PalWorldSettings.ini from the dashboard and share your server address with your friends.' },
       ],
     },
-    related: ['server-requirements', 'server-settings', 'join-server', 'pricing', 'rent-palworld-server'],
+    related: ['server-requirements', 'server-settings', 'join-server', 'pricing', 'rent-palworld-server', 'guides/server-keeps-crashing'],
   },
 
   'server-requirements': {
@@ -222,7 +222,7 @@ export const pagesContent = {
       { question: 'How many CPU cores does a Palworld server need?', answer: 'Pocketpair asks for four cores or more. Past that, Palworld favors strong single-core performance over extra cores — a modern CPU with good per-core speed handles the Pal AI and base simulation best. Managed plans scale vCPU with the player tier.' },
       { question: 'How much disk space does a Palworld server use?', answer: 'The server build is a few gigabytes and the save grows with world size and base count. Allow headroom for the build plus a growing world and backups. Use an SSD: Pocketpair warns that low-performance storage can corrupt save data.' },
     ],
-    related: ['setup-guide', 'pricing', 'server-settings', 'join-server', 'rent-palworld-server'],
+    related: ['setup-guide', 'pricing', 'server-settings', 'join-server', 'rent-palworld-server', 'guides/server-keeps-crashing'],
   },
 
   pricing: {
@@ -394,7 +394,7 @@ export const pagesContent = {
       { question: 'How do I change Palworld server settings?', answer: 'Edit PalWorldSettings.ini (under Pal/Saved/Config) and restart the server. On a Flux-hosted server you can edit it directly in the web file manager and restart with one click.' },
       { question: 'How do I turn on PvP in Palworld?', answer: 'Set bEnablePlayerToPlayerDamage to True in PalWorldSettings.ini and restart the server.' },
     ],
-    related: ['setup-guide', 'join-server', 'server-requirements', 'pricing'],
+    related: ['setup-guide', 'join-server', 'server-requirements', 'pricing', 'guides/server-keeps-crashing'],
   },
 
   'decentralized-palworld-hosting': {
@@ -582,6 +582,96 @@ export const pagesContent = {
     ],
     related: ['nitrado-alternative', 'pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
   },
+
+  'guides/server-keeps-crashing': {
+    slug: '/guides/server-keeps-crashing',
+    published: '2026-08-22',
+    title: 'Palworld server keeps crashing',
+    metaTitle: 'Palworld Server Keeps Crashing? Memory Leak Fix (2026)',
+    description:
+      'Why a Palworld dedicated server crashes after a few hours, how to confirm it is the memory leak, and the four settings and restart habits that actually stop it.',
+    h1: 'Palworld Server Keeps Crashing: How to Diagnose and Fix It',
+    lead:
+      'A Palworld dedicated server that runs fine for two hours and then freezes, rubber-bands and dies is almost never a bad host or a bad plan. It is the dedicated server binary leaking memory until the machine runs out of it. This guide shows you how to confirm that is what is happening, what to change so it stops, and how to tell the memory leak apart from the three other things that crash Palworld servers.',
+    breadcrumbs: [
+      { name: 'Home', url: '/' },
+      { name: 'Guides', url: '/#guides' },
+      { name: 'Server keeps crashing', url: '/guides/server-keeps-crashing' },
+    ],
+    body: [
+      { type: 'h2', text: 'The short version' },
+      { type: 'p', text: 'Palworld has a long-standing memory leak in its dedicated server build. RAM usage climbs steadily for as long as the server is up, roughly in proportion to how many players are online and how many Pals exist in the world, and it is never released. Eventually the process exhausts the RAM it was given and the operating system kills it. From the outside that looks like a random crash, which is why so many people blame their host first.' },
+      { type: 'p', text: 'Server operators report the shape of it consistently: a four-player world with around 80 Pals typically grows from about 3 GB to over 8 GB inside four hours, and a busy 16-player community server can reach 12 GB in half an hour. Those numbers vary with your world, but the pattern does not. If your crashes arrive on a rough schedule rather than at random, that is the leak.' },
+
+      { type: 'h2', text: 'Confirm it is memory before you change anything' },
+      { type: 'p', text: 'Open the resource graph in your dashboard and watch RAM across a session. The memory leak has a signature that is hard to mistake:' },
+      { type: 'ul', items: [
+        'RAM climbs in a near-straight line from the moment the server starts and never drops back after players leave.',
+        'The crash happens when that line reaches the ceiling of your plan, not at a particular in-game event.',
+        'There is no useful crash message. The process simply disappears, because the operating system killed it rather than the game choosing to exit.',
+        'Restarting the server fixes it completely, for another few hours.',
+      ] },
+      { type: 'p', text: 'If instead your server dies at the same moment every single time, or fails within seconds of starting, skip to the last section. Those are different problems with different fixes.' },
+
+      { type: 'h2', text: 'Fix 1: restart on a schedule' },
+      { type: 'p', text: 'This is the unglamorous answer and it is also the effective one. Because the leak is linear and a restart clears all of it, a scheduled restart resets the clock before the ceiling is ever reached. Experienced operators typically restart every three to six hours on a busy public server, and once or twice a day on a small private one.' },
+      { type: 'p', text: 'A Palworld restart takes about a minute and the world is saved first, so the cost to players is small. Pick a slot when your group is usually offline, announce it in Discord, and the problem stops being a problem. On Flux you can restart from the dashboard in one click, and because a restart also picks up any pending game update it doubles as your patch routine.' },
+
+      { type: 'h2', text: 'Fix 2: disable Pal invaders' },
+      { type: 'p', text: 'Raids spawn waves of hostile Pals that the server keeps in memory long after the raid is over. Turning them off is the closest thing Palworld has to a community-agreed workaround for the leak, and operators consistently report RAM climbing at roughly half the previous rate afterwards.' },
+      { type: 'p', text: 'In PalWorldSettings.ini set bEnableInvaderEnemy=False and restart. You lose base raids, which some groups will miss and many will not, and in exchange you roughly double the time between restarts. Edit the file from the dashboard config editor; there is no need to open a terminal.' },
+
+      { type: 'h2', text: 'Fix 3: cap the things that grow' },
+      { type: 'p', text: 'The leak scales with how much world there is to hold in memory, so limiting how much your players can create slows it down. Two settings do most of the work:' },
+      { type: 'table', head: ['Setting', 'What it limits', 'Practical value'], rows: [
+        ['BaseCampWorkerMaxNum', 'Pals assigned to a single base', 'Up to 50 is the game maximum; 15 to 20 is plenty for most bases'],
+        ['BaseCampMaxNum', 'Total bases across the whole server', 'Scale it to your player count rather than leaving it wide open'],
+        ['bEnableInvaderEnemy', 'Raid spawns held in memory', 'False on any server that crashes'],
+      ] },
+      { type: 'p', text: 'A guild that has parked 50 working Pals in each of several bases is holding a large amount of persistent simulation in RAM, and every one of those Pals contributes to the leak. Capping worker counts is not just a memory fix either: it is the single biggest lever on server CPU load in Palworld, so it usually improves lag at the same time.' },
+
+      { type: 'h2', text: 'Fix 4: give it headroom' },
+      { type: 'p', text: 'None of the above stops the leak, they only slow it. The remaining variable is how much room the server has before it hits the ceiling, and that is your plan size. If you are running 16 players on 8 GB you are asking the leak to kill you inside an hour no matter how well you configure the world.' },
+      { type: 'table', head: ['Players', 'Recommended RAM', 'Plan'], rows: [
+        ['Up to 4', '5 GB', 'from $2.61/mo'],
+        ['Up to 8', '8 GB', 'from $4.38/mo'],
+        ['Up to 16', '12 GB', 'from $6.11/mo'],
+        ['Up to 32', '16 GB', 'from $8.55/mo'],
+      ] },
+      { type: 'p', text: 'Those tiers already assume a leaking server rather than a theoretical idle one. If you are crashing on the tier that matches your player count, the usual cause is a very built-up world, and the two settings above will do more for you than the next plan up. If you are one tier below your player count, move up. Scaling RAM on Flux does not touch your world save.' },
+      { type: 'cta', text: 'See Palworld plans by player count →', href: '/pricing' },
+
+      { type: 'h2', text: 'When it is not the memory leak' },
+      { type: 'h3', text: 'It crashes seconds after starting, right after a game update' },
+      { type: 'p', text: 'Pocketpair ships client and server updates together, and a server still on the previous build will refuse connections or fall over as soon as an updated client joins. Update the server as soon as the client patch lands rather than waiting for a report from your players. On Flux a restart pulls the current image, so this is one click.' },
+      { type: 'h3', text: 'It crashes at the same point every time' },
+      { type: 'p', text: 'A crash that reproduces exactly, for instance whenever a specific player logs in or whenever the world reaches a particular area, points at a corrupted save rather than at memory. Restore the most recent backup taken before the behaviour started. Keep backups on a schedule for exactly this reason: a save you cannot roll back is a save you can lose.' },
+      { type: 'h3', text: 'It never starts at all' },
+      { type: 'p', text: 'If the server has never come up, this is a configuration or port problem and not a crash. Check that UDP 8211 is the port your players are dialling and that PalWorldSettings.ini is valid, since one malformed line will stop the file being read. The setup guide walks through both.' },
+
+      { type: 'h2', text: 'A checklist you can work through' },
+      { type: 'ol', items: [
+        'Watch RAM for one session. A straight climb to the ceiling means the leak; anything else means one of the three cases above.',
+        'Set bEnableInvaderEnemy=False in PalWorldSettings.ini and restart.',
+        'Cap BaseCampWorkerMaxNum to something sane for your group, and cap BaseCampMaxNum to your player count.',
+        'Schedule a restart every three to six hours on a busy server, or daily on a private one.',
+        'Confirm your plan RAM matches your player count, and move up a tier if it does not.',
+        'Keep automatic backups on, so a corrupted save is an inconvenience and not the end of the world.',
+      ] },
+      { type: 'p', text: 'Work through it in that order and the great majority of Palworld crash reports stop. What remains is a game engine limitation that no host can patch for you, and the honest fix for it is a restart schedule.' },
+      { type: 'cta', text: 'Deploy a Palworld server with one-click restarts and backups →', href: '/#pricing' },
+    ],
+    faq: [
+      { question: 'Why does my Palworld dedicated server keep crashing?', answer: 'In almost all cases it is the memory leak in the Palworld dedicated server build. RAM usage climbs steadily with player count and Pal count and is never released, so the process is eventually killed for running out of memory. Crashes that arrive after a predictable number of hours, with no error message and a clean start after a restart, are this and not a hosting fault.' },
+      { question: 'How much RAM does a Palworld server actually use?', answer: 'Far more over time than at startup. A four-player world with around 80 Pals commonly grows from about 3 GB to over 8 GB in four hours, and a 16-player server can reach 12 GB within half an hour. Size your plan for where the server ends up rather than where it starts.' },
+      { question: 'How often should I restart a Palworld server?', answer: 'Every three to six hours on a busy public server, and once or twice a day on a small private one. A restart clears all leaked memory and takes about a minute, with the world saved first, so it is the single most effective thing you can do about crashes.' },
+      { question: 'Does disabling invaders really help the memory leak?', answer: 'Yes. Raid spawns are held in memory after the raid ends, and operators consistently report RAM climbing at roughly half the previous rate with bEnableInvaderEnemy=False. It is not an official fix, because there is no official fix, but it is the most reliable single setting change available.' },
+      { question: 'Will a bigger plan stop my Palworld server crashing?', answer: 'It buys time rather than fixing the leak. More RAM means longer before the ceiling is reached, which for many groups is enough to get through an evening. If you are already on the plan that matches your player count, capping base workers and disabling invaders will do more than another tier.' },
+      { question: 'My server crashes immediately after a Palworld update. Is that the leak?', answer: 'No. That is a version mismatch: the server is still on the previous build while the clients have updated. Update the server as soon as the client patch lands. On Flux a restart pulls the current image, so it is one click from the dashboard.' },
+      { question: 'Can a corrupted save cause Palworld server crashes?', answer: 'Yes, and it looks different from the leak. Save corruption crashes reproduce exactly, for instance whenever one particular player joins or whenever a certain area loads, rather than after a number of hours. Restore the most recent backup taken before the behaviour started.' },
+    ],
+    related: ['server-requirements', 'guides/server-settings', 'setup-guide', 'pricing', 'guides/join-server'],
+  },
 };
 
 // -------------------------------------------------------------------------
@@ -653,12 +743,15 @@ export const pageAnchors = {
   'decentralized-palworld-hosting': 'Why host on the Flux decentralized cloud',
   'nitrado-alternative': 'Nitrado alternative for Palworld',
   'gportal-alternative': 'GPORTAL alternative for Palworld',
+  'guides/server-keeps-crashing': 'Palworld server keeps crashing: memory leak fix',
+  'server-keeps-crashing': 'Palworld server keeps crashing: memory leak fix',
 };
 
 // Map short related keys to full page keys.
 const relatedKeyMap = {
   'join-server': 'guides/join-server',
   'server-settings': 'guides/server-settings',
+  'server-keeps-crashing': 'guides/server-keeps-crashing',
 };
 
 export function resolveRelated(key) {

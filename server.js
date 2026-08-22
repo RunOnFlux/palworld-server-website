@@ -423,6 +423,7 @@ if (process.env.NODE_ENV === 'production') {
     '/pricing': 'pricing/index.html',
     '/guides/join-server': 'guides/join-server/index.html',
     '/guides/server-settings': 'guides/server-settings/index.html',
+    '/guides/server-keeps-crashing': 'guides/server-keeps-crashing/index.html',
     '/decentralized-palworld-hosting': 'decentralized-palworld-hosting/index.html',
     '/nitrado-alternative': 'nitrado-alternative/index.html',
     '/gportal-alternative': 'gportal-alternative/index.html',

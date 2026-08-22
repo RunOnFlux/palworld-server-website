@@ -39,6 +39,7 @@ export const ROUTE_PAGES = {
   '/pricing': lazyPage(() => import('./pages/Pricing')),
   '/guides/join-server': lazyPage(() => import('./pages/GuideJoinServer')),
   '/guides/server-settings': lazyPage(() => import('./pages/GuideServerSettings')),
+  '/guides/server-keeps-crashing': lazyPage(() => import('./pages/GuideServerCrashing')),
   '/decentralized-palworld-hosting': lazyPage(() => import('./pages/Comparison')),
   '/nitrado-alternative': lazyPage(() => import('./pages/NitradoAlternative')),
   '/gportal-alternative': lazyPage(() => import('./pages/GportalAlternative')),
