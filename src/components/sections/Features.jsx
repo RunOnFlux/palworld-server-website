@@ -108,6 +108,9 @@ const Features = () => {
                       src={feature.icon}
                       alt={feature.title}
                       className="w-36 h-36 object-contain"
+                      width={144}
+                      height={144}
+                      decoding="async"
                     />
                   </div>
 

@@ -71,6 +71,9 @@ const StepPlanSelection = memo(({ direction = 1, availablePlans, selectedPlan, o
             src="/games/palworld/planLoader.webp"
             alt="Loading plans..."
             className="w-72 h-72 object-contain animate-pulse"
+            width={384}
+            height={384}
+            decoding="async"
           />
         </div>
       ) : (

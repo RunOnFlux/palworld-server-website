@@ -352,6 +352,9 @@ const ServerLocations = () => {
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
             transition={{ delay: 0.25, type: 'spring', stiffness: 150 }}
+            width={512}
+            height={512}
+            decoding="async"
           />
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 font-heading">
             Global Server Network

@@ -63,6 +63,9 @@ const SessionTimer = ({ lastActivity, onLogout }) => {
               src="/games/palworld/timer.webp"
               alt="Timer"
               className="w-48 h-auto"
+              width={512}
+              height={512}
+              decoding="async"
             />
             <div className="absolute top-[52%] left-1/2 -translate-x-1/2 -translate-y-1/2">
               <div

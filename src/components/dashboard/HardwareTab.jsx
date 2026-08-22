@@ -529,7 +529,10 @@ const HardwareTab = ({ server, onUpdate, onRedeploy, onReinstall, onSwitchTab })
               <div className={`px-4 py-3 ${wallet !== 'card' ? 'bg-primary/10' : ''}`}>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">Crypto</div>
                 <div className="flex items-center gap-2 text-xl font-bold text-white leading-tight">
-                  <img src="/flux-icon.svg" alt="FLUX" className="w-5 h-5" />
+                  <img src="/flux-icon.svg" alt="FLUX" className="w-5 h-5"
+  width={20}
+  height={20}
+  decoding="async" />
                   {price.flux} <span className="text-sm font-medium text-slate-400">FLUX</span>
                 </div>
                 {price.fluxDiscount > 0 && (
@@ -590,7 +593,10 @@ const HardwareTab = ({ server, onUpdate, onRedeploy, onReinstall, onSwitchTab })
                     : 'border-slate-700/50 bg-slate-800/40 hover:border-slate-600 hover:bg-slate-800/70'} disabled:opacity-40 disabled:cursor-not-allowed`}
                 >
                   <span className="w-10 h-10 rounded-lg bg-slate-900/70 border border-slate-700/50 flex items-center justify-center flex-shrink-0">
-                    <img src={w.img} alt="" className="w-6 h-6 object-contain" />
+                    <img src={w.img} alt="" className="w-6 h-6 object-contain"
+  width={24}
+  height={24}
+  decoding="async" />
                   </span>
                   <span className="min-w-0 leading-tight">
                     <span className="flex items-center gap-1.5 text-sm font-semibold text-white">

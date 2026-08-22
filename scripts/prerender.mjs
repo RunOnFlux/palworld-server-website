@@ -46,6 +46,24 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = join(__dirname, '..', 'dist');
 const indexPath = join(distDir, 'index.html');
 const SITE_URL = 'https://palworld.runonflux.com';
+/**
+ * The Open Graph image for a page.
+ *
+ * Every page used to share one banner, so a link to any of them looked identical in Discord,
+ * Slack, X and iMessage. scripts/gen-og-images.mjs composites the banner with each page's own
+ * headline into public/games/palworld/<slug>.webp; this points the tags at the right one, and falls
+ * back to the plain banner for anything with no generated card.
+ */
+const OG_DIR = 'games/palworld/og';
+function ogImageFor(canonical) {
+  const slug = (canonical || '')
+    .replace(/^https?:\/\/[^/]+\/?/, '')
+    .replace(/\/$/, '')
+    .replace(/\//g, '-') || 'home';
+  const rel = `${OG_DIR}/${slug}.webp`;
+  return existsSync(join(distDir, rel)) ? `${SITE_URL}/${rel}` : null;
+}
+
 const INDEXABLE_ROBOTS = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
 
 if (!existsSync(indexPath)) {
@@ -179,6 +197,11 @@ function buildHtml({
   // Content pages are articles. Without this every shell inherited the homepage's
   // og:type="website".
   html = html.replace(/<meta property="og:type"[^>]*>/i, `<meta property="og:type" content="${esc(ogType)}" />`);
+  const ogImage = ogImageFor(canonical);
+  if (ogImage) {
+    html = html.replace(/<meta property="og:image" content="[^"]*"/i, `<meta property="og:image" content="${esc(ogImage)}"`);
+    html = html.replace(/<meta name="twitter:image" content="[^"]*"/i, `<meta name="twitter:image" content="${esc(ogImage)}"`);
+  }
   html = html.replace(/<meta name="twitter:title"[^>]*>/i, `<meta name="twitter:title" content="${esc(title)}" />`);
   html = html.replace(/<meta name="twitter:description"[^>]*>/i, `<meta name="twitter:description" content="${esc(description)}" />`);
   html = html.replace(/<meta name="twitter:url"[^>]*>/i, `<meta name="twitter:url" content="${esc(canonical)}" />`);

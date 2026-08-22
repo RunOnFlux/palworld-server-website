@@ -22,6 +22,9 @@ const NotFound = () => {
               src="/games/palworld/404.webp"
               alt="404 Not Found"
               className="max-h-[85vh] w-auto mx-auto object-contain"
+              width={800}
+              height={800}
+              decoding="async"
             />
           </div>
 

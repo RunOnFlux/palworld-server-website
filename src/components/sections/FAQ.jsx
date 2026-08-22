@@ -59,6 +59,9 @@ const FAQ = () => {
             height: '400px',
             width: 'auto',
           }}
+          width={512}
+          height={1024}
+          decoding="async"
         />
       </div>
 
@@ -76,6 +79,9 @@ const FAQ = () => {
             height: '400px',
             width: 'auto',
           }}
+          width={512}
+          height={1024}
+          decoding="async"
         />
       </div>
 

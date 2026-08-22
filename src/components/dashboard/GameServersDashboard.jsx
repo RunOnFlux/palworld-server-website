@@ -1258,6 +1258,9 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
             src="/games/palworld/no-servers.webp"
             alt="No servers"
             className="w-[500px] h-auto mx-auto opacity-80"
+            width={512}
+            height={512}
+            decoding="async"
           />
           <p className="text-lg text-gray-400 -mt-2">Deploy your first game server to get started!</p>
         </div>
@@ -1318,7 +1321,10 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                 <div className="flex items-stretch gap-0">
                   {/* Game icon */}
                   <div className="flex items-center flex-shrink-0">
-                    <img src="/games/palworld/game-icon.webp" alt="" className="w-20 h-20 object-contain" />
+                    <img src="/games/palworld/game-icon.webp" alt="" className="w-20 h-20 object-contain"
+  width={128}
+  height={128}
+  decoding="async" />
                   </div>
                   <div className="flex-1 min-w-0 flex flex-col justify-center pl-1">
                 <div className="flex items-center gap-2">
@@ -1649,7 +1655,10 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                     <div className="flex items-stretch gap-0">
                       {/* Game icon */}
                       <div className="flex items-center flex-shrink-0">
-                        <img src="/games/palworld/game-icon.webp" alt="" className="w-20 h-20 object-contain -my-6" />
+                        <img src="/games/palworld/game-icon.webp" alt="" className="w-20 h-20 object-contain -my-6"
+  width={128}
+  height={128}
+  decoding="async" />
                       </div>
                       {/* Server info */}
                       <div className="flex flex-col gap-1.5">

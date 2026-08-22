@@ -8794,7 +8794,10 @@ Price
                         }}
                       >
                         <span className="inline-flex items-center gap-2.5">
-                          <img src="/flux-icon.svg" alt="FLUX" className="w-6 h-6" />
+                          <img src="/flux-icon.svg" alt="FLUX" className="w-6 h-6"
+  width={24}
+  height={24}
+  decoding="async" />
                           <span className="text-2xl font-bold text-blue-300">
                             {fluxPrice}
                           </span>
@@ -8820,7 +8823,10 @@ Price
                       disabled={isProcessing || !fluxPrice}
                       className="flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 rounded-xl text-sm font-medium text-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <img src="/wallets/zelcore.svg" alt="ZelCore" className="w-5 h-5" />
+                      <img src="/wallets/zelcore.svg" alt="ZelCore" className="w-5 h-5"
+  width={20}
+  height={20}
+  decoding="async" />
                       ZelCore
                     </button>
                     <button
@@ -8829,7 +8835,10 @@ Price
                       disabled={isProcessing || !fluxPrice}
                       className="flex items-center justify-center gap-2 px-3 py-2.5 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 rounded-xl text-sm font-medium text-orange-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <img src="/wallets/ssp-white.svg" alt="SSP" className="w-5 h-5" />
+                      <img src="/wallets/ssp-white.svg" alt="SSP" className="w-5 h-5"
+  width={20}
+  height={20}
+  decoding="async" />
                       SSP
                     </button>
                   </div>

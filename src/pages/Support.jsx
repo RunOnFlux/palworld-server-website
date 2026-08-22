@@ -170,17 +170,26 @@ const Support = () => {
             alt="Support"
             className="w-auto object-contain drop-shadow-2xl"
             style={{ maxHeight: '280px', maxWidth: '90%' }}
+            width={800}
+            height={533}
+            decoding="async"
           />
         </div>
 
         <div className="relative max-w-2xl mx-auto px-8">
           {/* Left character */}
           <div className="hidden xl:block absolute -left-72 top-1/2 -translate-y-1/2 pointer-events-none">
-            <img src="/games/palworld/support-left.webp" alt="" style={{ height: '350px', width: 'auto' }} />
+            <img src="/games/palworld/support-left.webp" alt="" style={{ height: '350px', width: 'auto' }}
+  width={512}
+  height={512}
+  decoding="async" />
           </div>
           {/* Right character */}
           <div className="hidden xl:block absolute -right-72 top-1/2 -translate-y-1/2 pointer-events-none">
-            <img src="/games/palworld/support-right.webp" alt="" style={{ height: '350px', width: 'auto' }} />
+            <img src="/games/palworld/support-right.webp" alt="" style={{ height: '350px', width: 'auto' }}
+  width={512}
+  height={512}
+  decoding="async" />
           </div>
 
           {/* Subtitle chip */}
