@@ -36,7 +36,8 @@ const StepLocation = memo(({
       value: cont.code,
       label: cont.name,
       nodeCount: cont.nodeCount,
-      ipCount: cont.ipCount
+      ipCount: cont.ipCount,
+      freeIpCount: cont.freeIpCount
     }))
   ], [availableContinents, allowedLocations]);
 
@@ -54,6 +55,7 @@ const StepLocation = memo(({
         label: country.name,
         nodeCount: country.nodeCount,
         ipCount: country.ipCount,
+        freeIpCount: country.freeIpCount,
         flag: getFlagIcon(country.code)
       }))
     ];
@@ -75,7 +77,8 @@ const StepLocation = memo(({
         value: region.code,
         label: region.name,
         nodeCount: region.nodeCount,
-        ipCount: region.ipCount
+        ipCount: region.ipCount,
+        freeIpCount: region.freeIpCount
       }))
     ];
   }, [availableRegions, allowedLocations, geolocationForm.continent, geolocationForm.country, countryAllowed]);
@@ -109,10 +112,10 @@ const StepLocation = memo(({
             </span>
             <div className="flex-1 min-w-0 text-left">
               <p className="text-xs font-semibold text-amber-300">
-                Tip: add several locations to give your deployment more hosts to land on.
+                Tip: add several locations to give your server more places to land on.
               </p>
               <p className="text-xs text-amber-200/80 mt-0.5">
-                Every instance needs its own public IP, so the <span className="font-medium">IP count</span> — not the node count — decides whether a deploy succeeds.
+                Flux runs each copy of your server on a separate IP address. The number beside each location is how many <span className="font-medium">host servers</span> there have room right now, so a location showing zero is full rather than unavailable.
               </p>
             </div>
           </div>
@@ -162,8 +165,8 @@ const StepLocation = memo(({
                 className="w-full"
               />
               <p className="mt-2 text-xs text-gray-400">
-                This country has hosts in several regions. Narrowing to one cuts latency for
-                players nearby, but leaves fewer hosts to deploy on — leave it on
+                This country has host servers in several regions. Narrowing to one cuts latency
+                for players nearby, but leaves fewer of them to deploy on, so leave it on
                 <span className="font-medium"> Any Region</span> if you are not sure.
               </p>
             </div>
@@ -210,10 +213,10 @@ const StepLocation = memo(({
         )}
 
         {/* Capacity of the whole selection — locations are pooled, so this is the only
-            level at which the question means anything. `ipCount` is arithmetic and always
-            there; `freeIpCount` is measured and null when we could not tell, in which case
-            we say nothing about free room rather than guess. Advisory here; the same fact
-            is put in front of the customer again on Continue (see DeploymentDialog). */}
+            level at which the question means anything. Both numbers come from the node
+            list itself, which carries each node's reserved resources, so they are exact
+            for a selection of any width. Advisory here; the same fact is put in front of
+            the customer again on Continue (see DeploymentDialog). */}
         {capacity && (
           capacity.ipCount < capacity.instances ? (
             <div className="bg-amber-500/[0.08] border-2 border-amber-500/30 rounded-2xl p-4">
@@ -226,29 +229,30 @@ const StepLocation = memo(({
                     These locations are too small for this plan
                   </p>
                   <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
-                    They match {capacity.ipCount} {capacity.ipCount === 1 ? 'node' : 'nodes'} able to run it,
-                    and your server runs on {capacity.instances}. Add another location above.
+                    They cover {capacity.ipCount} host {capacity.ipCount === 1 ? 'server' : 'servers'} able to
+                    run it, and your server runs on {capacity.instances} copies. Add another location above.
                   </p>
                 </div>
               </div>
             </div>
-          ) : capacity.freeIpCount === null ? null : capacity.freeIpCount >= capacity.instances ? (
-            // Room, but say whether there is any to spare. A selection sized exactly to the
-            // instance count works today and breaks the moment one node fills up — the old
-            // picker expressed that by hiding the location, which was too blunt; the fact
-            // is still worth stating.
-            capacity.ipCount <= capacity.instances ? (
+          ) : capacity.freeIpCount >= capacity.instances ? (
+            // Room, but say whether there is any to spare. A selection whose free nodes
+            // exactly match the instance count works today and breaks the moment one of
+            // them fills up — the old picker expressed that by hiding the location, which
+            // was too blunt; the fact is still worth stating.
+            capacity.freeIpCount <= capacity.instances ? (
               <p className="text-xs text-amber-200/80 flex items-start gap-2 px-1">
                 <span className="w-1.5 h-1.5 mt-1.5 rounded-full bg-amber-400 flex-shrink-0" />
                 <span>
-                  All {capacity.ipCount} nodes in your locations have room, which is exactly what your
-                  server needs and nothing spare. If one fills up before you deploy, it has nowhere to go.
+                  {capacity.freeIpCount} of the {capacity.ipCount} host servers in your locations {capacity.freeIpCount === 1 ? 'has' : 'have'} room,
+                  which is exactly what your server needs and nothing spare. If one fills up before you
+                  deploy, a copy has nowhere to go.
                 </span>
               </p>
             ) : (
               <p className="text-xs text-gray-400 flex items-center gap-2 px-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                {capacity.freeIpCount} of {capacity.ipCount} nodes in your locations have room for this plan right now.
+                {capacity.freeIpCount} of {capacity.ipCount} host servers in your locations have room for this plan right now.
               </p>
             )
           ) : (
@@ -261,7 +265,7 @@ const StepLocation = memo(({
                   {capacity.freeIpCount === 0 ? (
                     <>
                       <p className="text-sm font-semibold text-amber-300">
-                        No node in your locations has room for this plan right now
+                        No host server in your locations has room for this plan right now
                       </p>
                       <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
                         All {capacity.ipCount} of them are already running other apps.
@@ -271,10 +275,10 @@ const StepLocation = memo(({
                   ) : (
                     <>
                       <p className="text-sm font-semibold text-amber-300">
-                        Only {capacity.freeIpCount} of {capacity.ipCount} nodes in your locations {capacity.freeIpCount === 1 ? 'has' : 'have'} room for this plan right now
+                        Only {capacity.freeIpCount} of {capacity.ipCount} host servers in your locations {capacity.freeIpCount === 1 ? 'has' : 'have'} room for this plan right now
                       </p>
                       <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
-                        Your server runs on {capacity.instances}, so{' '}
+                        Your server runs on {capacity.instances} copies, so{' '}
                         {capacity.instances - capacity.freeIpCount}{' '}
                         {capacity.instances - capacity.freeIpCount === 1 ? 'copy has' : 'copies have'} nowhere to go.
                         Add another location above to fix it.

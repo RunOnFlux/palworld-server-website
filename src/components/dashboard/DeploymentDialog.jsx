@@ -10,7 +10,7 @@ import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walle
 import marketplaceService from '../../services/marketplaceService';
 import { withModsMount } from '../../config/modsConfig';
 import { defaultRebootSettings, buildRebootEnv } from '../../config/serverMaintenance';
-import { OS_RESERVE, capacityForGeolocation, probeFreeIpCount } from '../../utils/nodeCapacity';
+import { capacityForGeolocation, fetchFluxNodes, nodeFitsApp, nodeHasRoom } from '../../utils/nodeCapacity';
 import { applyRandomExternalPorts, registerAppSpecWithPortRetry, palworldGamePort } from '../../utils/appSpecHelpers';
 import geolocationData from '../../utils/geolocation';
 import toast from 'react-hot-toast';
@@ -74,9 +74,6 @@ const parseHddValue = (value) => {
 // parent app. Fallback to 3 only if the plan omits it entirely.
 const getPlanInstances = (plan) => plan?._config?.instances || plan?._app?.instances || 3;
 
-// Settle time before probing node capacity — a customer adding three locations in a row
-// should cost one round of requests, not three.
-const PROBE_DEBOUNCE_MS = 800;
 
 // Merge "KEY=value" env arrays with later arrays overriding earlier ones by KEY.
 // This mirrors FluxCloud InstallDialog behavior: the parent app compose env is the
@@ -281,68 +278,20 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
     return { cpu, ramGB: ramMb / 1000, hddGB: hdd };
   }, [selectedPlan]);
 
-  // Fetch available nodes from Flux stats API. Everything needs `benchmark` (hardware)
-  // + `geolocation`; `flux` is always asked for because it is the only place the node's
-  // API PORT appears (geolocation.ip is the bare address) and one public IP routinely
-  // hosts several nodes on different ports — the free-capacity probe has to reach the
-  // right one. It also carries arcaneVersion, which enterprise apps are filtered on.
+  // The node list, including what each node's apps have already reserved, comes from
+  // the shared fetchFluxNodes() so this dialog and the placement diagnosis read the
+  // same cached payload instead of pulling the stats document twice per session.
   useEffect(() => {
-    const controller = new AbortController();
-    const fetchLocations = async () => {
-      try {
-        // NOTE: `flux` MUST come last — the stats API returns an "Internal error"
-        // when `flux` is the first projection field (e.g. `flux,geolocation,...`).
-        const projection = 'geolocation,benchmark,flux';
-        const response = await fetch(`https://stats.runonflux.io/fluxinfo?projection=${projection}`, { signal: controller.signal });
-        const result = await response.json();
-
-        if (result.status === 'success' && result.data && result.data.length > 5000) {
-          // Keep a flat per-node list; hardware/arcane/IP filtering happens in
-          // computeAvailability once the plan + instance count are known.
-          const nodes = [];
-          result.data.forEach((n) => {
-            const g = n.geolocation;
-            if (!g?.continentCode || !g?.countryCode) return;
-            const b = n.benchmark?.bench || {};
-            if (!b.cores) return; // node has no valid benchmark → cannot place apps
-            // Multiple nodes can share one public IP (up to 8, on different ports).
-            // The IP lives in flux.ip as "ip:port" (enterprise projection) or in
-            // geolocation.ip (both). Strip the port to group by real machine/network.
-            const rawIp = n.flux?.ip || g.ip || '';
-            const ip = rawIp.split(':')[0];
-            nodes.push({
-              cont: g.continentCode,
-              country: g.countryCode,
-              // FluxOS matches the third geolocation level against the node's
-              // regionName verbatim ("North Carolina", "Île-de-France") — never
-              // the short code — so we carry the raw string through untouched.
-              region: g.regionName || '',
-              ip,
-              // Kept with its port: the node API is addressed as
-              // <ip>-<port>.node.api.runonflux.io, and several nodes can share one IP.
-              apiIp: rawIp,
-              cores: b.cores,
-              ram: b.ram || 0,
-              ssd: b.ssd || 0,
-              arcane: !!n.flux?.arcaneVersion,
-            });
-          });
-
-          setAvailableLocations({ nodes });
-        }
-      } catch (error) {
-        if (error.name === 'AbortError') return;
-        console.error('Failed to fetch locations:', error);
-        // Fallback to global deployment
-        setAllowedLocations([]);
-      }
-    };
-
-    if (isOpen) {
-      fetchLocations();
-    }
-    return () => controller.abort();
-  }, [isOpen, isEnterprise]);
+    if (!isOpen) return undefined;
+    let cancelled = false;
+    (async () => {
+      const nodes = await fetchFluxNodes();
+      if (cancelled) return;
+      if (nodes.length) setAvailableLocations({ nodes });
+      else setAllowedLocations([]); // stats unavailable — fall back to global deployment
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   // Fetch pricing when plan or instances change (debounced)
   useEffect(() => {
@@ -464,48 +413,57 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   //
   // The judgement now lives where placement actually happens: on the selection as a whole
   // (see `capacity` below), inline while picking and again as a confirmation on Continue.
-  // Each option still carries its node and IP counts, so a thin one shows as thin.
+  //
+  // Each option carries how many of its unique IPs have room RIGHT NOW, which is the number
+  // shown beside it. A location that is full is still offered, deliberately: fullness is a
+  // state that passes, where being too small for the plan is permanent, and hiding it would
+  // both break the pool reasoning above and stop anyone expressing a preference for a place
+  // that is busy this minute. Hide what can never work; show what is merely full.
   const computeAvailability = useCallback((locationData) => {
     const nodes = locationData?.nodes;
     if (!nodes) return;
 
-    const { cpu, ramGB, hddGB } = planHardware;
-    const fits = (n) =>
-      (n.cores - OS_RESERVE.cores) >= cpu &&
-      (n.ram - OS_RESERVE.ram) >= ramGB &&
-      (n.ssd - OS_RESERVE.ssd) >= hddGB &&
-      (!isEnterprise || n.arcane);
+    // One definition of "fits", shared with the selection capacity below and with
+    // FluxOS's own admission check — including the 5% of disk FluxOS never offers.
+    const fits = (n) => nodeFitsApp(n, planHardware, isEnterprise);
 
-    const contAgg = new Map(); // code -> { nodeCount, ips:Set }
-    const ctryAgg = new Map(); // `${cont}_${country}` -> { nodeCount, ips:Set }
-    const regAgg = new Map();  // `${cont}_${country}_${region}` -> { nodeCount, ips:Set }
+    const blank = () => ({ nodeCount: 0, ips: new Set(), freeIps: new Set() });
+    const add = (agg, key, n, hasRoom) => {
+      if (!agg.has(key)) agg.set(key, blank());
+      const a = agg.get(key);
+      a.nodeCount++;
+      if (!n.ip) return;
+      a.ips.add(n.ip);
+      if (hasRoom) a.freeIps.add(n.ip);
+    };
+
+    const contAgg = new Map(); // code -> { nodeCount, ips:Set, freeIps:Set }
+    const ctryAgg = new Map(); // `${cont}_${country}` -> same
+    const regAgg = new Map();  // `${cont}_${country}_${region}` -> same
     nodes.forEach((n) => {
       if (!fits(n)) return;
-      if (!contAgg.has(n.cont)) contAgg.set(n.cont, { nodeCount: 0, ips: new Set() });
-      const c = contAgg.get(n.cont);
-      c.nodeCount++; if (n.ip) c.ips.add(n.ip);
-
+      // Read once per node rather than once per aggregate it belongs to.
+      const hasRoom = nodeHasRoom(n, planHardware, isEnterprise);
+      add(contAgg, n.cont, n, hasRoom);
       const key = `${n.cont}_${n.country}`;
-      if (!ctryAgg.has(key)) ctryAgg.set(key, { nodeCount: 0, ips: new Set() });
-      const cc = ctryAgg.get(key);
-      cc.nodeCount++; if (n.ip) cc.ips.add(n.ip);
-
+      add(ctryAgg, key, n, hasRoom);
       if (!n.region) return; // node can't be placed by region — country is as deep as it goes
-      const regKey = `${key}_${n.region}`;
-      if (!regAgg.has(regKey)) regAgg.set(regKey, { nodeCount: 0, ips: new Set() });
-      const rr = regAgg.get(regKey);
-      rr.nodeCount++; if (n.ip) rr.ips.add(n.ip);
+      add(regAgg, `${key}_${n.region}`, n, hasRoom);
     });
+
+    // Most useful first: what has room now, then depth as the tie-break. A full location
+    // sinks to the bottom instead of disappearing.
+    const byFree = (a, b) => b.freeIpCount - a.freeIpCount || b.ipCount - a.ipCount;
 
     // Every continent with at least one node that fits — the aggregates are built from
     // fitting nodes only, so being in the map is the whole qualification.
     const continents = [];
     contAgg.forEach((v, code) => {
       if (CONTINENT_NAMES[code]) {
-        continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount: v.ips.size });
+        continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount: v.ips.size, freeIpCount: v.freeIps.size });
       }
     });
-    continents.sort((a, b) => b.ipCount - a.ipCount);
+    continents.sort(byFree);
     setAvailableContinents(continents);
 
     // Countries for the selected continent
@@ -514,9 +472,9 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       ctryAgg.forEach((v, key) => {
         const [cont, code] = key.split('_');
         if (cont !== geolocationForm.continent) return;
-        countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount: v.ips.size });
+        countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount: v.ips.size, freeIpCount: v.freeIps.size });
       });
-      countries.sort((a, b) => b.ipCount - a.ipCount);
+      countries.sort(byFree);
       setAvailableCountries(countries);
     } else {
       setAvailableCountries([]);
@@ -529,9 +487,9 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
       const regions = [];
       regAgg.forEach((v, key) => {
         if (!key.startsWith(prefix)) return;
-        regions.push({ code: key.slice(prefix.length), name: key.slice(prefix.length), nodeCount: v.nodeCount, ipCount: v.ips.size });
+        regions.push({ code: key.slice(prefix.length), name: key.slice(prefix.length), nodeCount: v.nodeCount, ipCount: v.ips.size, freeIpCount: v.freeIps.size });
       });
-      regions.sort((a, b) => b.ipCount - a.ipCount);
+      regions.sort(byFree);
       setAvailableRegions(regions.length >= MIN_REGIONS_TO_OFFER ? regions : []);
     } else {
       setAvailableRegions([]);
@@ -547,54 +505,34 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   }, [availableLocations, computeAvailability]);
 
   /**
-   * Capacity of the CURRENT selection, in two halves.
+   * Capacity of the CURRENT selection.
    *
-   * `ipCount` is arithmetic over the already-fetched node list: how many unique public IPs
-   * the whole selection matches. It needs no network, so it is always available, and on
-   * its own it settles the one question that has a certain answer — whether the selection
-   * could EVER hold the instance count. Locations are pooled, so this is a property of the
-   * selection, never of any single location in it.
+   * `ipCount` answers whether the selection could EVER hold the instance count;
+   * `freeIpCount` answers whether it can right now. Locations are pooled by FluxOS, so
+   * both are properties of the selection as a whole, never of any single location in it.
    *
-   * `freeIpCount` is measured, by asking those nodes what they already run. It stays null
-   * when we cannot tell (too many candidates to probe politely, or every probe failed);
-   * null must read as "no opinion", never as "full", because everything downstream turns
-   * it into something the customer acts on.
-   *
-   * The arithmetic half lands immediately so the confirmation on Continue never depends on
-   * the network. The probe follows debounced, while the customer is still picking, so its
-   * answer is on screen before they reach the button.
+   * Both are arithmetic over the already-fetched node list, which now carries each
+   * node's reserved resources alongside its specs. That is why there is no probing and
+   * no debounce here any more: the answer is exact for a selection of any width and
+   * lands on the same render as the click that changed it.
    */
-  const [capacity, setCapacity] = useState(null);
-  useEffect(() => {
-    if (currentStep !== 4 || !availableLocations?.nodes?.length) return undefined;
-    const instances = serverConfig.instances;
-    const { candidates, nodeCount, ipCount } = capacityForGeolocation(
+  const capacity = useMemo(() => {
+    if (currentStep !== 4 || !availableLocations?.nodes?.length) return null;
+    const { nodeCount, ipCount, freeIpCount } = capacityForGeolocation(
       availableLocations.nodes, allowedLocations, planHardware, isEnterprise,
     );
-    setCapacity({ nodeCount, ipCount, instances, freeIpCount: null });
-
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const freeIpCount = await probeFreeIpCount(candidates, planHardware);
-      if (!cancelled && freeIpCount !== null) {
-        setCapacity((prev) => (prev ? { ...prev, freeIpCount } : prev));
-      }
-    }, PROBE_DEBOUNCE_MS);
-    return () => { cancelled = true; clearTimeout(timer); };
+    return { nodeCount, ipCount, freeIpCount, instances: serverConfig.instances };
   }, [currentStep, availableLocations, allowedLocations, planHardware, isEnterprise, serverConfig.instances]);
 
   /**
-   * The part of that worth stopping someone on the way to payment — and only the part we
-   * actually know. 'short' is arithmetic and permanent; 'full' is measured and about right
-   * now. A selection we could not measure produces nothing: a confirmation built on a
-   * guess is one customers learn to click through, which costs us the ones that are real.
+   * The part of that worth stopping someone on the way to payment. 'short' is permanent:
+   * the selection cannot hold the instance count however long you wait. 'full' is about
+   * right now: the nodes exist and are occupied.
    */
   const capacityBlocker = useMemo(() => {
     if (!capacity) return null;
     if (capacity.ipCount < capacity.instances) return { kind: 'short', ...capacity };
-    if (capacity.freeIpCount !== null && capacity.freeIpCount < capacity.instances) {
-      return { kind: 'full', ...capacity };
-    }
+    if (capacity.freeIpCount < capacity.instances) return { kind: 'full', ...capacity };
     return null;
   }, [capacity]);
 
@@ -1688,22 +1626,22 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
                       These locations cannot fit your server
                     </h4>
                     <p className="text-sm text-gray-300 leading-relaxed">
-                      They match {capacityPrompt.ipCount} {capacityPrompt.ipCount === 1 ? 'node' : 'nodes'} able
+                      They cover {capacityPrompt.ipCount} host {capacityPrompt.ipCount === 1 ? 'server' : 'servers'} able
                       to run this plan, and your server runs on {capacityPrompt.instances} copies. At least{' '}
                       {capacityPrompt.instances - capacityPrompt.ipCount}{' '}
                       {capacityPrompt.instances - capacityPrompt.ipCount === 1 ? 'copy' : 'copies'} will have
-                      nowhere to go for as long as this selection stands — this does not resolve itself with time.
+                      nowhere to go for as long as this selection stands, and that does not resolve itself with time.
                     </p>
                   </>
                 ) : (
                   <>
                     <h4 className="text-lg font-semibold text-amber-300 mb-2">
-                      The nodes in your locations are full right now
+                      The host servers in your locations are full right now
                     </h4>
                     <p className="text-sm text-gray-300 leading-relaxed">
                       {capacityPrompt.freeIpCount === 0
-                        ? `None of the ${capacityPrompt.ipCount} nodes matching your locations has room for this plan at the moment.`
-                        : `Only ${capacityPrompt.freeIpCount} of the ${capacityPrompt.ipCount} nodes matching your locations has room for this plan, and your server runs on ${capacityPrompt.instances} copies.`}{' '}
+                        ? `None of the ${capacityPrompt.ipCount} host servers matching your locations has room for this plan at the moment.`
+                        : `Only ${capacityPrompt.freeIpCount} of the ${capacityPrompt.ipCount} host servers matching your locations has room for this plan, and your server runs on ${capacityPrompt.instances} copies.`}{' '}
                       Your server may sit waiting to deploy until one frees up.
                     </p>
                   </>

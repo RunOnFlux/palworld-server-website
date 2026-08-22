@@ -6,7 +6,7 @@ import geolocationData from '../../utils/geolocation';
 import StepLocation from './deployment-steps/StepLocation';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import { encryptAppSpec, computeRemainingExpire } from '../../utils/appSpecHelpers';
-import { capacityForGeolocation, fetchFluxNodes, OS_RESERVE, IP_HEADROOM } from '../../utils/nodeCapacity';
+import { capacityForGeolocation, fetchFluxNodes, nodeFitsApp, nodeHasRoom, IP_HEADROOM } from '../../utils/nodeCapacity';
 
 // Flux free-update rate limits — mirror of EnvironmentTab / backend checkFreeAppUpdate.
 // Windows are in blocks; post-PON-fork the target block time is 30s.
@@ -168,41 +168,45 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
   // FluxOS places into the pool of allowed locations, so a location's own IP count says
   // nothing on its own. The judgement is on the selection as a whole, below.
   useEffect(() => {
-    const { cpu, ramGB, hddGB } = hardwareRef.current;
+    const hw = hardwareRef.current;
     const isEnt = isEnterpriseRef.current;
-    const fits = (n) =>
-      (n.cores - OS_RESERVE.cores) >= cpu &&
-      (n.ram - OS_RESERVE.ram) >= ramGB &&
-      (n.ssd - OS_RESERVE.ssd) >= hddGB &&
-      (!isEnt || n.arcane);
+    // Same definition of "fits" as the deploy dialog and as FluxOS itself.
+    const fits = (n) => nodeFitsApp(n, hw, isEnt);
+
+    // Mirrors the deploy dialog: each option carries how many of its unique IPs have room
+    // right now, and that is the number shown beside it. A full location keeps its place in
+    // the list rather than vanishing, because fullness passes and being too small does not.
+    const blank = () => ({ nodeCount: 0, ips: new Set(), freeIps: new Set() });
+    const add = (agg, key, n, hasRoom) => {
+      if (!agg.has(key)) agg.set(key, blank());
+      const a = agg.get(key);
+      a.nodeCount++;
+      if (!n.ip) return;
+      a.ips.add(n.ip);
+      if (hasRoom) a.freeIps.add(n.ip);
+    };
+    const byFree = (a, b) => b.freeIpCount - a.freeIpCount || b.ipCount - a.ipCount;
 
     const contAgg = new Map();
     const ctryAgg = new Map();
     const regAgg = new Map();
     nodes.forEach((n) => {
       if (!fits(n)) return;
-      if (!contAgg.has(n.cont)) contAgg.set(n.cont, { nodeCount: 0, ips: new Set() });
-      const c = contAgg.get(n.cont);
-      c.nodeCount++; if (n.ip) c.ips.add(n.ip);
+      const hasRoom = nodeHasRoom(n, hw, isEnt);
+      add(contAgg, n.cont, n, hasRoom);
       const key = `${n.cont}_${n.country}`;
-      if (!ctryAgg.has(key)) ctryAgg.set(key, { nodeCount: 0, ips: new Set() });
-      const cc = ctryAgg.get(key);
-      cc.nodeCount++; if (n.ip) cc.ips.add(n.ip);
+      add(ctryAgg, key, n, hasRoom);
       if (!n.region) return;
-      const regKey = `${key}_${n.region}`;
-      if (!regAgg.has(regKey)) regAgg.set(regKey, { nodeCount: 0, ips: new Set() });
-      const rr = regAgg.get(regKey);
-      rr.nodeCount++; if (n.ip) rr.ips.add(n.ip);
+      add(regAgg, `${key}_${n.region}`, n, hasRoom);
     });
 
     const continents = [];
     contAgg.forEach((v, code) => {
-      const ipCount = v.ips.size;
       if (CONTINENT_NAMES[code]) {
-        continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount });
+        continents.push({ name: CONTINENT_NAMES[code], code, nodeCount: v.nodeCount, ipCount: v.ips.size, freeIpCount: v.freeIps.size });
       }
     });
-    continents.sort((a, b) => b.ipCount - a.ipCount);
+    continents.sort(byFree);
     setAvailableContinents(continents);
 
     if (geolocationForm.continent) {
@@ -210,10 +214,9 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
       ctryAgg.forEach((v, key) => {
         const [cont, code] = key.split('_');
         if (cont !== geolocationForm.continent) return;
-        const ipCount = v.ips.size;
-        countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount });
+        countries.push({ code, name: getCountryName(code), nodeCount: v.nodeCount, ipCount: v.ips.size, freeIpCount: v.freeIps.size });
       });
-      countries.sort((a, b) => b.ipCount - a.ipCount);
+      countries.sort(byFree);
       setAvailableCountries(countries);
     } else {
       setAvailableCountries([]);
@@ -226,9 +229,9 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
       regAgg.forEach((v, key) => {
         if (!key.startsWith(prefix)) return;
         const name = key.slice(prefix.length);
-        regions.push({ code: name, name, nodeCount: v.nodeCount, ipCount: v.ips.size });
+        regions.push({ code: name, name, nodeCount: v.nodeCount, ipCount: v.ips.size, freeIpCount: v.freeIps.size });
       });
-      regions.sort((a, b) => b.ipCount - a.ipCount);
+      regions.sort(byFree);
       setAvailableRegions(regions.length >= MIN_REGIONS_TO_OFFER ? regions : []);
     } else {
       setAvailableRegions([]);
@@ -316,21 +319,23 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
   useEffect(() => {
     if (!nodes.length) { setSelectionCapacity(null); return; }
     const inst = instancesRef.current;
-    const { nodeCount, ipCount } = capacityForGeolocation(
+    const { nodeCount, ipCount, freeIpCount } = capacityForGeolocation(
       nodes, allowedLocations, hardwareRef.current, isEnterpriseRef.current,
     );
     setSelectionCapacity({
-      nodeCount, ipCount, instances: inst,
-      // Cannot fit at all vs fits with nothing to spare — a certainty and a warning.
+      nodeCount, ipCount, freeIpCount, instances: inst,
+      // Three distinct facts: cannot fit at all, fits but every node is occupied, or
+      // fits with nothing to spare. The first is permanent, the other two are about now.
       short: ipCount < inst,
-      tight: ipCount < inst + IP_HEADROOM,
+      full: ipCount >= inst && freeIpCount < inst,
+      tight: freeIpCount < inst + IP_HEADROOM,
     });
   }, [nodes, allowedLocations]);
 
   /**
    * Saving a selection too small for the instance count takes a RUNNING server apart, so
    * this screen gets the same confirmation the deploy wizard puts on Continue. Only for
-   * the arithmetic case: it is certain, and it needs no probe.
+   * the `short` case: it is permanent, where `full` resolves on its own as nodes free up.
    */
   const [saveConfirm, setSaveConfirm] = useState(false);
 
@@ -414,22 +419,30 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
           <MapPin className={`w-4 h-4 mt-0.5 flex-shrink-0 ${selectionCapacity.tight ? 'text-amber-400' : 'text-gray-400'}`} />
           <div className="min-w-0 text-xs leading-relaxed">
             <p className={selectionCapacity.tight ? 'text-amber-200/90' : 'text-slate-300'}>
-              These locations match <span className="font-semibold text-white">{selectionCapacity.nodeCount}</span>{' '}
-              {selectionCapacity.nodeCount === 1 ? 'node' : 'nodes'} able to run your plan
-              ({selectionCapacity.ipCount} unique {selectionCapacity.ipCount === 1 ? 'IP' : 'IPs'}),
-              and your server needs <span className="font-semibold text-white">{selectionCapacity.instances}</span>.
+              These locations cover <span className="font-semibold text-white">{selectionCapacity.ipCount}</span>{' '}
+              host {selectionCapacity.ipCount === 1 ? 'server' : 'servers'} able to run your plan, and your
+              server runs on <span className="font-semibold text-white">{selectionCapacity.instances}</span> copies.
+              Flux places each copy on a separate IP address, so host servers sharing one count once here.
             </p>
             {selectionCapacity.short ? (
               <p className="text-amber-200/70 mt-1">
                 That is not enough to run every copy: {selectionCapacity.instances - selectionCapacity.ipCount}{' '}
                 {selectionCapacity.instances - selectionCapacity.ipCount === 1 ? 'copy has' : 'copies have'} nowhere
-                to go. Add another country or continent below — your world and settings are not affected.
+                to go. Add another country or continent below, and your world and settings are not affected.
+              </p>
+            ) : selectionCapacity.full ? (
+              <p className="text-amber-200/70 mt-1">
+                {selectionCapacity.freeIpCount === 0
+                  ? 'None of them has room for your plan right now: they are all already running other apps.'
+                  : `Only ${selectionCapacity.freeIpCount} of them has room for your plan right now, so ${selectionCapacity.instances - selectionCapacity.freeIpCount} ${selectionCapacity.instances - selectionCapacity.freeIpCount === 1 ? 'copy has' : 'copies have'} nowhere to go.`}{' '}
+                Add another country or continent below, and your world and settings are not affected.
               </p>
             ) : selectionCapacity.tight ? (
               <p className="text-amber-200/70 mt-1">
-                That leaves no spare capacity: when those nodes fill up with other apps, your
-                server has nowhere to run. Add another country or continent below — your world
-                and settings are not affected.
+                {selectionCapacity.freeIpCount} of them {selectionCapacity.freeIpCount === 1 ? 'has' : 'have'} room right
+                now, which leaves no spare: when one fills up with another app, a copy of your server
+                has nowhere to run. Add another country or continent below, and your world and settings
+                are not affected.
               </p>
             ) : null}
           </div>
@@ -485,7 +498,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
               </span>
             )}
             <span className={`text-xs truncate ${propagated ? 'text-emerald-300' : 'text-blue-300'}`}>
-              {propagated ? 'New spec is live — ready to redeploy' : 'Detecting new spec on the network…'}
+              {propagated ? 'New spec is live, ready to redeploy' : 'Detecting new spec on the network…'}
             </span>
           </span>
           <span className={`flex-shrink-0 text-xs font-semibold rounded-full px-2.5 py-0.5 border ${
@@ -545,7 +558,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
         {saving ? (
           <><RefreshCw className="w-4 h-4 animate-spin" /> Saving…</>
         ) : savedOk ? (
-          <><CheckCircle className="w-4 h-4" /> Saved — redeploy to apply</>
+          <><CheckCircle className="w-4 h-4" /> Saved, redeploy to apply</>
         ) : (
           <><Save className="w-4 h-4" /> Save Locations</>
         )}
@@ -562,11 +575,11 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
                   These locations cannot fit your server
                 </h4>
                 <p className="text-sm text-gray-300 leading-relaxed">
-                  They match {selectionCapacity.ipCount} {selectionCapacity.ipCount === 1 ? 'node' : 'nodes'} able
+                  They cover {selectionCapacity.ipCount} host {selectionCapacity.ipCount === 1 ? 'server' : 'servers'} able
                   to run your plan, and your server runs on {selectionCapacity.instances} copies. Saving this and
                   redeploying leaves {selectionCapacity.instances - selectionCapacity.ipCount}{' '}
                   {selectionCapacity.instances - selectionCapacity.ipCount === 1 ? 'copy' : 'copies'} with nowhere
-                  to go — this does not resolve itself with time.
+                  to go, and that does not resolve itself with time.
                 </p>
                 <p className="text-sm text-gray-400 mt-3">
                   Adding another location gives it somewhere to go.
@@ -619,7 +632,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
               {propagated ? (
                 <div className="rounded-xl p-3.5 mb-5" style={{ background: 'rgba(33,150,243,0.07)', border: '1px solid rgba(33,150,243,0.2)' }}>
                   <p className="font-semibold text-sm mb-0.5 text-primary">New spec is live on the network</p>
-                  <p className="text-gray-400 text-xs leading-relaxed">Safe to redeploy now — this keeps your world and data.</p>
+                  <p className="text-gray-400 text-xs leading-relaxed">Safe to redeploy now, and it keeps your world and data.</p>
                 </div>
               ) : propagating ? (
                 <div className="rounded-xl p-3.5 mb-5 flex items-start gap-3" style={{ background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.2)' }}>
@@ -635,7 +648,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
               ) : (
                 <div className="rounded-xl p-3.5 mb-5" style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)' }}>
                   <p className="font-semibold text-sm mb-0.5 text-amber-300">Couldn’t confirm automatically</p>
-                  <p className="text-gray-400 text-xs leading-relaxed">It has likely gone live. You can redeploy — if the old config persists, wait a bit and redeploy again.</p>
+                  <p className="text-gray-400 text-xs leading-relaxed">It has likely gone live. You can redeploy now; if the old config persists, wait a moment and redeploy again.</p>
                 </div>
               )}
 
@@ -654,9 +667,9 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
                     : undefined}
                 >
                   {propagating ? (
-                    <>Redeploy locked — waiting for spec…</>
+                    <>Redeploy locked, waiting for spec…</>
                   ) : (
-                    <><RefreshCw className="w-4 h-4" /> Redeploy now — keeps data</>
+                    <><RefreshCw className="w-4 h-4" /> Redeploy now, keeps data</>
                   )}
                 </button>
               )}

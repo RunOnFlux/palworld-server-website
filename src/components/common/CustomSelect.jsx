@@ -203,14 +203,19 @@ const CustomSelect = memo(({
                         <span className="text-sm">{option.label}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        {option.nodeCount !== undefined && option.nodeCount > 0 && (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300">
-                            {option.nodeCount} nodes
-                          </span>
-                        )}
-                        {option.ipCount !== undefined && option.ipCount > 0 && (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
-                            {option.ipCount} IPs
+                        {/* How many host servers here have room RIGHT NOW, which is the only
+                            number that answers "can my server go here". It used to be the raw
+                            node count beside the total IP count: two figures for one option,
+                            neither of them the answer, and the node one flattering because
+                            several nodes behind one IP are one place for a copy to land.
+                            Zero is shown rather than hidden — full is a state that passes. */}
+                        {option.freeIpCount !== undefined && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full border ${
+                            option.freeIpCount > 0
+                              ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                              : 'bg-amber-500/20 border-amber-500/30 text-amber-300'
+                          }`}>
+                            {option.freeIpCount} free
                           </span>
                         )}
                         {option.isMaster !== undefined && !option.isMaster && (
