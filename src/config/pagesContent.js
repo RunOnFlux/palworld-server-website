@@ -522,53 +522,65 @@ export const pagesContent = {
   'gportal-alternative': {
     slug: '/gportal-alternative',
     published: '2026-07-08',
+    // Deliberately NOT the same page as /nitrado-alternative. Both came off one template and
+    // measured 70% identical on visible text, which is a near-duplicate pair competing with
+    // each other for the same reader. This one is about infrastructure: where the machine
+    // sits, what holds the save, and how far the player is from it. The Nitrado page is about
+    // ownership and portability. House rules unchanged: no competitor prices, no claims about
+    // their features, the comparison is between hosting models.
     title: 'GPORTAL Alternative for Palworld',
     metaTitle: 'GPORTAL Alternative for Palworld — Deploy from $2.61/mo',
     description:
-      'Looking for a GPORTAL alternative for Palworld? Host on the Flux decentralized cloud: dedicated resources, no single point of failure, DDoS included, up to 32 players, from $2.61/mo, first month free.',
-    h1: 'Looking for a GPORTAL Alternative for Palworld?',
+      'A decentralized GPORTAL alternative for Palworld: choose the region at deploy across 50+ countries, dedicated resources and the full 32-player cap, from $2.61/mo.',
+    h1: 'A GPORTAL Alternative for Palworld',
     lead:
-      'GPORTAL is a popular game server host and a common pick for Palworld. It is a capable provider — but, like most traditional hosts, it runs your server inside a single company\'s data centers with a single point of failure. Palworld on Flux runs your dedicated server on a decentralized cloud of independent nodes across 50+ countries, with dedicated resources and transparent pay-as-you-go pricing.',
+      'GPORTAL is a capable host and a common first stop for a Palworld world. People who go looking for an alternative are usually not unhappy with the panel. They are asking an infrastructure question: where does the server actually run, and what happens to the save if that machine has a bad day.',
     breadcrumbs: [
       { name: 'Home', url: '/' },
       { name: 'GPORTAL Alternative', url: '/gportal-alternative' },
     ],
     body: [
-      { type: 'h2', text: 'Why look for a GPORTAL alternative' },
-      { type: 'p', text: 'GPORTAL is a solid host for many owners. The reasons players still shop around usually come down to the structure of traditional hosting:' },
+      { type: 'h2', text: 'What GPORTAL does well' },
+      { type: 'p', text: 'GPORTAL is a large, established host with a polished control panel and a very broad game catalogue. If you run several different games and would rather keep them under one vendor and one invoice, that breadth is worth something real, and no comparison page should pretend otherwise.' },
+
+      { type: 'h2', text: 'Four infrastructure questions' },
+      { type: 'p', text: 'Ask these of any host, including this one. They are the answers that stop mattering the day everything works and start mattering enormously on the day something does not.' },
+      { type: 'h3', text: 'Where does the machine sit, and can I change it?' },
+      { type: 'p', text: 'A traditional host runs a fixed estate of data centres and you pick from that list. Flux is a network of independent nodes in more than 50 countries, and the region is a field on the deploy form. If your group drifts from EU evenings to NA evenings, you move the server from the dashboard rather than opening a ticket to migrate between facilities.' },
+      { type: 'h3', text: 'What actually holds the world save?' },
+      { type: 'p', text: 'A Palworld world is a save directory and a settings file, and losing it is the one failure a group does not forgive. On a single-machine plan your protection is whatever backup you last took. Worth asking any host how often it snapshots, how far back it keeps them, and whether you can pull one down yourself without asking.' },
+      { type: 'h3', text: 'How many machines does the app run on?' },
+      { type: 'p', text: 'On Flux the app is placed across independent nodes rather than living on one box in one rack, so losing a machine is not the same event as losing the deployment. Neither model removes the need for your own backups, but the two fail very differently.' },
+      { type: 'h3', text: 'What is the price attached to?' },
+      { type: 'p', text: 'Slot-based pricing is a proxy for resources and a reasonable one, until two hosts quote the same slot count on very different hardware. Flux prices the CPU, RAM and disk and tells you what the player figure assumes. Whichever model a host uses, compare the specification behind the number rather than the number.' },
+
+      { type: 'h2', text: 'Latency is a distance problem' },
+      { type: 'p', text: 'Palworld is co-op rather than competitive, so a hundred milliseconds will not lose you a match. It will still decide whether capturing a Pal in a fight feels crisp or soupy, and whether base building at a distance stutters. Ping is set by how far the player sits from the node, which is why the region you deploy in matters more than most specification sheets suggest.' },
+      { type: 'p', text: 'That is also why the dashboard reports two different numbers rather than one. Our monitoring server measures whether your server is answering, which is a health check. Separately, your browser measures its own round trip to the node your server runs on, which is the figure that actually resembles what your group feels.' },
+
+      { type: 'h2', text: 'What a Palworld plan on Flux includes' },
       { type: 'ul', items: [
-        'Single points of failure — centralized hosts run in a fixed set of data centers, so an outage in one takes the servers there down together.',
-        'Region reach — if the nearest region is far from your community, everyone feels the latency.',
-        'Fixed tiers — slot-based plans can mean paying for headroom you do not use.',
-        'Control and payment — some owners want full config access, no contract, and crypto payment as an option.',
+        'Dedicated CPU, RAM and storage reserved for your server rather than a shared slot.',
+        'The full 32-player cap, with Steam and Xbox or Game Pass crossplay configurable.',
+        'Complete access to PalWorldSettings.ini through the file manager, plus a web terminal.',
+        'UDP 8211 and the REST API on TCP 8212 published at deploy, so there is no forwarding to get wrong.',
+        'DDoS protection on every plan and no egress fees.',
+        'A region you choose at deploy from more than 50 countries, changeable later.',
       ] },
-      { type: 'h2', text: 'How Palworld on Flux is different' },
-      { type: 'p', text: 'Flux runs your Palworld dedicated server on a decentralized network of independent nodes with dedicated CPU, RAM and storage reserved for you, a 99.9% uptime target, and nodes in 50+ countries so you can host near your players. You get the full 32-player cap, Steam and Xbox/Game Pass crossplay, and complete access to PalWorldSettings.ini through a file manager. DDoS protection is included on every plan, there are no egress (bandwidth) fees, deployment takes about 30 seconds with UDP 8211 and the REST API (TCP 8212) already configured, and pricing is transparent pay-as-you-go from $2.61/mo with the first month free — pay by card, Apple Pay, Google Pay, or in crypto with FLUX, no contract.' },
-      { type: 'h2', text: 'Palworld on Flux vs GPORTAL at a glance' },
-      { type: 'table', head: ['Feature', 'Traditional host', 'Palworld on Flux'], rows: [
-        ['Infrastructure', 'Single company data centers', 'Decentralized cloud, 50+ countries'],
-        ['Single point of failure', 'Yes', 'No — distributed nodes'],
-        ['Dedicated resources', 'Plan-dependent', 'Dedicated CPU/RAM/storage per server'],
-        ['Player slots', 'Sold in slot tiers', 'No slot limits — the game caps at 32'],
-        ['Crossplay (Steam + Xbox)', 'Supported', 'Supported'],
-        ['Config access', 'Panel', 'Full PalWorldSettings.ini + file manager'],
-        ['DDoS protection', 'Varies by plan', 'Included on every plan'],
-        ['Egress / bandwidth fees', 'Possible', 'None'],
-        ['Deploy time', 'Minutes', 'About 30 seconds'],
-        ['Payment', 'Card', 'Card, Apple/Google Pay, or crypto'],
-        ['Pricing', 'Slot-based tiers', 'Pay-as-you-go from $2.61/mo, first month free'],
-      ] },
-      { type: 'h2', text: 'Which should you choose?' },
-      { type: 'p', text: 'If you want a long-established brand and a single familiar region works for your group, GPORTAL is a reasonable choice. If you care about resilience with no single point of failure, hosting close to players across many regions, no egress fees, full config control with no contract, and card-or-crypto payment, Palworld on Flux is built for that. Your world moves with you — download your save and PalWorldSettings.ini and upload them in minutes.' },
+      { type: 'p', text: 'Pricing is pay-as-you-go from $2.61 a month with the first month free for accounts new to Flux Cloud, billed monthly with no contract. Card, Apple Pay, Google Pay or FLUX.' },
+
+      { type: 'h2', text: 'When GPORTAL is the better choice' },
+      { type: 'p', text: 'If you want a heavily productized panel, a single vendor across many different games, or the reassurance of a brand your group already recognises, GPORTAL is a sound answer. Flux fits better when you want the region under your control, the deployment spread across independent machines, the settings file genuinely yours to edit, and no contract underneath any of it. Those are the trade-offs, stated plainly.' },
       { type: 'cta', text: 'Deploy a Palworld dedicated server on Flux →', href: '/#pricing' },
     ],
     faq: [
-      { question: 'What is a good GPORTAL alternative for Palworld?', answer: 'Palworld on Flux is a decentralized alternative: your server runs across 50+ countries with dedicated resources, the full 32-player cap, crossplay, included DDoS protection, and no egress fees — from $2.61/mo with the first month free.' },
-      { question: 'Is Palworld on Flux cheaper than GPORTAL?', answer: 'Flux uses pay-as-you-go pricing from $2.61/mo with the first month free, so you pay for the RAM and region you choose rather than a fixed slot tier. The exact monthly cost depends on your configuration.' },
-      { question: 'Can I move my Palworld server from GPORTAL to Flux?', answer: 'Yes. Download your world save and PalWorldSettings.ini from your current host and upload them to Flux through the file manager. A Palworld world is not locked to any provider.' },
-      { question: 'Does Flux support 32 players and crossplay like GPORTAL?', answer: 'Yes. A Palworld server on Flux supports the full 32-player cap and can be configured for Steam and Xbox/Game Pass crossplay, with full access to every setting.' },
+      { question: 'What is a good GPORTAL alternative for Palworld?', answer: 'Palworld on Flux is a decentralized one: your server runs on independent nodes across more than 50 countries with dedicated resources, the full 32-player cap, crossplay, included DDoS protection and no egress fees. Plans start at $2.61 a month with the first month free.' },
+      { question: 'Can I choose which country my Palworld server runs in?', answer: 'Yes, at deploy time, from more than 50 countries, and you can change region later from the dashboard. Because ping is decided by distance, that choice matters more than most specification sheets suggest.' },
+      { question: 'What happens to my world if a machine fails?', answer: 'The app is placed across independent nodes rather than living on one box in one rack, so losing a machine is not the same event as losing the deployment. Take your own backups regardless: the save directory and PalWorldSettings.ini are both downloadable from the file manager.' },
+      { question: 'Can I move my Palworld server from GPORTAL to Flux?', answer: 'Yes. Download your world save and PalWorldSettings.ini from your current host and upload them through the file manager. A Palworld world is a save directory and a settings file, so it is not locked to any provider.' },
+      { question: 'Does decentralized hosting mean higher ping?', answer: 'No. Your server runs on one specific node with its own CPU and RAM exactly as it would in a data centre. What is distributed is where those nodes are and how the deployment is spread between them. Latency is decided by the node you pick, and the dashboard measures it from your own browser rather than from our monitoring server.' },
     ],
-    related: ['pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
+    related: ['nitrado-alternative', 'pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
   },
 };
 
