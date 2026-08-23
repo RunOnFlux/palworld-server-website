@@ -1,3 +1,5 @@
+import { nodeApiBase } from './appPower';
+
 /**
  * Why an app can end up running nowhere.
  *
@@ -32,9 +34,15 @@
  * countries with capacity, including the US and France. The aggregate has no such
  * cliff and is smaller than the node-list request it folds into.
  *
- * It is refreshed several times a day rather than live, so a node that filled up in
- * the last few minutes can still read as free. That is an acceptable trade for an
- * advisory number: being slightly behind is not the failure mode that hurt customers.
+ * It is not live. A stats round over the whole network completes about every 13
+ * minutes, `/fluxinfo` is cached 10 minutes server-side, and this module caches 10
+ * minutes more, so a reading can be half an hour behind. Measured against the nodes
+ * themselves that costs almost nothing most of the time: 80 random nodes asked for
+ * their own `/apps/appsresources` all matched the aggregate exactly. What it costs is
+ * concentrated in the thin selections, where a single change flips the answer, and for
+ * a 2 vCPU / 5 GB plan 21 of the 56 countries with any capacity have between one and
+ * three free host servers. `confirmFreeIpCount` below closes that gap at the moment
+ * the customer commits, which is the only moment the number has to be right.
  */
 
 /**
@@ -193,10 +201,17 @@ export function nodeFitsApp(node, hw, isEnterprise = false) {
  */
 export function nodeHasRoom(node, hw, isEnterprise = false) {
   if (isEnterprise && !node.arcane) return false;
-  const used = node.used;
   // No reading means no opinion, and "no opinion" must never read as "free": every
   // caller turns this into something a customer acts on.
-  if (!used) return false;
+  if (!node.used) return false;
+  return roomFor(node, node.used, hw);
+}
+
+/**
+ * The same three comparisons against a reading supplied from outside, so a live answer
+ * from the node itself is judged by exactly the arithmetic the cached one is.
+ */
+function roomFor(node, used, hw) {
   const total = totalForApps(node);
   return (total.cpu - used.cpu) >= hw.cpu
     && (total.ramGB - used.ramGB) >= hw.ramGB
@@ -296,6 +311,164 @@ export function capacityForGeolocation(nodes, geolocation, hw, isEnterprise = fa
     freeIpCount: freeIps.size,
     takenIpCount: takenIps.size,
   };
+}
+
+/**
+ * How much slack the cached reading must show before a live confirmation is skipped.
+ *
+ * A node's reservations only move when someone deploys or removes an app on it, so a
+ * selection sitting on plenty of spare host servers is not worth asking about: every one
+ * of them would have to fill inside the same half hour. The check exists for the thin
+ * selections, and those are not the exception — most countries are one.
+ */
+export const LIVE_CHECK_MARGIN = 3;
+
+/** This runs on a button press, so the whole thing is bounded three ways. */
+const PROBE_TIMEOUT_MS = 4000;
+const PROBE_BATCH = 8;
+const MAX_LIVE_PROBES = 24;
+const LIVE_BUDGET_MS = 6000;
+/** Long enough that Back then Continue does not re-ask, short enough to stay live. */
+const PROBE_CACHE_TTL_MS = 60 * 1000;
+
+/**
+ * A Map rather than sessionStorage: probes run concurrently, and a read-modify-write
+ * against shared storage would drop entries.
+ */
+const liveUsageCache = new Map();
+
+/**
+ * Ask one node directly what its apps have reserved, right now.
+ *
+ * `/apps/appsresources` is public and cached node-side for 30s, and every node answers it
+ * over TLS at `<ip>-<port>.node.api.runonflux.io` with `access-control-allow-origin: *`,
+ * so the browser can read it without a proxy. It returns the same three numbers the stats
+ * aggregate carries for that node, only current.
+ *
+ * @returns {Promise<null|{cpu:number,ramGB:number,hddGB:number}>} null means unknown, and
+ *          every caller must treat unknown as "no opinion", never as "full". A warning
+ *          built on a request that failed is a guess, and a guess is what teaches people
+ *          to click through the ones that are real.
+ */
+async function probeNodeUsage(node, signal) {
+  const key = node.apiIp || node.ip;
+  const base = nodeApiBase(key);
+  if (!base) return null;
+  const hit = liveUsageCache.get(key);
+  if (hit && Date.now() - hit.at < PROBE_CACHE_TTL_MS) return hit.used;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  let used = null;
+  try {
+    const res = await fetch(`${base}/apps/appsresources`, { signal: controller.signal });
+    const body = await res.json();
+    const d = body?.data;
+    if (body?.status === 'success' && d && typeof d.appsCpusLocked === 'number') {
+      used = {
+        cpu: d.appsCpusLocked,
+        // The node reports MB, and so does the aggregate: same divisor, same units.
+        ramGB: (Number(d.appsRamLocked) || 0) / 1000,
+        hddGB: Number(d.appsHddLocked) || 0,
+      };
+    }
+  } catch { /* unreachable, aborted or malformed — stays unknown */ } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+  // Failures are cached too: a node that just spent four seconds timing out is not worth
+  // the same four on the customer's next click.
+  liveUsageCache.set(key, { at: Date.now(), used });
+  return used;
+}
+
+/**
+ * One node per unique IP, best bet first.
+ *
+ * FluxOS places one copy per IP, so an IP is settled by a single node that has room and
+ * there is nothing to learn from asking its neighbours. The node worth asking is the one
+ * the cached reading rates highest: for an IP that reads free, a node with room; for one
+ * that reads full, whichever came closest, since that is the one most likely to have been
+ * freed since. Free-looking IPs go first because they are what a confirmation needs, and
+ * each group is shuffled so every browser does not question the same node.
+ *
+ * @param candidates nodes from `capacityForGeolocation`, already filtered to ones that fit.
+ */
+function probeTargets(candidates, hw, isEnterprise) {
+  const best = new Map();
+  candidates.forEach((n) => {
+    if (!n.ip) return;
+    const room = nodeHasRoom(n, hw, isEnterprise);
+    // RAM is the resource that decides most of these, so it is the tie-break.
+    const spare = n.used ? totalForApps(n).ramGB - n.used.ramGB : -Infinity;
+    const cur = best.get(n.ip);
+    if (!cur || (room && !cur.room) || (room === cur.room && spare > cur.spare)) {
+      best.set(n.ip, { node: n, room, spare });
+    }
+  });
+  const shuffle = (arr) => {
+    for (let i = arr.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+  const entries = [...best.values()];
+  return [
+    ...shuffle(entries.filter((e) => e.room)),
+    ...shuffle(entries.filter((e) => !e.room)),
+  ];
+}
+
+/**
+ * Confirm against the nodes themselves that a selection still has room for `need` copies.
+ *
+ * The cached reading answers "how many are free", and answering that honestly means
+ * measuring every candidate — which is why probing was taken off that job: above any
+ * affordable cap the count becomes a lie, and the cap fell in an arbitrary place. This
+ * asks the smaller question the customer's click actually turns on, "are there still at
+ * least this many", and it can stop the moment the answer is yes. A selection of four host
+ * servers and a selection of four hundred both settle in a handful of requests.
+ *
+ * Only the IPs that read free can cost anything by being stale: one that reads full and has
+ * since emptied is a pessimistic error, and pessimism here only ever offers the customer a
+ * location they did not need. So the confirmation runs down the free ones first and reaches
+ * the rest only when it is short, where they can still rescue the selection.
+ *
+ * @returns {Promise<null|{freeIpCount:number, complete:boolean}>}
+ *   null when we could not tell and the cached verdict must stand: we ran out of budget
+ *   before confirming enough, or a node we asked never answered while the ones that did
+ *   were not enough on their own. Both are unknown, not full.
+ *   `complete` is true only when every candidate IP answered, which is the only case where
+ *   `freeIpCount` is an exact count instead of a floor — and so the only case a caller may
+ *   put on screen.
+ */
+export async function confirmFreeIpCount(candidates, hw, isEnterprise, need, { signal } = {}) {
+  if (!(need > 0)) return { freeIpCount: 0, complete: true };
+  const targets = probeTargets(candidates || [], hw, isEnterprise);
+  if (!targets.length) return { freeIpCount: 0, complete: true };
+
+  const deadline = Date.now() + LIVE_BUDGET_MS;
+  let confirmed = 0;
+  let asked = 0;
+  let failed = 0;
+  while (confirmed < need && asked < targets.length
+    && asked < MAX_LIVE_PROBES && Date.now() < deadline) {
+    const batch = targets.slice(asked, asked + PROBE_BATCH);
+    asked += batch.length;
+    const readings = await Promise.all(batch.map((t) => probeNodeUsage(t.node, signal)));
+    readings.forEach((used, i) => {
+      if (!used) { failed += 1; return; }
+      if (roomFor(batch[i].node, used, hw)) confirmed += 1;
+    });
+  }
+  if (confirmed >= need) return { freeIpCount: confirmed, complete: asked === targets.length && !failed };
+  // Short of the target with questions left unasked, or with a node that never answered
+  // among the ones we did ask: either could be hiding the copy that makes the difference.
+  if (asked < targets.length || failed) return null;
+  return { freeIpCount: confirmed, complete: true };
 }
 
 const plural = (n, one, many) => (n === 1 ? one : many);

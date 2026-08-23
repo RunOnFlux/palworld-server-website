@@ -6,7 +6,7 @@ import geolocationData from '../../utils/geolocation';
 import StepLocation from './deployment-steps/StepLocation';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import { encryptAppSpec, computeRemainingExpire } from '../../utils/appSpecHelpers';
-import { capacityForGeolocation, fetchFluxNodes, nodeFitsApp, nodeHasRoom, occupiedIps, IP_HEADROOM } from '../../utils/nodeCapacity';
+import { capacityForGeolocation, confirmFreeIpCount, fetchFluxNodes, nodeFitsApp, nodeHasRoom, occupiedIps, IP_HEADROOM, LIVE_CHECK_MARGIN } from '../../utils/nodeCapacity';
 
 // Flux free-update rate limits — mirror of EnvironmentTab / backend checkFreeAppUpdate.
 // Windows are in blocks; post-PON-fork the target block time is 30s.
@@ -328,12 +328,22 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
    * would not recompute when the spec finally arrives.
    */
   const [selectionCapacity, setSelectionCapacity] = useState(null);
+  /**
+   * A count taken from the host servers themselves, for the selection named in `key`.
+   * The cached one behind it can be half an hour old, which is invisible while browsing and
+   * expensive at the moment of saving, so `requestSave` refreshes it and leaves the answer
+   * here for the panel to show.
+   */
+  const [liveFree, setLiveFree] = useState(null);
+  const selectionKey = useMemo(() => sortedKey(allowedLocations), [allowedLocations]);
   useEffect(() => {
     if (!nodes.length) { setSelectionCapacity(null); return; }
     const inst = instancesRef.current;
-    const { nodeCount, ipCount, freeIpCount } = capacityForGeolocation(
+    const { candidates, nodeCount, ipCount, freeIpCount: cachedFree } = capacityForGeolocation(
       nodes, allowedLocations, hardwareRef.current, isEnterpriseRef.current,
     );
+    const live = liveFree && liveFree.key === selectionKey ? liveFree.freeIpCount : null;
+    const freeIpCount = live === null ? cachedFree : live;
     // Second pass, same arithmetic with the running IPs held out: how many of the host
     // servers counted above are already spent on this server. Deliberately NOT fed back
     // into the numbers above, which judge the whole selection.
@@ -341,24 +351,32 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
       ? capacityForGeolocation(nodes, allowedLocations, hardwareRef.current, isEnterpriseRef.current, placedIps)
       : { takenIpCount: 0 };
     setSelectionCapacity({
-      nodeCount, ipCount, freeIpCount, takenIpCount, instances: inst,
+      candidates, nodeCount, ipCount, freeIpCount, takenIpCount, instances: inst,
+      live: live !== null,
       // Three distinct facts: cannot fit at all, fits but every node is occupied, or
       // fits with nothing to spare. The first is permanent, the other two are about now.
       short: ipCount < inst,
       full: ipCount >= inst && freeIpCount < inst,
       tight: freeIpCount < inst + IP_HEADROOM,
     });
-  }, [nodes, allowedLocations, placedIps]);
+  }, [nodes, allowedLocations, placedIps, liveFree, selectionKey]);
 
   /**
    * Saving a selection too small for the instance count takes a RUNNING server apart, so
-   * this screen gets the same confirmation the deploy wizard puts on Continue. Only for
-   * the `short` case: it is permanent, where `full` resolves on its own as nodes free up.
+   * this screen gets the same confirmation the deploy wizard puts on Continue: 'short' when
+   * the selection can never hold the copies, 'full' when its host servers are occupied.
+   *
+   * 'full' used to be left out here, on the grounds that it passes on its own as nodes free
+   * up. That reasoning holds for a server sitting happily on its nodes; it does not hold for
+   * the customer on this tab, who is almost always here because the server did NOT place and
+   * is being told to add locations. Saving a selection with nowhere to go leaves them exactly
+   * where they started, so it is worth one question.
    */
-  const [saveConfirm, setSaveConfirm] = useState(false);
+  const [saveConfirm, setSaveConfirm] = useState(null);
+  const [verifyingCapacity, setVerifyingCapacity] = useState(false);
 
   const handleSave = async () => {
-    setSaveConfirm(false);
+    setSaveConfirm(null);
     setSaving(true);
     setError(null);
     setSavedOk(false);
@@ -405,8 +423,35 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
   };
 
 
-  const requestSave = () => {
-    if (selectionCapacity?.short && allowedLocations.length > 0) { setSaveConfirm(true); return; }
+  /**
+   * Same check the deploy wizard runs on Continue, for the same reason: the counts on this
+   * panel come from an aggregate that can be half an hour behind, and a customer who is here
+   * to rescue a server that never placed must not save a selection that was full before they
+   * opened the tab. Only when the answer could change — a selection with room to spare is not
+   * worth the wait, and 'short' is arithmetic no live reading can move.
+   */
+  const requestSave = async () => {
+    const cap = selectionCapacity;
+    if (!cap || allowedLocations.length === 0) { handleSave(); return; }
+    if (cap.short) { setSaveConfirm('short'); return; }
+
+    if (cap.full || cap.freeIpCount - cap.instances <= LIVE_CHECK_MARGIN) {
+      setVerifyingCapacity(true);
+      const live = await confirmFreeIpCount(
+        cap.candidates, hardwareRef.current, isEnterpriseRef.current, cap.instances,
+      );
+      setVerifyingCapacity(false);
+      if (live) {
+        // A run that stopped early stopped because it had confirmed enough; only a complete
+        // sweep is an exact count, and only an exact count belongs on the panel.
+        if (live.complete) setLiveFree({ key: selectionKey, freeIpCount: live.freeIpCount });
+        if (live.freeIpCount < cap.instances) { setSaveConfirm('full'); return; }
+        handleSave();
+        return;
+      }
+      // Could not tell: the cached verdict stands rather than a guess being made from it.
+    }
+    if (cap.full) { setSaveConfirm('full'); return; }
     handleSave();
   };
   const handleRedeployClick = () => {
@@ -585,10 +630,12 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
       <button
         type="button"
         onClick={requestSave}
-        disabled={saving || !dirty || !!(limitStatus && !limitStatus.free)}
+        disabled={saving || verifyingCapacity || !dirty || !!(limitStatus && !limitStatus.free)}
         className="btn-primary w-full inline-flex items-center justify-center gap-2"
       >
-        {saving ? (
+        {verifyingCapacity ? (
+          <><RefreshCw className="w-4 h-4 animate-spin" /> Checking availability…</>
+        ) : saving ? (
           <><RefreshCw className="w-4 h-4 animate-spin" /> Saving…</>
         ) : savedOk ? (
           <><CheckCircle className="w-4 h-4" /> Saved, redeploy to apply</>
@@ -599,21 +646,43 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
 
       {saveConfirm && selectionCapacity && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setSaveConfirm(false)} />
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setSaveConfirm(null)} />
           <div className="relative bg-gray-800 rounded-xl p-6 max-w-md w-full border border-amber-500/40 shadow-xl">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-7 h-7 text-amber-400 flex-shrink-0" />
               <div className="min-w-0">
-                <h4 className="text-lg font-semibold text-amber-300 mb-2">
-                  These locations cannot fit your server
-                </h4>
-                <p className="text-sm text-gray-300 leading-relaxed">
-                  They cover {selectionCapacity.ipCount} host {selectionCapacity.ipCount === 1 ? 'server' : 'servers'} able
-                  to run your plan, and your server runs on {selectionCapacity.instances} copies. Saving this and
-                  redeploying leaves {selectionCapacity.instances - selectionCapacity.ipCount}{' '}
-                  {selectionCapacity.instances - selectionCapacity.ipCount === 1 ? 'copy' : 'copies'} with nowhere
-                  to go, and that does not resolve itself with time.
-                </p>
+                {saveConfirm === 'short' ? (
+                  <>
+                    <h4 className="text-lg font-semibold text-amber-300 mb-2">
+                      These locations cannot fit your server
+                    </h4>
+                    <p className="text-sm text-gray-300 leading-relaxed">
+                      They cover {selectionCapacity.ipCount} host {selectionCapacity.ipCount === 1 ? 'server' : 'servers'} able
+                      to run your plan, and your server runs on {selectionCapacity.instances} copies. Saving this and
+                      redeploying leaves {selectionCapacity.instances - selectionCapacity.ipCount}{' '}
+                      {selectionCapacity.instances - selectionCapacity.ipCount === 1 ? 'copy' : 'copies'} with nowhere
+                      to go, and that does not resolve itself with time.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h4 className="text-lg font-semibold text-amber-300 mb-2">
+                      The host servers in these locations are full right now
+                    </h4>
+                    <p className="text-sm text-gray-300 leading-relaxed">
+                      {selectionCapacity.freeIpCount === 0
+                        ? `None of the ${selectionCapacity.ipCount} host servers these locations cover has room for your plan at the moment.`
+                        : `Only ${selectionCapacity.freeIpCount} of the ${selectionCapacity.ipCount} host servers these locations cover has room for your plan, and your server runs on ${selectionCapacity.instances} copies.`}{' '}
+                      Saving this leaves your server waiting until one frees up.
+                    </p>
+                    {selectionCapacity.live && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        We asked those host servers directly just now, so this is more current
+                        than the counts above.
+                      </p>
+                    )}
+                  </>
+                )}
                 <p className="text-sm text-gray-400 mt-3">
                   Adding another location gives it somewhere to go.
                 </p>
@@ -629,7 +698,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
               </button>
               <button
                 type="button"
-                onClick={() => setSaveConfirm(false)}
+                onClick={() => setSaveConfirm(null)}
                 className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 text-sm font-semibold text-gray-900 hover:bg-amber-400 transition-colors"
               >
                 Add another location

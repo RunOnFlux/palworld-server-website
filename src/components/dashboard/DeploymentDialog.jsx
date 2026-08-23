@@ -10,7 +10,7 @@ import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walle
 import marketplaceService from '../../services/marketplaceService';
 import { withModsMount } from '../../config/modsConfig';
 import { defaultRebootSettings, buildRebootEnv } from '../../config/serverMaintenance';
-import { capacityForGeolocation, fetchFluxNodes, nodeFitsApp, nodeHasRoom } from '../../utils/nodeCapacity';
+import { capacityForGeolocation, confirmFreeIpCount, fetchFluxNodes, nodeFitsApp, nodeHasRoom, LIVE_CHECK_MARGIN } from '../../utils/nodeCapacity';
 import { applyRandomExternalPorts, registerAppSpecWithPortRetry, palworldGamePort } from '../../utils/appSpecHelpers';
 import geolocationData from '../../utils/geolocation';
 import toast from 'react-hot-toast';
@@ -519,24 +519,49 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   }, [availableLocations, computeAvailability]);
 
   /**
+   * What a capacity answer belongs to. The same locations are a different bet on a bigger
+   * plan and on more copies, so an answer earned under one must never be read under another.
+   */
+  const selectionKey = useMemo(
+    () => `${selectedPlan?.id || '?'}::${serverConfig.instances}::${[...allowedLocations].sort().join('|') || '*'}`,
+    [selectedPlan, serverConfig.instances, allowedLocations],
+  );
+
+  /**
+   * A count taken from the host servers themselves, for the selection named in `key`.
+   * Kept until the selection changes, so the screen the customer comes back to after a
+   * warning shows the number the warning was about rather than the cached one it contradicts.
+   */
+  const [liveFree, setLiveFree] = useState(null);
+
+  /**
    * Capacity of the CURRENT selection.
    *
    * `ipCount` answers whether the selection could EVER hold the instance count;
    * `freeIpCount` answers whether it can right now. Locations are pooled by FluxOS, so
    * both are properties of the selection as a whole, never of any single location in it.
    *
-   * Both are arithmetic over the already-fetched node list, which now carries each
-   * node's reserved resources alongside its specs. That is why there is no probing and
-   * no debounce here any more: the answer is exact for a selection of any width and
-   * lands on the same render as the click that changed it.
+   * Both are arithmetic over the already-fetched node list, which carries each node's
+   * reserved resources alongside its specs, so there is no probing and no debounce while
+   * the customer edits: the answer covers a selection of any width and lands on the same
+   * render as the click that changed it. What that list cannot be is current to the
+   * minute, and `continueFromLocations` is where that gets settled.
    */
   const capacity = useMemo(() => {
     if (currentStep !== 4 || !availableLocations?.nodes?.length) return null;
-    const { nodeCount, ipCount, freeIpCount } = capacityForGeolocation(
+    const { candidates, nodeCount, ipCount, freeIpCount } = capacityForGeolocation(
       availableLocations.nodes, allowedLocations, planHardware, isEnterprise,
     );
-    return { nodeCount, ipCount, freeIpCount, instances: serverConfig.instances };
-  }, [currentStep, availableLocations, allowedLocations, planHardware, isEnterprise, serverConfig.instances]);
+    const live = liveFree && liveFree.key === selectionKey ? liveFree.freeIpCount : null;
+    return {
+      candidates,
+      nodeCount,
+      ipCount,
+      freeIpCount: live === null ? freeIpCount : live,
+      live: live !== null,
+      instances: serverConfig.instances,
+    };
+  }, [currentStep, availableLocations, allowedLocations, planHardware, isEnterprise, serverConfig.instances, liveFree, selectionKey]);
 
   /**
    * The part of that worth stopping someone on the way to payment. 'short' is permanent:
@@ -545,8 +570,10 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
    */
   const capacityBlocker = useMemo(() => {
     if (!capacity) return null;
-    if (capacity.ipCount < capacity.instances) return { kind: 'short', ...capacity };
-    if (capacity.freeIpCount < capacity.instances) return { kind: 'full', ...capacity };
+    const { nodeCount, ipCount, freeIpCount, live, instances } = capacity;
+    const base = { nodeCount, ipCount, freeIpCount, live, instances };
+    if (ipCount < instances) return { kind: 'short', ...base };
+    if (freeIpCount < instances) return { kind: 'full', ...base };
     return null;
   }, [capacity]);
 
@@ -751,12 +778,9 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   const handleBackToStep4 = useCallback(() => { stepDirectionRef.current = -1; setCurrentStep(4); }, []);
   const handleContinueToStep4 = useCallback(() => { stepDirectionRef.current = 1; setCurrentStep(4); }, []);
   const [capacityPrompt, setCapacityPrompt] = useState(null);
-  // Keyed by the plan too: the same locations are a different bet on a bigger plan, and
-  // a warning accepted on the cheap tier must not cover the expensive one.
-  const capacityKey = useCallback(
-    (kind) => `${selectedPlan?.id || '?'}::${[...allowedLocations].sort().join('|') || '*'}::${kind}`,
-    [allowedLocations, selectedPlan],
-  );
+  // Keyed by the whole selection: a warning accepted on the cheap tier must not cover the
+  // expensive one, nor one selection's answer another's.
+  const capacityKey = useCallback((kind) => `${selectionKey}::${kind}`, [selectionKey]);
 
   const goToStep5 = useCallback(() => { stepDirectionRef.current = 1; setCurrentStep(5); }, []);
 
@@ -782,15 +806,84 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
   const [unaddedPrompt, setUnaddedPrompt] = useState(null);
 
-  // The inline notice on the location step is easy to walk past; this is the same fact
-  // where it cannot be. Still not a block — the customer can say yes and go on.
-  const continueFromLocations = useCallback(() => {
-    if (capacityBlocker && !acceptedCapacityRef.current.has(capacityKey(capacityBlocker.kind))) {
-      setCapacityPrompt(capacityBlocker);
+  const [verifyingCapacity, setVerifyingCapacity] = useState(false);
+
+  /**
+   * The last thing between the customer and the payment screen.
+   *
+   * The numbers on the step behind this come from a network-wide aggregate that can be half
+   * an hour old, which is fine while they are still choosing and not fine here: three
+   * locations reading "1 free" each can be two locations reading "1 free" and one that was
+   * taken twenty minutes ago, and nothing on the screen would say so. So before the click
+   * goes through, the host servers themselves are asked.
+   *
+   * Only when the answer could change. A selection with room to spare is not worth the
+   * wait, and 'short' is arithmetic over unique IPs that no live reading can move. What is
+   * left is the thin selections and the ones already reading full, and the check runs in
+   * both directions there: it can raise a warning the cache had not, and it can clear one
+   * the cache had raised on nodes that have since emptied.
+   *
+   * This narrows the window rather than closing it. Payment, the spec broadcast and FluxOS
+   * picking a host are minutes more, nothing can be reserved in advance, and two customers
+   * checking at once see the same free host server. Which is why it stays a warning with
+   * "Deploy anyway" next to it, exactly as before.
+   */
+  const continueFromLocations = useCallback(async () => {
+    const cached = capacityBlocker;
+    const ask = (blocker) => {
+      if (blocker && !acceptedCapacityRef.current.has(capacityKey(blocker.kind))) {
+        setCapacityPrompt(blocker);
+        return true;
+      }
+      return false;
+    };
+    // Permanent, and already exact: nothing to confirm.
+    if (cached?.kind === 'short') {
+      if (ask(cached)) return;
+      goToStep5();
       return;
     }
+    // Deliberately not skipped just because a live count is already on screen: a second
+    // Continue can be twenty minutes after the first. Re-asking is nearly free, since the
+    // per-node readings are cached for a minute.
+    const worthChecking = capacity
+      && (cached?.kind === 'full' || capacity.freeIpCount - capacity.instances <= LIVE_CHECK_MARGIN);
+    if (!worthChecking) {
+      if (ask(cached)) return;
+      goToStep5();
+      return;
+    }
+
+    setVerifyingCapacity(true);
+    const live = await confirmFreeIpCount(
+      capacity.candidates, planHardware, isEnterprise, capacity.instances,
+    );
+    setVerifyingCapacity(false);
+
+    // Could not tell. The cached verdict stands, unchanged and unannounced — a warning
+    // built on requests that failed is a guess.
+    if (!live) {
+      if (ask(cached)) return;
+      goToStep5();
+      return;
+    }
+    // Only a complete sweep is an exact count. A run that stopped early stopped because it
+    // had confirmed enough, and putting that floor on screen would understate the truth.
+    if (live.complete) setLiveFree({ key: selectionKey, freeIpCount: live.freeIpCount });
+    if (live.freeIpCount >= capacity.instances) {
+      goToStep5();
+      return;
+    }
+    if (ask({
+      kind: 'full',
+      nodeCount: capacity.nodeCount,
+      ipCount: capacity.ipCount,
+      freeIpCount: live.freeIpCount,
+      live: true,
+      instances: capacity.instances,
+    })) return;
     goToStep5();
-  }, [capacityBlocker, capacityKey, goToStep5]);
+  }, [capacityBlocker, capacity, capacityKey, goToStep5, planHardware, isEnterprise, selectionKey]);
 
   // Asked before the capacity question, because the answer changes it: adding the pick
   // is what gives the capacity check something to judge.
@@ -1588,6 +1681,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
             formatLocationLabel={formatLocationLabel}
             getFlagIcon={getFlagIcon}
             capacity={capacity}
+            continueBusy={verifyingCapacity}
             onBack={handleBackToStep3OrSkip}
             onContinue={handleContinueToStep5}
           />
@@ -1735,6 +1829,12 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
                         : `Only ${capacityPrompt.freeIpCount} of the ${capacityPrompt.ipCount} host servers matching your locations has room for this plan, and your server runs on ${capacityPrompt.instances} copies.`}{' '}
                       Your server may sit waiting to deploy until one frees up.
                     </p>
+                    {capacityPrompt.live && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        We asked those host servers directly just now, so this is more current
+                        than the counts on the previous screen.
+                      </p>
+                    )}
                   </>
                 )}
                 <p className="text-sm text-gray-400 mt-3">

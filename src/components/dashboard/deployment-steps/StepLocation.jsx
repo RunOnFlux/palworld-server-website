@@ -22,6 +22,7 @@ const StepLocation = memo(({
   formatLocationLabel,
   getFlagIcon,
   capacity = null,
+  continueBusy = false,
   onBack,
   onContinue,
   showNav = true
@@ -315,9 +316,10 @@ const StepLocation = memo(({
           <button
             type="button"
             onClick={onContinue}
-            className="btn-primary flex-1"
+            disabled={continueBusy}
+            className="btn-primary flex-1 disabled:opacity-70 disabled:cursor-wait"
           >
-            Continue
+            {continueBusy ? 'Checking availability…' : 'Continue'}
           </button>
         </div>
       )}
