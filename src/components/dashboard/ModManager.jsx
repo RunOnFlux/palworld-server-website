@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import secureStorage from '../../utils/secureStorage';
 import apiService from '../../services/apiService';
-import { computeRemainingExpire } from '../../utils/appSpecHelpers';
+import { computeRemainingExpire, fetchLatestAppSpec } from '../../utils/appSpecHelpers';
 import { restartApp } from '../../utils/appPower';
 import { isAlreadyExists, jobFailureMessage, pollOperation, readUploadResponse, readVolumeResponse } from '../../utils/volumeOperations';
 import { MODS_VOLUME_PATH, MOD_CATALOG, fileNameFromUrl, withModsMount } from '../../config/modsConfig';
@@ -440,11 +440,13 @@ export default function ModManager({ server, masterLocation, onMasterError, onRe
     setBusy('__enable__');
     setStep('enabling');
     try {
-      const outer = await apiService.getAppSpecs(server.name);
-      if (!outer?.name) throw new Error('Could not load the current app spec.');
+      // Fresh spec, and refused while an update is still confirming: expire is recomputed
+      // from this read, so writing on top of a stale or superseded copy would put its
+      // expiry back on chain and undo any extension bought since.
+      const { outer, compose } = await fetchLatestAppSpec(server.name);
       enableOldHashRef.current = outer.hash || null;
       const height = await apiService.getBlockHeight();
-      const newCompose = (outer.compose || []).map((c) => ({
+      const newCompose = (compose || []).map((c) => ({
         ...c,
         containerData: withModsMount(c.containerData),
       }));

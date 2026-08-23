@@ -9,6 +9,7 @@ import {
   importRsaPublicKey,
   encryptAesKeyWithRsaKey,
   encryptEnterpriseWithAes,
+  fetchDecryptedEnterpriseSpec,
 } from './enterpriseCrypto';
 
 // ---------------------------------------------------------------------------
@@ -123,6 +124,72 @@ export const computeRemainingExpire = (spec, currentHeight) => {
   if (!height || !expire || !currentHeight) return expire || 1;
   const remaining = (height + expire) - Number(currentHeight);
   return Math.max(1, Math.floor(remaining));
+};
+
+/** Shown when a renewal for this app is still confirming. Exported so callers can match on it. */
+export const PENDING_UPDATE_ERROR = 'This server has a renewal still being confirmed on-chain. Please wait a couple of minutes and try again — saving now would wipe out the time you just bought.';
+
+/**
+ * Read the app's current on-chain spec immediately before an appupdate is built.
+ *
+ * MUST be used by every path that writes a spec. An appupdate re-registers the WHOLE
+ * spec, and `expire` is recomputed from whatever copy the caller holds — so building on
+ * a spec cached when a tab mounted writes that copy's expiry back, silently reverting
+ * any extension bought since. That is how a paid renewal was erased 65 seconds after it
+ * was signed (palworld1784493548530: block 2864625 extended to 2963116, block 2864631
+ * put it back to 2875120 and the server died a month early).
+ *
+ * Freshness needs both halves, and neither is sufficient alone:
+ *  - the confirmed spec, re-read now rather than at mount — closes the stale-tab case,
+ *    which is the wide one (a tab left open across a renewal reverts it hours later);
+ *  - a check for an update still awaiting confirmation, because the confirmed spec
+ *    cannot show one — closes the in-flight case, which is what actually happened here.
+ *
+ * Only a pending update that EXTENDS past the confirmed expiry blocks the save. A pending
+ * settings change carries the same expiry, so superseding it costs the customer nothing —
+ * that is the ordinary last-write-wins they get by saving twice, and refusing it would
+ * mean a typo could not be corrected for minutes.
+ *
+ * @param {string} appName
+ * @returns {Promise<{outer: object, compose: array, contacts: array, isEnterprise: boolean}>}
+ * @throws {Error} if a renewal is in flight, or the spec cannot be read
+ */
+export const fetchLatestAppSpec = async (appName) => {
+  // Read BEFORE the spec, so a message that confirms between the two calls is picked up by
+  // the spec read rather than missed by both.
+  const pending = await apiService.getPendingAppUpdate(appName);
+
+  const outer = await apiService.getAppSpecs(appName);
+  if (!outer || !outer.name) throw new Error('Could not load the current server spec. Please try again in a moment.');
+
+  if (pending) {
+    const pendingSpec = pending.appSpecifications || pending.zelAppSpecifications || {};
+    const currentHeight = await apiService.getBlockHeight();
+    const confirmedExpiryBlock = (Number(outer.height) || 0) + (Number(outer.expire) || 0);
+    // A pending message has no height yet — it re-registers wherever it lands, which is
+    // within a few blocks of now. Tolerance mirrors the 11 blocks FluxOS itself allows a
+    // free update to drift, so ordinary rounding never reads as an extension.
+    const pendingExpiryBlock = (Number(currentHeight) || 0) + (Number(pendingSpec.expire) || 0);
+    if (currentHeight && confirmedExpiryBlock && pendingExpiryBlock > confirmedExpiryBlock + 11) {
+      throw new Error(PENDING_UPDATE_ERROR);
+    }
+  }
+
+  // Enterprise iff it carries an encrypted `enterprise` blob (v8+); its compose and
+  // contacts only exist decrypted.
+  const isEnterprise = !!outer.enterprise;
+  let compose = outer.compose;
+  let contacts = outer.contacts || [];
+  if (isEnterprise && (!compose || compose.length === 0)) {
+    const zelidauth = await apiService.getStoredAuth();
+    const fluxApiBase = sessionStorage.getItem('stickyBackendDNS') || 'https://api.runonflux.io';
+    const decrypted = await fetchDecryptedEnterpriseSpec(appName, fluxApiBase, zelidauth);
+    if (!decrypted?.compose?.length) throw new Error('Could not decrypt the current spec. Try again in a moment.');
+    compose = decrypted.compose;
+    contacts = decrypted.contacts || contacts;
+  }
+
+  return { outer, compose, contacts, isEnterprise };
 };
 
 /** Parse an inline ["KEY=value"] env array into a { KEY: value } object. */

@@ -6,7 +6,7 @@ import marketplaceService from '../../services/marketplaceService';
 import CustomSelect from '../common/CustomSelect';
 import AutoRestartFields from './AutoRestartFields';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
-import { encryptAppSpec, mergeInlineEnv, parseEnvArray, computeRemainingExpire } from '../../utils/appSpecHelpers';
+import { encryptAppSpec, mergeInlineEnv, parseEnvArray, computeRemainingExpire, fetchLatestAppSpec } from '../../utils/appSpecHelpers';
 import { parseRebootEnv, buildRebootEnv, findMissingStandardEnv, standardEnvPatch } from '../../config/serverMaintenance';
 
 // Flux free-update rate limits — mirror of backend checkFreeAppUpdate. Windows are in
@@ -233,9 +233,15 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
     setError(null);
     setSavedOk(false);
     try {
-      const outer = specRef.current;
-      const compose = composeRef.current;
-      if (!outer || !compose?.length) throw new Error('No current spec loaded.');
+      // Re-read the spec now: an appupdate rewrites the whole thing, so the copy loaded
+      // when this tab mounted would put its own (possibly pre-renewal) expiry back on
+      // chain. Also refuses outright while an update is still confirming.
+      const { outer, compose, contacts, isEnterprise } = await fetchLatestAppSpec(server.name);
+      if (!compose?.length) throw new Error('No current spec loaded.');
+      specRef.current = outer;
+      composeRef.current = compose;
+      contactsRef.current = contacts;
+      isEnterpriseRef.current = isEnterprise;
 
       // Merge edits over the existing env (preserves fixed params like PORT/SERVERNAME).
       const currentEnvArray = compose[0].environmentParameters || [];
@@ -258,7 +264,7 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
         ...outer,
         expire: remainingExpire,
         compose: newCompose,
-        contacts: contactsRef.current,
+        contacts,
         enterprise: '',
       };
 
@@ -269,7 +275,7 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
         throw new Error(`Update limit reached. Please wait about ${formatWait(status.waitBlocks)} before changing settings again.`);
       }
 
-      const finalSpec = await encryptAppSpec(plainSpec, isEnterpriseRef.current);
+      const finalSpec = await encryptAppSpec(plainSpec, isEnterprise);
       const newHash = await apiService.updateAppSpecification(finalSpec);
 
       // The saved spec is the new baseline: a second save must merge on top of what we

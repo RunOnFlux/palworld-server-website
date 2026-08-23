@@ -5,7 +5,7 @@ import apiService from '../../services/apiService';
 import geolocationData from '../../utils/geolocation';
 import StepLocation from './deployment-steps/StepLocation';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
-import { encryptAppSpec, computeRemainingExpire } from '../../utils/appSpecHelpers';
+import { encryptAppSpec, computeRemainingExpire, fetchLatestAppSpec } from '../../utils/appSpecHelpers';
 import { capacityForGeolocation, confirmFreeIpCount, fetchFluxNodes, nodeFitsApp, nodeHasRoom, occupiedIps, IP_HEADROOM, LIVE_CHECK_MARGIN } from '../../utils/nodeCapacity';
 
 // Flux free-update rate limits — mirror of EnvironmentTab / backend checkFreeAppUpdate.
@@ -381,9 +381,16 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
     setError(null);
     setSavedOk(false);
     try {
-      const outer = specRef.current;
-      const compose = composeRef.current;
-      if (!outer || !compose?.length) throw new Error('No current spec loaded.');
+      // Re-read the spec now: an appupdate rewrites the whole thing, so the copy loaded
+      // when this tab mounted would put its own (possibly pre-renewal) expiry back on
+      // chain. Also refuses outright while an update is still confirming.
+      const { outer, compose, contacts, isEnterprise } = await fetchLatestAppSpec(server.name);
+      if (!compose?.length) throw new Error('No current spec loaded.');
+      specRef.current = outer;
+      composeRef.current = compose;
+      contactsRef.current = contacts;
+      isEnterpriseRef.current = isEnterprise;
+      instancesRef.current = outer.instances || 1;
 
       // Recompute expire = remaining blocks so this change does NOT extend (and thus pay for)
       // the subscription — keeps an otherwise-free geolocation update free.
@@ -394,7 +401,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
         ...outer,
         expire: remainingExpire,
         compose,
-        contacts: contactsRef.current,
+        contacts,
         geolocation: allowedLocations,
         enterprise: '',
       };
@@ -406,7 +413,7 @@ const GeolocationTab = ({ server, onUpdate, onRedeploy, onSwitchTab }) => {
         throw new Error(`Update limit reached. Please wait about ${formatWait(status.waitBlocks)} before changing settings again.`);
       }
 
-      const finalSpec = await encryptAppSpec(plainSpec, isEnterpriseRef.current);
+      const finalSpec = await encryptAppSpec(plainSpec, isEnterprise);
       const newHash = await apiService.updateAppSpecification(finalSpec);
 
       setOriginalGeo(sortedKey(allowedLocations));

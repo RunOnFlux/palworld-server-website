@@ -6,7 +6,7 @@ import stripeService from '../../services/stripeService';
 import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walletService';
 // (stripeService also provides getSubscriptionStatus / chargeSubscriptionUpdate / updateSubscriptionPrice)
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
-import { encryptAppSpec, computeRemainingExpire } from '../../utils/appSpecHelpers';
+import { encryptAppSpec, computeRemainingExpire, fetchLatestAppSpec } from '../../utils/appSpecHelpers';
 
 // Snapped slider ranges (within sane Flux limits). Step = increment.
 // Maxima are the real Flux protocol limits per component (stratus tier minus locked
@@ -198,9 +198,16 @@ const HardwareTab = ({ server, onUpdate, onRedeploy, onReinstall, onSwitchTab })
     setTxid(null);
     setPayState('submitting');
     try {
-      // Refresh the block height so expire is computed against the CURRENT height (not the
-      // load-time one) — otherwise a stale height overestimates remaining blocks and would
-      // slightly extend the subscription / bump the price.
+      // Re-read the spec AND the block height before building. buildSpec recomputes expire
+      // from outerRef, so the copy loaded when this tab mounted would put its own (possibly
+      // pre-renewal) expiry back on chain; a stale height would separately overestimate the
+      // remaining blocks and slightly extend the subscription. This also refuses outright
+      // while an update is still confirming.
+      const fresh = await fetchLatestAppSpec(server.name);
+      outerRef.current = fresh.outer;
+      composeRef.current = fresh.compose;
+      contactsRef.current = fresh.contacts;
+      isEnterpriseRef.current = fresh.isEnterprise;
       try { const h = await apiService.getBlockHeight(); if (h) heightRef.current = h; } catch { /* keep load-time height */ }
 
       // Re-encrypt + submit the signed appupdate → payment hash.

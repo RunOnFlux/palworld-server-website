@@ -533,6 +533,49 @@ class ApiService {
   }
 
   /**
+   * An update message for this app that is broadcast but NOT yet confirmed on-chain,
+   * and is still young enough that it plausibly will be.
+   *
+   * `/apps/appspecifications` reports confirmed state only, so for the minute or two a
+   * renewal spends waiting for its payment to confirm, the extension it bought is
+   * invisible there — re-reading the spec in that window still yields the pre-renewal
+   * expiry. This is the only endpoint that shows the in-flight message.
+   *
+   * The age cut-off matters: the network holds a message for a full hour, but a paid
+   * one confirms in about a minute (fiat) and a free one in about five (the monitor
+   * waits two minutes before paying). Anything older has almost certainly been
+   * abandoned — a cancelled checkout, say — and treating it as live would lock the
+   * customer out of their own dashboard for the rest of the hour.
+   *
+   * Cache-busted: a value even seconds old defeats the purpose.
+   */
+  async getPendingAppUpdate(appName) {
+    const MAX_PENDING_AGE_MS = 15 * 60 * 1000;
+    try {
+      const res = await this.get('/apps/temporarymessages', {
+        headers: { 'x-apicache-bypass': true },
+      });
+      if (res.status !== 'success' || !Array.isArray(res.data)) return null;
+      const match = res.data.find((m) => {
+        const spec = m.appSpecifications || m.zelAppSpecifications;
+        return spec && spec.name === appName;
+      });
+      if (!match) return null;
+      const receivedAt = new Date(match.receivedAt).getTime();
+      // Unparseable timestamp → treat as live. Erring towards blocking costs a retry;
+      // erring the other way is what loses a paid month.
+      if (Number.isNaN(receivedAt)) return match;
+      return (Date.now() - receivedAt) < MAX_PENDING_AGE_MS ? match : null;
+    } catch (e) {
+      // Deliberately non-fatal. Losing this check costs the in-flight guard, but the
+      // caller still writes against a freshly fetched spec — blocking every settings
+      // change on a transient failure of this endpoint would be the worse trade.
+      console.warn('Could not check for pending app updates:', e.message);
+      return null;
+    }
+  }
+
+  /**
    * Push a spec-only appupdate on-chain: verify -> sign (SSO) -> appupdate. Returns the
    * new spec's payment/message hash. Works for enterprise and non-enterprise specs.
    */
@@ -660,6 +703,15 @@ class ApiService {
       // Validate newExpireBlocks
       if (!newExpireBlocks || typeof newExpireBlocks !== 'number' || newExpireBlocks <= 0 || isNaN(newExpireBlocks)) {
         throw new Error(`Invalid expire blocks value: ${newExpireBlocks}`);
+      }
+
+      // Step 0: Refuse while another update for this app is still confirming. The renewal
+      // below is built from the CONFIRMED spec, so a settings change already in flight would
+      // land afterwards carrying the pre-renewal expiry and wipe the month just bought —
+      // the same collision that killed palworld1784493548530, in the other direction.
+      const pendingUpdate = await this.getPendingAppUpdate(appName);
+      if (pendingUpdate) {
+        throw new Error('This server has a change still being confirmed on-chain. Please wait about two minutes and renew again — renewing now could be overwritten.');
       }
 
       // Step 1: Get current app specification
