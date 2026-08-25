@@ -88,7 +88,7 @@ export const pagesContent = {
       highPrice: '8.55',
       offerCount: '3',
     },
-    related: ['pricing', 'server-requirements', 'setup-guide', 'gportal-alternative', 'nitrado-alternative'],
+    related: ['palworld-server-cost', 'pricing', 'server-requirements', 'setup-guide', 'gportal-alternative', 'nitrado-alternative'],
   },
 
   'setup-guide': {
@@ -158,7 +158,7 @@ export const pagesContent = {
         { name: 'Configure and invite', text: 'Edit PalWorldSettings.ini from the dashboard and share your server address with your friends.' },
       ],
     },
-    related: ['server-requirements', 'server-settings', 'join-server', 'pricing', 'rent-palworld-server', 'guides/server-keeps-crashing'],
+    related: ['palworld-server-cost', 'server-requirements', 'server-settings', 'join-server', 'pricing', 'rent-palworld-server', 'guides/server-keeps-crashing'],
   },
 
   'server-requirements': {
@@ -167,10 +167,10 @@ export const pagesContent = {
     title: 'Palworld Dedicated Server Requirements (CPU, RAM, Ports)',
     metaTitle: 'Palworld 1.0 Dedicated Server Requirements (CPU, RAM, Ports)',
     description:
-      'Palworld dedicated server requirements: Pocketpair officially requires 8GB RAM and 4+ cores, recommends 16GB. Real sizing by player count, ports 8211 UDP / 8212 TCP, and the SSD warning most guides miss.',
+      'Palworld server requirements: Pocketpair officially requires 16GB RAM and 4+ cores, and prefers 32GB+. Real sizing by player count, ports 8211 UDP / 8212 TCP.',
     h1: 'Palworld Dedicated Server Requirements',
     lead:
-      'Pocketpair officially requires 8GB of RAM and four CPU cores for a Palworld dedicated server, and recommends 16GB. But a four-player co-op world and a 32-player community server are not the same machine, so this page gives both: the official specification, and what each player count actually needs in practice — plus the ports to open, the disk warning most guides skip, and how the footprint grows as bases and Pals accumulate.',
+      'Pocketpair officially requires 16GB of RAM for a Palworld dedicated server, prefers more than 32GB for larger servers, and recommends four or more CPU cores. 8GB will boot, but Pocketpair warns it raises the chance of out-of-memory crashes — which is why so many hosting pages quote 8GB as the requirement. It is not. That said, a four-player co-op world and a 32-player community server are not the same machine, so this page gives both: the official specification, and what each player count actually needs in practice — plus the ports to open, the disk warning most guides skip, and why memory use climbs the longer a world stays live.',
     breadcrumbs: [
       { name: 'Home', url: '/' },
       { name: 'Server Requirements', url: '/server-requirements' },
@@ -179,13 +179,13 @@ export const pagesContent = {
       { type: 'h2', text: 'The official Palworld server requirements' },
       { type: 'p', text: 'Start with what Pocketpair publishes, because it is the number the game is tested against and it is stricter than most hosting pages admit:' },
       { type: 'table', head: ['Resource', 'Pocketpair\'s official requirement'], rows: [
-        ['RAM', '8GB required; 16GB recommended, and more than 32GB preferred for larger servers'],
-        ['CPU', '4 cores or more'],
+        ['RAM', '16GB required; more than 32GB preferred for larger servers. 8GB is bootable, but Pocketpair warns it increases the chance of out-of-memory crashes'],
+        ['CPU', '4 cores or more (recommended)'],
         ['Storage', 'An SSD is strongly recommended — Pocketpair warns that low-performance storage can corrupt save data'],
         ['Ports', 'UDP 8211 (default, changeable)'],
         ['OS', 'Windows 64-bit, or Linux 64-bit (Ubuntu, AlmaLinux and similar)'],
       ] },
-      { type: 'p', text: 'The 8GB figure is a floor rather than a target. Pocketpair notes that a server will boot below it but becomes more likely to run out of memory, and memory use climbs steadily as players build bases, capture Pals, and fill the world with objects — a long-running 1.0 world uses noticeably more than a freshly created one.' },
+      { type: 'p', text: 'Read the 8GB line carefully, because most hosting pages quote it as the requirement. Pocketpair\'s own words are that 8GB \u201cis also bootable, but increases the possibility of server crashes due to out of memory\u201d. The requirement is 16GB. The distinction matters more than it looks, because Palworld\'s memory use climbs steadily while a world is live — players build bases, capture Pals, and fill the map with objects — so a long-running 1.0 world sits far above where it started.' },
 
       { type: 'h2', text: 'How much RAM does a Palworld server need in practice?' },
       { type: 'p', text: 'Official minimums are written for a single spec that has to cover every case. Sizing by player count is more useful, so the table below is how we allocate memory across our own hosting plans — our operational sizing, not Pocketpair\'s specification:' },
@@ -195,10 +195,10 @@ export const pagesContent = {
         ['12GB', 'Up to 16 players', 'Medium group, active base building'],
         ['16GB', 'Up to 32 players', 'Full-size community server (max players)'],
       ] },
-      { type: 'p', text: 'The 5GB tier sits below the official 8GB requirement deliberately: a four-player co-op world on a managed instance with dedicated memory runs comfortably there, which is why the entry plan exists. If you are opening a public server, or you expect the world to run for months, take Pocketpair\'s advice over ours and start at 16GB. Self-hosting on a shared machine, where other processes compete for memory, is also a good reason to stick to the official floor.' },
+      { type: 'p', text: 'Every tier below 16GB sits under Pocketpair\'s official requirement, so it is worth being straight about why those tiers work on managed hosting and often will not on your own machine. Two things differ. The memory is dedicated — nothing else on the box competes for it, which is not true of a PC that is also running the game, a browser and Discord. And the server watches itself. Our Palworld image samples the server every minute and restarts it when it has stopped serving — no setting to enable — on top of a nightly restart you can schedule from the dashboard to hand the accumulated memory back before it reaches the ceiling. That second half is the important one: Palworld grows its memory use over a session rather than holding steady, and a four-player world with around 80 Pals commonly climbs from roughly 3GB to over 8GB inside four hours. A 5GB plan runs a four-player world comfortably with a nightly restart scheduled; left running untouched for a week, it would not. If you are opening a public server, expect long unbroken sessions, or you are self-hosting on a shared machine, take Pocketpair\'s number over ours and start at 16GB.' },
 
       { type: 'h2', text: 'CPU requirements' },
-      { type: 'p', text: 'Pocketpair asks for four cores or more. Beyond that count, per-core speed is what you feel: the simulation — Pal AI, base automation, and world physics — is sensitive to single-thread performance, so a modern CPU with good per-core throughput does more for tick rate than a high core count does. On a managed Flux plan the vCPU allocation scales with the plan tier, so a larger player cap comes with more CPU headroom automatically.' },
+      { type: 'p', text: 'Pocketpair recommends four cores or more. Beyond that count, per-core speed is what you feel: the simulation — Pal AI, base automation, and world physics — is sensitive to single-thread performance, so a modern CPU with good per-core throughput does more for tick rate than a high core count does. On a managed Flux plan the vCPU allocation scales with the plan tier, so a larger player cap comes with more CPU headroom automatically.' },
 
       { type: 'h2', text: 'Which ports does a Palworld dedicated server use?' },
       { type: 'p', text: 'Two ports matter. Get these wrong and players cannot connect — this is the single most common reason a Palworld server does not show up.' },
@@ -216,13 +216,88 @@ export const pagesContent = {
       { type: 'cta', text: 'See Palworld hosting plans and pricing →', href: '/pricing' },
     ],
     faq: [
-      { question: 'How much RAM do I need for a Palworld dedicated server?', answer: 'Pocketpair officially requires 8GB and recommends 16GB, with more than 32GB preferred for larger servers. By player count in practice: 5GB is enough for a small co-op group of up to 4 on a managed instance, 8GB for up to 8, 12GB for up to 16, and 16GB or more for a full 32-player server. Memory use grows as bases and captured Pals accumulate, so size up for long-running worlds.' },
+      { question: 'How much RAM do I need for a Palworld dedicated server?', answer: 'Pocketpair officially requires 16GB and prefers more than 32GB for larger servers. 8GB will boot, but Pocketpair warns it raises the chance of out-of-memory crashes, so it is not the requirement even though most hosting pages quote it as one. By player count on managed hosting, where the memory is dedicated, the server restarts itself if it stops responding, and you can schedule a nightly restart on top: 5GB runs a small co-op group of up to 4, 8GB up to 8, 12GB up to 16, and 16GB a full 32-player server. Memory use grows as bases and captured Pals accumulate, so size up for long-running worlds.' },
       { question: 'What ports does a Palworld server need?', answer: 'UDP port 8211 for game traffic (required) and TCP port 8212 for the optional REST admin API.' },
       { question: 'What operating system does a Palworld dedicated server need?', answer: 'Pocketpair supports 64-bit Windows and 64-bit Linux (Ubuntu, AlmaLinux and similar). On managed hosting the OS is not something you choose or maintain — the server runs in a prepared Linux container.' },
-      { question: 'How many CPU cores does a Palworld server need?', answer: 'Pocketpair asks for four cores or more. Past that, Palworld favors strong single-core performance over extra cores — a modern CPU with good per-core speed handles the Pal AI and base simulation best. Managed plans scale vCPU with the player tier.' },
+      { question: 'How many CPU cores does a Palworld server need?', answer: 'Pocketpair recommends four cores or more. Past that, Palworld favors strong single-core performance over extra cores — a modern CPU with good per-core speed handles the Pal AI and base simulation best. Managed plans scale vCPU with the player tier.' },
       { question: 'How much disk space does a Palworld server use?', answer: 'The server build is a few gigabytes and the save grows with world size and base count. Allow headroom for the build plus a growing world and backups. Use an SSD: Pocketpair warns that low-performance storage can corrupt save data.' },
     ],
-    related: ['setup-guide', 'pricing', 'server-settings', 'join-server', 'rent-palworld-server', 'guides/server-keeps-crashing'],
+    related: ['palworld-server-cost', 'setup-guide', 'pricing', 'server-settings', 'join-server', 'rent-palworld-server', 'guides/server-keeps-crashing'],
+  },
+
+  'palworld-server-cost': {
+    slug: '/palworld-server-cost',
+    published: '2026-08-25',
+    title: 'How Much Does a Palworld Dedicated Server Cost?',
+    metaTitle: 'How Much Does a Palworld Dedicated Server Cost?',
+    description:
+      'A Palworld dedicated server costs $2.61/month for up to 4 players and $8.55/month for a full 32-player world. Full price breakdown, and what self-hosting costs.',
+    h1: 'How Much Does a Palworld Dedicated Server Cost?',
+    lead:
+      'A managed Palworld dedicated server costs between $2.61 and $8.55 a month, depending on how many players it has to hold: $2.61/month for a 5GB plan that runs a four-player co-op world, and $8.55/month for a 16GB plan that runs the full 32-player cap. The Palworld dedicated server software itself is free — what you are paying for is a machine to run it on around the clock. This page breaks down where that number comes from, what changes it, and what self-hosting actually costs once you count the parts people forget.',
+    breadcrumbs: [
+      { name: 'Home', url: '/' },
+      { name: 'Server Cost', url: '/palworld-server-cost' },
+    ],
+    body: [
+      { type: 'h2', text: 'Palworld server cost by player count' },
+      { type: 'p', text: 'Price follows memory, and memory follows player count. These are the current plans, with what each one includes:' },
+      { type: 'table', head: ['Plan', 'Players', 'Resources', 'Price'], rows: [
+        ['5GB', 'Up to 4', '5 GB RAM, 2 vCores, 30 GB SSD/NVMe', '$2.61/month'],
+        ['8GB', 'Up to 8', '8 GB RAM, 3 vCores, 30 GB SSD/NVMe', '$4.38/month'],
+        ['12GB', 'Up to 16', '12 GB RAM, 4 vCores, 35 GB SSD/NVMe', '$6.11/month'],
+        ['16GB', 'Up to 32', '16 GB RAM, 6 vCores, 40 GB SSD/NVMe', '$8.55/month'],
+      ] },
+      { type: 'p', text: 'Every tier carries the same feature set — DDoS protection, unlimited bandwidth, full admin access, on-demand backups, and your choice of region at deploy. There is no setup fee, no separate charge for slots, and no long-term contract; billing is month to month and new accounts get their first month free. The price you see is the price you pay, and it does not change because you invited more friends or grew your base.' },
+      { type: 'cta', text: 'See all Palworld hosting plans →', href: '/pricing' },
+
+      { type: 'h2', text: 'Is the Palworld dedicated server free?' },
+      { type: 'p', text: 'The software is. Pocketpair distributes the Palworld dedicated server tool for free through Steam, and you can install it on hardware you already own without paying anyone. What is not free is the thing people actually want, which is a world that stays online when they are asleep, at work, or on another continent from their friends.' },
+      { type: 'p', text: 'So the honest framing of the question is not "does a Palworld server cost money" but "what does 24/7 uptime cost". On managed hosting that is $2.61 to $8.55 a month. Self-hosted, the number is less visible but it is not zero.' },
+
+      { type: 'h2', text: 'What self-hosting a Palworld server actually costs' },
+      { type: 'p', text: 'Running the server on your own PC looks free on the invoice. The costs move somewhere else:' },
+      { type: 'ul', items: [
+        'Electricity. A machine holding 16GB of RAM and several cores busy, running continuously instead of a few hours a day, draws power every one of those hours. Whether that outweighs a few dollars a month depends entirely on your tariff — work it out before assuming it is cheaper.',
+        'Your PC. Palworld’s server process wants the memory it wants, and it wants it whether or not you are also trying to play the game on the same box. The usual result is that the machine becomes the server and stops being a gaming PC.',
+        'Your IP address. A self-hosted server has to be reachable from the internet, which means your home IP is handed to everyone who joins. There is no DDoS protection in front of it, and in a game with public server lists that matters.',
+        'Your time. Port forwarding, firewall rules, keeping the build updated after every patch, and restarting the process when it dies. None of that is difficult; all of it is recurring.',
+        'The saves. There is no backup unless you build one, and Pocketpair warns that low-performance storage can corrupt Palworld save data outright.',
+      ] },
+      { type: 'p', text: 'A rented VPS removes some of those problems and keeps others, since a general-purpose VPS still leaves you installing, patching, port-forwarding and monitoring the server yourself. Compare on the delivered thing rather than on the RAM figure: a game-specific plan arrives configured, exposed on the right ports, backed up, and behind DDoS protection.' },
+
+      { type: 'h2', text: 'Why the price depends on RAM rather than slots' },
+      { type: 'p', text: 'Palworld is memory-hungry in a way most survival games are not, and it gets hungrier the longer a world is live. Every base, every captured Pal, and every object placed in the world adds to the footprint, so a server that started at 3GB can be well past 8GB after an evening of play. That is why hosting for this game is priced by memory: memory is the resource that actually runs out.' },
+      { type: 'p', text: 'It is also why a plan two tiers below your player count is a false economy. Pocketpair officially requires 16GB for a dedicated server and prefers more than 32GB for larger ones, and while managed plans run comfortably below that — dedicated memory, a server image that restarts itself when it stops responding, and a nightly restart you can schedule — the sizing still has to match the group. See the Palworld dedicated server requirements guide for the full breakdown.' },
+      { type: 'cta', text: 'Palworld dedicated server requirements →', href: '/server-requirements' },
+
+      { type: 'h2', text: 'What you are not charged for' },
+      { type: 'p', text: 'A lot of the Palworld hosting market prices the base plan low and charges for the rest. Here is what is included at every tier rather than sold on top: DDoS protection, unlimited bandwidth, on-demand backups and one-click restore, full file and console access, mod support, the region of your choice at deploy time, and the full player cap the plan’s memory supports. Crossplay between Steam and Xbox players is a property of the game, not an upsell.' },
+      { type: 'p', text: 'Billing is month to month with no minimum term, payable by card, Apple Pay or Google Pay through Stripe, or in FLUX if you would rather pay in crypto. New accounts get the first month free, so the practical cost of finding out whether it suits your group is nothing.' },
+      { type: 'cta', text: 'Deploy a Palworld server — first month free →', href: '/#pricing' },
+    ],
+    faq: [
+      { question: 'How much does a Palworld dedicated server cost?', answer: 'A managed Palworld dedicated server costs $2.61/month for a 5GB plan that runs up to 4 players, $4.38/month for 8GB and up to 8 players, $6.11/month for 12GB and up to 16 players, and $8.55/month for a 16GB plan that runs the full 32-player cap. Every plan includes DDoS protection, backups and unlimited bandwidth, there is no setup fee, and new accounts get the first month free.' },
+      { question: 'Does a Palworld dedicated server cost money?', answer: 'The dedicated server software from Pocketpair is free to download and run on your own hardware. What costs money is keeping it online 24/7 — either the electricity and the tied-up PC if you self-host, or $2.61 to $8.55 a month on managed hosting.' },
+      { question: 'How much does it cost to run a Palworld server for 32 players?', answer: 'A full 32-player Palworld server needs 16GB of RAM, which is $8.55/month on the Performance plan. That includes 6 vCores, 40 GB of SSD/NVMe storage, DDoS protection and unlimited bandwidth, with no per-slot charge.' },
+      { question: 'Is it cheaper to host a Palworld server yourself?', answer: 'Not reliably. Self-hosting has no monthly invoice, but it draws electricity around the clock, occupies the PC you would otherwise play on, exposes your home IP address with no DDoS protection, and leaves patching, port forwarding and backups to you. Against $2.61 to $8.55 a month, the saving is usually smaller than it looks.' },
+      { question: 'Are there setup fees or hidden costs?', answer: 'No. There is no setup fee, no per-slot charge and no long-term contract. DDoS protection, unlimited bandwidth, backups, mod support and region choice are included at every tier, and billing is month to month.' },
+    ],
+    product: {
+      name: 'Palworld Dedicated Server Hosting',
+      description: 'Managed Palworld dedicated server hosting on the Flux decentralized cloud, priced from $2.61/month for 4 players to $8.55/month for a full 32-player world. First month free.',
+      image: '/games/palworld/logo.webp',
+      lowPrice: '2.61',
+      highPrice: '8.55',
+      offerCount: 4,
+      plans: [
+        { name: 'Palworld 5GB', price: '2.61', description: '5 GB RAM, 2 vCores, 30 GB SSD/NVMe — up to 4 players' },
+        { name: 'Palworld 8GB', price: '4.38', description: '8 GB RAM, 3 vCores, 30 GB SSD/NVMe — up to 8 players' },
+        { name: 'Palworld 12GB', price: '6.11', description: '12 GB RAM, 4 vCores, 35 GB SSD/NVMe — up to 16 players' },
+        { name: 'Palworld 16GB', price: '8.55', description: '16 GB RAM, 6 vCores, 40 GB SSD/NVMe — up to 32 players' },
+      ],
+    },
+    related: ['pricing', 'server-requirements', 'rent-palworld-server', 'setup-guide', 'gportal-alternative', 'nitrado-alternative'],
   },
 
   pricing: {
@@ -270,7 +345,16 @@ export const pagesContent = {
 
       { type: 'h2', text: 'Which plan should I choose?' },
       { type: 'p', text: 'Choose Starter (5GB) for a small co-op group, Standard (8GB) or Advanced (12GB) for an active mid-size group that builds a lot, and Performance (16GB) for a full 32-player community server on the 1.0 update. You can start small and move up later — see the Palworld dedicated server requirements guide if you are unsure how much RAM your group needs.' },
+      { type: 'p', text: 'If you are still weighing whether to pay for hosting at all, the full cost breakdown — including what self-hosting works out to once electricity and a tied-up PC are counted — is on the Palworld server cost page.' },
+      { type: 'cta', text: 'How much does a Palworld server cost? →', href: '/palworld-server-cost' },
       { type: 'cta', text: 'Deploy your Palworld server — first month free →', href: '/#pricing' },
+    ],
+    faq: [
+      { question: 'How much does Palworld server hosting cost?', answer: 'Plans start at $2.61/month for a 5GB server that runs up to 4 players and go to $8.55/month for a 16GB server that runs the full 32-player cap, with 8GB ($4.38) and 12GB ($6.11) tiers in between. Every plan includes DDoS protection, backups and unlimited bandwidth, and new accounts get the first month free.' },
+      { question: 'Is there a setup fee or a minimum contract?', answer: 'No. There is no setup fee and no minimum term — billing is month to month and you can cancel at any time.' },
+      { question: 'Which Palworld plan do I need?', answer: 'Size the plan by player count: 5GB for up to 4 players, 8GB for up to 8, 12GB for up to 16, and 16GB for a full 32-player server. Palworld uses more memory the longer a world runs, so pick the tier above your group if you expect long sessions or a lot of base building.' },
+      { question: 'Can I change plan later?', answer: 'Yes. You can scale the server up or down from the dashboard as your group grows, without rebuilding the world.' },
+      { question: 'How do I pay?', answer: 'Card, Apple Pay and Google Pay through Stripe, or in crypto with FLUX.' },
     ],
     product: {
       name: 'Palworld Dedicated Server Hosting',
@@ -278,9 +362,15 @@ export const pagesContent = {
       image: '/games/palworld/banner.webp',
       lowPrice: '2.61',
       highPrice: '8.55',
-      offerCount: '3',
+      offerCount: 4,
+      plans: [
+        { name: 'Palworld 5GB', price: '2.61', description: '5 GB RAM, 2 vCores, 30 GB SSD/NVMe — up to 4 players' },
+        { name: 'Palworld 8GB', price: '4.38', description: '8 GB RAM, 3 vCores, 30 GB SSD/NVMe — up to 8 players' },
+        { name: 'Palworld 12GB', price: '6.11', description: '12 GB RAM, 4 vCores, 35 GB SSD/NVMe — up to 16 players' },
+        { name: 'Palworld 16GB', price: '8.55', description: '16 GB RAM, 6 vCores, 40 GB SSD/NVMe — up to 32 players' },
+      ],
     },
-    related: ['setup-guide', 'server-requirements', 'server-settings', 'join-server', 'decentralized-palworld-hosting', 'rent-palworld-server', 'nitrado-alternative', 'gportal-alternative'],
+    related: ['palworld-server-cost', 'setup-guide', 'server-requirements', 'server-settings', 'join-server', 'decentralized-palworld-hosting', 'rent-palworld-server', 'nitrado-alternative', 'gportal-alternative'],
   },
 
   'guides/join-server': {
@@ -464,7 +554,7 @@ export const pagesContent = {
       { question: 'How do I pay for a decentralized Palworld server?', answer: 'Billing is month-to-month with no contract and the first month free. You can pay by card, Apple Pay, or Google Pay through Stripe, or in crypto with FLUX. Plans start at $2.61/month and scale to a full 32-player server.' },
       { question: 'What does no vendor lock-in actually mean?', answer: 'No long-term contract, no prepaid credit tied to one provider, and full access to your world save and config files so you can back them up or move them at any time. You rent capacity on an open network rather than signing into a walled garden, and you can cancel whenever you like.' },
     ],
-    related: ['pricing', 'setup-guide', 'server-requirements', 'server-settings', 'rent-palworld-server', 'nitrado-alternative', 'gportal-alternative'],
+    related: ['palworld-server-cost', 'pricing', 'setup-guide', 'server-requirements', 'server-settings', 'rent-palworld-server', 'nitrado-alternative', 'gportal-alternative'],
   },
 
   'nitrado-alternative': {
@@ -516,7 +606,7 @@ export const pagesContent = {
       { question: 'Can I move my Palworld server from Nitrado to Flux?', answer: 'Yes. Download your world save and PalWorldSettings.ini from your current host and upload them to Flux through the file manager. A Palworld world is not locked to any provider.' },
       { question: 'Does Flux support 32 players and crossplay like Nitrado?', answer: 'Yes. A Palworld server on Flux supports the full 32-player cap and can be configured for Steam and Xbox/Game Pass crossplay, with full access to every setting.' },
     ],
-    related: ['pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
+    related: ['palworld-server-cost', 'pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
   },
 
   'gportal-alternative': {
@@ -580,19 +670,19 @@ export const pagesContent = {
       { question: 'Can I move my Palworld server from GPORTAL to Flux?', answer: 'Yes. Download your world save and PalWorldSettings.ini from your current host and upload them through the file manager. A Palworld world is a save directory and a settings file, so it is not locked to any provider.' },
       { question: 'Does decentralized hosting mean higher ping?', answer: 'No. Your server runs on one specific node with its own CPU and RAM exactly as it would in a data centre. What is distributed is where those nodes are and how the deployment is spread between them. Latency is decided by the node you pick, and the dashboard measures it from your own browser rather than from our monitoring server.' },
     ],
-    related: ['nitrado-alternative', 'pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
+    related: ['palworld-server-cost', 'nitrado-alternative', 'pricing', 'setup-guide', 'server-requirements', 'decentralized-palworld-hosting'],
   },
 
   'guides/server-keeps-crashing': {
     slug: '/guides/server-keeps-crashing',
     published: '2026-08-22',
     title: 'Palworld server keeps crashing',
-    metaTitle: 'Palworld Server Keeps Crashing? Memory Leak Fix (2026)',
+    metaTitle: 'Palworld Server Keeps Crashing? Fix It and Stay Online',
     description:
-      'Why a Palworld dedicated server crashes after a few hours, how to confirm it is the memory leak, and the four settings and restart habits that actually stop it.',
+      'Why a Palworld server crashes or goes unreachable while the process is still running, how to tell the failure modes apart, and how to keep one online 24/7.',
     h1: 'Palworld Server Keeps Crashing: How to Diagnose and Fix It',
     lead:
-      'A Palworld dedicated server that runs fine for two hours and then freezes, rubber-bands and dies is almost never a bad host or a bad plan. It is the dedicated server binary leaking memory until the machine runs out of it. This guide shows you how to confirm that is what is happening, what to change so it stops, and how to tell the memory leak apart from the three other things that crash Palworld servers.',
+      'A Palworld dedicated server that runs fine for two hours and then freezes, rubber-bands and dies is almost never a bad host or a bad plan. It is the dedicated server binary leaking memory until the machine runs out of it. But there are two other failures that are worse, because the server does not crash at all — it keeps running while nobody can play, and every monitoring signal a host can see says it is fine. This guide covers all three: how to tell them apart, what to change so they stop, and what it takes to keep a Palworld server online around the clock.',
     breadcrumbs: [
       { name: 'Home', url: '/' },
       { name: 'Guides', url: '/#guides' },
@@ -602,6 +692,14 @@ export const pagesContent = {
       { type: 'h2', text: 'The short version' },
       { type: 'p', text: 'Palworld has a long-standing memory leak in its dedicated server build. RAM usage climbs steadily for as long as the server is up, roughly in proportion to how many players are online and how many Pals exist in the world, and it is never released. Eventually the process exhausts the RAM it was given and the operating system kills it. From the outside that looks like a random crash, which is why so many people blame their host first.' },
       { type: 'p', text: 'Server operators report the shape of it consistently: a four-player world with around 80 Pals typically grows from about 3 GB to over 8 GB inside four hours, and a busy 16-player community server can reach 12 GB in half an hour. Those numbers vary with your world, but the pattern does not. If your crashes arrive on a rough schedule rather than at random, that is the leak.' },
+
+      { type: 'h2', text: 'The two failures that do not look like a crash' },
+      { type: 'p', text: 'A crash is the easy case: the process dies, and anything watching it notices. The two failures that generate the most confused support tickets leave the process alive and every health check passing. We diagnosed both from 22 hours of one-minute samples off a customer\'s 16GB server, and they look like this:' },
+      { type: 'table', head: ['What you see', 'What is actually happening'], rows: [
+        ['Nobody can join. The server shows as online everywhere, including your dashboard.', 'The server has stalled. It stops draining its own network socket — the receive queue fills and sticks, inbound packets drop to zero, and the admin API stops answering. The process is alive the whole time. Only a restart clears it.'],
+        ['Players connect and get a black screen. The server answers, the port is open, but there is no world.', 'The world has unloaded. Memory drops by over a gigabyte in a single sample, the server\'s own uptime counter restarts from zero, and it stops reporting a world — with the same process throughout. It never recovers on its own.'],
+      ] },
+      { type: 'p', text: 'Neither of these is the memory leak. The world-unload failure happened three times in two hours on a server using under 2.3GB, so it is not the leak and not the RAM limit. What makes them expensive is that the usual health check — is the game process running — passes in both states, so nothing restarts the server and it can sit there dead for hours while you are asleep.' },
 
       { type: 'h2', text: 'Confirm it is memory before you change anything' },
       { type: 'p', text: 'Open the resource graph in your dashboard and watch RAM across a session. The memory leak has a signature that is hard to mistake:' },
@@ -616,6 +714,7 @@ export const pagesContent = {
       { type: 'h2', text: 'Fix 1: restart on a schedule' },
       { type: 'p', text: 'This is the unglamorous answer and it is also the effective one. Because the leak is linear and a restart clears all of it, a scheduled restart resets the clock before the ceiling is ever reached. Experienced operators typically restart every three to six hours on a busy public server, and once or twice a day on a small private one.' },
       { type: 'p', text: 'A Palworld restart takes about a minute and the world is saved first, so the cost to players is small. Pick a slot when your group is usually offline, announce it in Discord, and the problem stops being a problem. On Flux you can restart from the dashboard in one click, and because a restart also picks up any pending game update it doubles as your patch routine.' },
+      { type: 'p', text: 'One trap worth knowing about if you self-host or use another provider: the scheduled restart script in the standard Palworld server image asks the server to save first, and refuses to shut down if that save fails. On a server that is leaking, frozen or worldless — which is to say, the only kind of server a nightly restart exists for — the save is exactly what fails. So the restart silently does nothing on precisely the nights it was needed, and the logs show it as having run. Check that yours actually restarted rather than assuming it did.' },
 
       { type: 'h2', text: 'Fix 2: disable Pal invaders' },
       { type: 'p', text: 'Raids spawn waves of hostile Pals that the server keeps in memory long after the raid is over. Turning them off is the closest thing Palworld has to a community-agreed workaround for the leak, and operators consistently report RAM climbing at roughly half the previous rate afterwards.' },
@@ -641,6 +740,20 @@ export const pagesContent = {
       { type: 'p', text: 'Those tiers already assume a leaking server rather than a theoretical idle one. If you are crashing on the tier that matches your player count, the usual cause is a very built-up world, and the two settings above will do more for you than the next plan up. If you are one tier below your player count, move up. Scaling RAM on Flux does not touch your world save.' },
       { type: 'cta', text: 'See Palworld plans by player count →', href: '/pricing' },
 
+      { type: 'h2', text: 'How to keep a Palworld server online 24/7' },
+      { type: 'p', text: 'Everything above slows the failures down. None of it makes a server that has already failed come back, and that is the difference between a server that is up most of the time and one that is up all of the time. Something has to notice and act while you are asleep.' },
+      { type: 'p', text: 'That is the gap our Palworld server image closes, and it is why we build our own rather than shipping the standard one. It checks the server every minute, from inside the container, on the things a player would actually notice: whether the network socket is draining, whether the admin API answers, whether the world is loaded and ticking, and whether the save file is still on disk. If the answer is no it restarts the server. There is nothing to enable and no setting to find.' },
+      { type: 'p', text: 'The restraint matters as much as the trigger, because a monitor that restarts healthy servers is worse than none:' },
+      { type: 'ul', items: [
+        'It needs the same verdict three times in a row, a minute apart, before it acts — one bad sample is not a fault.',
+        'It never acts on a server it has not yet seen working, and never during the first minutes after boot. Loading a large world takes time, and a restart loop does not help a server that came up broken.',
+        'It announces the restart in game and counts down 60 seconds, with reminders at 30 and 10 seconds, then takes one last sample. A server that recovered during the countdown is left alone and the countdown is called off out loud.',
+        'It never saves. In every state that gets it this far the world in memory is already gone or frozen, and asking a broken server to save risks writing that emptiness over your last good save. What a restart costs you is the minutes since the last autosave — which were already lost when the fault happened.',
+      ] },
+      { type: 'p', text: 'The nightly restart on this image is fixed too. It warns your players, saves only if the world is still loaded and actually ticking, asks the server to shut down, and then stops asking — after a grace period it ends the process, and a fresh server is up seconds later. It never silently skips.' },
+      { type: 'p', text: 'One thing worth doing yourself: set an admin password in the Server Settings tab. The socket and save-file checks work regardless, but the checks that catch an unloaded world talk to the server\'s admin API, and a server with no password set refuses those calls. We deliberately never treat a rejected call as a dead server — doing so would restart healthy worlds every few minutes — so the effect of leaving it blank is quieter protection, not louder.' },
+      { type: 'cta', text: 'See Palworld plans →', href: '/pricing' },
+
       { type: 'h2', text: 'When it is not the memory leak' },
       { type: 'h3', text: 'It crashes seconds after starting, right after a game update' },
       { type: 'p', text: 'Pocketpair ships client and server updates together, and a server still on the previous build will refuse connections or fall over as soon as an updated client joins. Update the server as soon as the client patch lands rather than waiting for a report from your players. On Flux a restart pulls the current image, so this is one click.' },
@@ -651,14 +764,16 @@ export const pagesContent = {
 
       { type: 'h2', text: 'A checklist you can work through' },
       { type: 'ol', items: [
-        'Watch RAM for one session. A straight climb to the ceiling means the leak; anything else means one of the three cases above.',
+        'Work out which failure you have. A straight climb in RAM to the ceiling is the leak. Online but unjoinable is a stall. Joinable but no world is an unloaded world. They need different answers.',
         'Set bEnableInvaderEnemy=False in PalWorldSettings.ini and restart.',
         'Cap BaseCampWorkerMaxNum to something sane for your group, and cap BaseCampMaxNum to your player count.',
         'Schedule a restart every three to six hours on a busy server, or daily on a private one.',
         'Confirm your plan RAM matches your player count, and move up a tier if it does not.',
         'Keep automatic backups on, so a corrupted save is an inconvenience and not the end of the world.',
+        'Set an admin password, so the checks that catch an unloaded world can reach your server.',
+        'Make sure something restarts the server when it stops responding, not only when it dies. On Flux that is built into the server image.',
       ] },
-      { type: 'p', text: 'Work through it in that order and the great majority of Palworld crash reports stop. What remains is a game engine limitation that no host can patch for you, and the honest fix for it is a restart schedule.' },
+      { type: 'p', text: 'Work through it in that order and the great majority of Palworld crash reports stop. What remains is a game engine limitation nobody can patch for you — so the question stops being how to prevent every failure and becomes how quickly the server comes back from one.' },
       { type: 'cta', text: 'Deploy a Palworld server with one-click restarts and backups →', href: '/#pricing' },
     ],
     faq: [
@@ -668,6 +783,10 @@ export const pagesContent = {
       { question: 'Does disabling invaders really help the memory leak?', answer: 'Yes. Raid spawns are held in memory after the raid ends, and operators consistently report RAM climbing at roughly half the previous rate with bEnableInvaderEnemy=False. It is not an official fix, because there is no official fix, but it is the most reliable single setting change available.' },
       { question: 'Will a bigger plan stop my Palworld server crashing?', answer: 'It buys time rather than fixing the leak. More RAM means longer before the ceiling is reached, which for many groups is enough to get through an evening. If you are already on the plan that matches your player count, capping base workers and disabling invaders will do more than another tier.' },
       { question: 'My server crashes immediately after a Palworld update. Is that the leak?', answer: 'No. That is a version mismatch: the server is still on the previous build while the clients have updated. Update the server as soon as the client patch lands. On Flux a restart pulls the current image, so it is one click from the dashboard.' },
+      { question: 'How do I keep my Palworld server always online?', answer: 'Three things together: cap what grows in the world and disable invaders to slow the memory leak, schedule a restart so the leak never reaches the ceiling, and make sure something restarts the server when it stops responding rather than only when it dies. That last one is the gap most setups have, because the usual health check only asks whether the game process is running — which stays true when a Palworld server stalls or loses its world. Our server image checks the socket, the admin API, the world and the save file every minute and restarts the server when they say it has stopped serving.' },
+      { question: 'Why does my Palworld server show as online when nobody can join?', answer: 'The server has stalled. It stops draining its network socket, so the receive queue fills, inbound packets stop arriving and the admin API goes quiet — but the process is still alive, so anything that checks whether the game is running reports it as healthy. Only a restart clears it.' },
+      { question: 'Why do players connect to my Palworld server and get a black screen?', answer: 'The world has unloaded. The server keeps answering and the port stays open, but there is no longer a world behind it — memory drops sharply, the uptime counter restarts from zero, and it stops reporting a loaded world, all with the same process. It does not recover on its own and needs a restart.' },
+      { question: 'Does a scheduled restart always work?', answer: 'Not in the standard Palworld server image. Its restart script saves the world first and refuses to shut down if that save fails — and on a server that is frozen, leaking or worldless the save is exactly what fails, so the restart silently does nothing on the nights it matters. Ours saves only when the world is still ticking, and restarts regardless.' },
       { question: 'Can a corrupted save cause Palworld server crashes?', answer: 'Yes, and it looks different from the leak. Save corruption crashes reproduce exactly, for instance whenever one particular player joins or whenever a certain area loads, rather than after a number of hours. Restore the most recent backup taken before the behaviour started.' },
     ],
     related: ['server-requirements', 'guides/server-settings', 'setup-guide', 'pricing', 'guides/join-server'],
@@ -736,6 +855,7 @@ export const pageAnchors = {
   'setup-guide': 'How to make a Palworld dedicated server',
   'server-requirements': 'Palworld dedicated server requirements',
   pricing: 'Palworld server hosting pricing',
+  'palworld-server-cost': 'How much does a Palworld dedicated server cost?',
   'guides/join-server': "How to join a friend's Palworld server",
   'guides/server-settings': 'Best Palworld server settings',
   'join-server': "How to join a friend's Palworld server",
@@ -857,6 +977,36 @@ export function buildProductSchema(page) {
       url: `${SITE}${page.slug}`,
     },
   };
+
+  // Individual plan Offers, when the page lists them. Attached as an OfferCatalog
+  // rather than replacing the AggregateOffer above: schema.org allows a Service only
+  // one `offers` value, and the price *range* is what the pricing pages are about.
+  // This does not produce a merchant rich result (those are Product-only) — it exists
+  // so the per-tier prices are machine-readable to answer engines rather than being
+  // locked inside a <table>.
+  if (Array.isArray(p.plans) && p.plans.length) {
+    schema.hasOfferCatalog = {
+      '@type': 'OfferCatalog',
+      name: `${p.name} plans`,
+      itemListElement: p.plans.map((plan, i) => ({
+        '@type': 'Offer',
+        position: i + 1,
+        name: plan.name,
+        description: plan.description,
+        price: plan.price,
+        priceCurrency: 'USD',
+        availability: 'https://schema.org/InStock',
+        url: `${SITE}${page.slug}`,
+        priceSpecification: {
+          '@type': 'UnitPriceSpecification',
+          price: plan.price,
+          priceCurrency: 'USD',
+          unitCode: 'MON',
+          billingDuration: 1,
+        },
+      })),
+    };
+  }
 
   // AggregateRating + Review are emitted ONLY when real reviews exist (the
   // `reviews` array is empty by default, so nothing is added here until it is

@@ -37,6 +37,7 @@ export const ROUTE_PAGES = {
   '/setup-guide': lazyPage(() => import('./pages/SetupGuide')),
   '/server-requirements': lazyPage(() => import('./pages/ServerRequirements')),
   '/pricing': lazyPage(() => import('./pages/Pricing')),
+  '/palworld-server-cost': lazyPage(() => import('./pages/ServerCost')),
   '/guides/join-server': lazyPage(() => import('./pages/GuideJoinServer')),
   '/guides/server-settings': lazyPage(() => import('./pages/GuideServerSettings')),
   '/guides/server-keeps-crashing': lazyPage(() => import('./pages/GuideServerCrashing')),

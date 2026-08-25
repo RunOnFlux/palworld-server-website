@@ -133,11 +133,11 @@ const Hero = ({ onGetStarted }) => {
             {/* No opacity-0 class and an explicit space: the second half of the heading used
                 to ship invisible and glued to the first, because <br /> contributes no
                 whitespace to textContent and gsap.fromTo below already starts it at 0. */}
-            <span ref={headingRef} className="text-white drop-shadow-lg inline-block">{gameConfig.serverName}</span>
+            <span ref={headingRef} className="text-white drop-shadow-lg inline-block">{gameConfig.heroHeading}</span>
             {' '}
             <br />
             <span ref={subheadingRef} className="bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent drop-shadow-lg inline-block">
-              On the Decentralized Cloud
+              {gameConfig.heroHeadingAccent}
             </span>
           </h1>
 

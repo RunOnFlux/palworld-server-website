@@ -12,6 +12,7 @@ const guides = [
   { to: '/guides/server-settings', icon: Settings, label: 'Best Palworld server settings', desc: 'Tune XP, gather, damage and PvP in PalWorldSettings.ini.' },
   { to: '/guides/server-keeps-crashing', icon: LifeBuoy, label: 'Palworld server keeps crashing', desc: 'Diagnose the memory leak, then the four settings and restart habits that stop it.' },
   { to: '/pricing', icon: Tag, label: 'Palworld server hosting pricing', desc: 'Compare 5GB, 8GB, 12GB and 16GB plans by player count.' },
+  { to: '/palworld-server-cost', icon: Tag, label: 'How much does a Palworld server cost?', desc: 'Full price breakdown by player count, and what self-hosting really costs.' },
   { to: '/decentralized-palworld-hosting', icon: GitCompare, label: 'Why host on the Flux decentralized cloud →', desc: 'No single point of failure, no lock-in, dedicated resources, DDoS, 99.9% uptime and 32 players.' },
   {
     // External: the Flux support-ticket portal (the in-app /support page

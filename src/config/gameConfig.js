@@ -6,7 +6,12 @@ export const gameConfig = {
   gameName: "Palworld",
   gameType: "palworld",
   serverName: "Palworld on Flux",
-  tagline: "Palworld 1.0 Server Hosting — Rent a Dedicated Palworld Server from $2.61/mo",
+  // The <h1>. Kept separate from serverName (which is the brand, and the SEO siteName)
+  // because the heading has to carry the commercial search term, not the brand: the page
+  // has to rank for "palworld server hosting", and "Palworld on Flux" contains none of it.
+  heroHeading: "Palworld Server Hosting",
+  heroHeadingAccent: "on the Decentralized Cloud",
+  tagline: "Rent a dedicated Palworld 1.0 server from $2.61/mo — up to 32 players, full crossplay, DDoS protection.",
 
   // Site-wide announcement bar (rendered at the very top of the fixed header)
   announcement: {
@@ -76,8 +81,8 @@ export const gameConfig = {
     },
     {
       icon: "/games/palworld/features/monitoring-chart.webp",
-      title: "24/7 Monitoring",
-      description: "Real-time performance monitoring with automatic alerts"
+      title: "Restarts Itself",
+      description: "Checks your server every minute and restarts it when it stops serving — even when the process is still running"
     },
     {
       icon: "/games/palworld/features/payment-icon.webp",
