@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { Save, AlertTriangle, RefreshCw, CheckCircle, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Save, AlertTriangle, RefreshCw, CheckCircle, ChevronDown, ChevronUp, Sparkles, Database } from 'lucide-react';
 import apiService from '../../services/apiService';
 import marketplaceService from '../../services/marketplaceService';
 import CustomSelect from '../common/CustomSelect';
@@ -82,7 +82,7 @@ const valuesKey = (obj) => JSON.stringify(obj);
  * current spec → merge edits → re-encrypt; for standard apps the compose stays plain.
  * Changes apply after a redeploy.
  */
-const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) => {
+const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange, onOpenBackup }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -489,6 +489,24 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
                   </li>
                 ))}
               </ul>
+              <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] p-3">
+                <p className="text-xs font-semibold text-amber-200">Take a backup first</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Applying this restarts your server and rebuilds its container. Your world lives on the
+                  server disk and is not deleted by that, but the only copy that does not depend on this
+                  server is one you have downloaded. It takes a minute in the Backup tab.
+                </p>
+                {onOpenBackup && (
+                  <button
+                    type="button"
+                    onClick={onOpenBackup}
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-200 hover:text-amber-100 underline underline-offset-2"
+                  >
+                    <Database className="w-3.5 h-3.5" /> Back up and download it now
+                  </button>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={handleApplyUpdate}

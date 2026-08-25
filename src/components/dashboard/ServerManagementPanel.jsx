@@ -1273,7 +1273,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           {/* Tab Content - Only render active tab to prevent unnecessary API calls and memory leaks */}
           {activeTab === 'environment' && (
             <div key="environment" className="animate-fade-in">
-              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} onStandardEnvChange={setPendingEnvUpdates} />
+              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} onStandardEnvChange={setPendingEnvUpdates} onOpenBackup={() => setActiveTab('backup')} />
             </div>
           )}
           {activeTab === 'geolocation' && (
