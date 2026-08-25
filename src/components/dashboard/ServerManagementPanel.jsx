@@ -1783,7 +1783,7 @@ const PALWORLD_SETTINGS = [
   { key: 'DropItemMaxNum', label: 'Max Dropped Items', type: 'number', default: '3000', description: 'Maximum dropped items in world' },
   { key: 'DropItemAliveMaxHours', label: 'Drop Item Hours', type: 'number', default: '1.000000', step: '0.5', description: 'Hours dropped items persist' },
   { key: 'PalEggDefaultHatchingTime', label: 'Egg Hatch Time', type: 'number', default: '72.000000', step: '1', description: 'Default egg hatching time (hours)' },
-  { key: 'AutoSaveSpan', label: 'Auto Save Interval', type: 'number', default: '30.000000', step: '5', description: 'Auto save interval (seconds)' },
+  { key: 'AutoSaveSpan', label: 'Auto Save Interval', type: 'number', default: '30.000000', step: '5', description: 'Auto save interval (seconds). Servers here are set to 60: the world freezes while a save is written, and the game\'s own default of 30 does that twice as often as it needs to. Lower it if you would rather risk less progress than smooth out the hitches.' },
   { key: 'bIsUseBackupSaveData', label: 'Backup Save Data', type: 'toggle', default: 'True', description: 'Enable backup save data' },
   { key: 'SupplyDropSpan', label: 'Supply Drop Interval', type: 'number', default: '180', description: 'Supply drop interval (seconds)' },
   { key: 'bEnableDefenseOtherGuildPlayer', label: 'Defense Other Guild', type: 'toggle', default: 'False', description: 'Defend against other guild players' },

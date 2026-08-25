@@ -1,5 +1,5 @@
 /**
- * PalWorldSettings.ini reconcile — the three fields a server we sell needs and the game's
+ * PalWorldSettings.ini reconcile — the four fields a server we sell needs and the game's
  * own default file does not provide.
  *
  * The ini a server boots with is the GAME's DefaultPalWorldSettings.ini (start.sh copies it
@@ -11,8 +11,11 @@
  *    server is listed at an address nobody can reach. Direct connect is unaffected.
  *  - RESTAPIEnabled=False and a blank AdminPassword. The Remote Control tab needs both,
  *    and so does the scheduled restart (it authenticates against the server's own API).
+ *  - AutoSaveSpan=30. A save is a stall: the world freezes while it is written, and at 30
+ *    seconds the server spends twice as long doing that as it needs to. 60 halves the
+ *    interruptions for at most 30 more seconds of progress at risk.
  *
- * ONLY these three are touched. RCONPort / RESTAPIPort in the ini are the container's
+ * ONLY these four are touched. RCONPort / RESTAPIPort in the ini are the container's
  * INTERNAL bind ports — Flux maps the external ports onto them (e.g. 59025→8212), so the
  * server must keep listening on the defaults; changing them would break the REST proxy.
  * Same reason PORT/QUERY_PORT are never set. ServerPassword is never touched either:
@@ -98,6 +101,26 @@ export const generateAdminPassword = () => {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
 };
 
+// Only an untouched 30 is raised. A customer who typed their own number — 15, 45, 120 —
+// picked it, and this must not argue with them. 30, 30.0 and 30.000000 are the same number
+// written three ways, so the comparison is numeric rather than textual.
+const AUTO_SAVE_SPAN_RE = /AutoSaveSpan=[^,)]*/;
+const AUTO_SAVE_SPAN_TARGET = '60.000000';
+
+export const readAutoSaveSpan = (ini) => /AutoSaveSpan=([^,)]*)/.exec(ini)?.[1];
+export const autoSaveSpanNeedsRaise = (ini) => {
+  const value = readAutoSaveSpan(ini);
+  return value !== undefined && Number(value) === 30;
+};
+
+// Never inserted when absent, unlike the keys above. Those three have to be there for the
+// server to work at all; this one only has an opinion about a value that already exists, and
+// writing it into a file that never had it would be claiming to change something we cannot
+// see.
+const patchAutoSaveSpan = (ini) => (
+  AUTO_SAVE_SPAN_RE.test(ini) ? ini.replace(AUTO_SAVE_SPAN_RE, `AutoSaveSpan=${AUTO_SAVE_SPAN_TARGET}`) : ini
+);
+
 // The external game port Flux registered for this app (index 0 of the game component).
 // PublicPort in the ini MUST equal this: it is the address the server hands out to the
 // in-game community browser, and the node only forwards this port to the container's 8211.
@@ -109,6 +132,7 @@ export const iniNeedsReconcile = (ini, expectedPort) => (
   readPublicPort(ini) !== expectedPort
   || String(readRestApiEnabled(ini)).toLowerCase() !== 'true'
   || !hasAdminPassword(ini)
+  || autoSaveSpanNeedsRaise(ini)
 );
 
 // `password` is generated once per reconcile run, not per call: this runs twice (before the
@@ -118,6 +142,7 @@ export const reconcileIni = (ini, expectedPort, password) => {
   if (readPublicPort(out) !== expectedPort) out = patchPublicPort(out, expectedPort);
   if (String(readRestApiEnabled(out)).toLowerCase() !== 'true') out = patchRestApiEnabled(out);
   if (!hasAdminPassword(out)) out = patchAdminPassword(out, password);
+  if (autoSaveSpanNeedsRaise(out)) out = patchAutoSaveSpan(out);
   return out;
 };
 
@@ -232,6 +257,7 @@ export async function reconcilePalworldIni(server, masterIp, { onPhase, iniReadA
       readPublicPort(ini) !== expected && 'public port',
       String(readRestApiEnabled(ini)).toLowerCase() !== 'true' && 'admin API',
       !hasAdminPassword(ini) && 'admin password',
+      autoSaveSpanNeedsRaise(ini) && 'auto-save interval',
     ].filter(Boolean);
 
     onPhase?.('patching', { changes });
