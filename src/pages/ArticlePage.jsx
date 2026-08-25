@@ -19,6 +19,43 @@ import {
  * so the client render and the prerendered HTML never drift apart.
  */
 
+/**
+ * Turn a block's plain text into text plus inline links.
+ *
+ * Body copy used to be rendered as a bare string, so the only way a content page could
+ * link to another one was a full-width `cta` button. The result was that almost every
+ * internal link on the site lived in the identical "Related guides" block at the foot of
+ * every page — boilerplate, and worth far less than a link inside a sentence that says
+ * what is on the other end.
+ *
+ * A block declares `links: [{ text, href }]`; the FIRST occurrence of each `text` becomes
+ * a link. Phrases that overlap an earlier match are skipped rather than nested, and a
+ * phrase that does not appear is a content bug that scripts/prerender.mjs refuses to build
+ * — silently rendering nothing is how a link disappears without anyone noticing.
+ */
+const withLinks = (text, links) => {
+  if (!links?.length) return text;
+  const hits = links
+    .map((l) => ({ ...l, start: text.indexOf(l.text) }))
+    .filter((h) => h.start !== -1)
+    .sort((a, b) => a.start - b.start);
+
+  const out = [];
+  let cursor = 0;
+  hits.forEach((h, i) => {
+    if (h.start < cursor) return;
+    if (h.start > cursor) out.push(text.slice(cursor, h.start));
+    out.push(
+      <Link key={`${h.href}-${i}`} to={h.href} className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary transition-colors">
+        {h.text}
+      </Link>,
+    );
+    cursor = h.start + h.text.length;
+  });
+  if (cursor < text.length) out.push(text.slice(cursor));
+  return out;
+};
+
 // Render a single content block to styled JSX.
 const Block = ({ block }) => {
   switch (block.type) {
@@ -27,17 +64,17 @@ const Block = ({ block }) => {
     case 'h3':
       return <h3 className="text-xl font-semibold text-text mt-6 mb-3">{block.text}</h3>;
     case 'p':
-      return <p className="text-text-secondary leading-relaxed mb-4">{block.text}</p>;
+      return <p className="text-text-secondary leading-relaxed mb-4">{withLinks(block.text, block.links)}</p>;
     case 'ul':
       return (
         <ul className="list-disc pl-6 mb-4 space-y-2 text-text-secondary leading-relaxed marker:text-primary">
-          {block.items.map((i, idx) => <li key={idx}>{i}</li>)}
+          {block.items.map((i, idx) => <li key={idx}>{withLinks(i, block.links)}</li>)}
         </ul>
       );
     case 'ol':
       return (
         <ol className="list-decimal pl-6 mb-4 space-y-2 text-text-secondary leading-relaxed marker:text-primary">
-          {block.items.map((i, idx) => <li key={idx}>{i}</li>)}
+          {block.items.map((i, idx) => <li key={idx}>{withLinks(i, block.links)}</li>)}
         </ol>
       );
     case 'table':

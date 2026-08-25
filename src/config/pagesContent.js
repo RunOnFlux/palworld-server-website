@@ -120,10 +120,10 @@ export const pagesContent = {
         'Forward the required ports on your router and firewall: UDP 8211 for game traffic, and optionally TCP 8212 for the REST admin API. Without the UDP 8211 port open, players will not see or be able to connect to your server.',
         'Restart the server. Share your public IP and port (for example 203.0.113.10:8211) so players can add it as a community server or connect directly.',
       ] },
-      { type: 'p', text: 'The manual method works, but the ongoing burden is real: you keep the host machine powered and online, patch it whenever Pocketpair ships an update, secure the box, and troubleshoot your own networking. A home connection also exposes your IP address and offers no DDoS protection, which matters for a public community server.' },
+      { type: 'p', text: 'The manual method works, but the ongoing burden is real: you keep the host machine powered and online, patch it whenever Pocketpair ships an update, secure the box, and troubleshoot your own networking. A home connection also exposes your IP address and offers no DDoS protection, which matters for a public community server. You also own the failures: when a Palworld server keeps crashing, or keeps running while nobody can join, something has to notice at three in the morning.', links: [{ text: 'a Palworld server keeps crashing', href: '/guides/server-keeps-crashing' }] },
 
       { type: 'h2', text: 'Method 2 — Deploy a managed Palworld server on Flux (30 seconds)' },
-      { type: 'p', text: 'The faster path skips the installation entirely. A managed Palworld dedicated server on the Flux decentralized cloud is pre-built with the correct SteamCMD image, the right ports already exposed, and DDoS protection on by default. Instead of an afternoon of setup, deployment takes about 30 seconds:' },
+      { type: 'p', text: 'The faster path skips the installation entirely. Rent a Palworld dedicated server on the Flux decentralized cloud and it arrives pre-built with the correct SteamCMD image, the right ports already exposed, and DDoS protection on by default. Instead of an afternoon of setup, deployment takes about 30 seconds:', links: [{ text: 'Rent a Palworld dedicated server', href: '/rent-palworld-server' }] },
       { type: 'ol', items: [
         'Create a free account with Google or email.',
         'Choose a plan sized to your group — 5GB RAM for small co-op groups up to 4 players, 8GB for up to 8, 12GB for up to 16, or 16GB for a full 32-player server.',
@@ -136,10 +136,13 @@ export const pagesContent = {
 
       { type: 'h2', text: 'Ports and configuration every Palworld server needs' },
       { type: 'p', text: 'Whichever method you choose, two ports define a Palworld dedicated server. UDP 8211 is the game port players connect through — it must be open and reachable or the server will not show up. TCP 8212 is the optional REST admin API used to query players, save the world, broadcast announcements, and shut down gracefully. If you rent on Flux both are handled for you; if you self-host you must forward them manually.' },
-      { type: 'p', text: 'Core settings live in PalWorldSettings.ini. The most-changed values are ServerName, ServerPassword, AdminPassword, PublicPort (default 8211), ServerPlayerMaxNum (up to 32), and the multipliers for experience, gathering, and damage. See our dedicated guide to the best Palworld server settings for a full breakdown of every option and recommended values.' },
+      { type: 'p', text: 'Core settings live in PalWorldSettings.ini. The most-changed values are ServerName, ServerPassword, AdminPassword, PublicPort (default 8211), ServerPlayerMaxNum (up to 32), and the multipliers for experience, gathering, and damage. See our dedicated guide to the best Palworld server settings for a full breakdown of every option and recommended values.', links: [{ text: 'best Palworld server settings', href: '/guides/server-settings' }] },
 
       { type: 'h2', text: 'Next steps' },
-      { type: 'p', text: 'Once your server is live, point your friends to it. If they are on the same platform they can add it as a community server or connect by IP and port; cross-platform play between Steam and Xbox/Game Pass has specific caveats covered in our guide on how to join a friend\'s Palworld server. To fine-tune the experience — faster leveling, harder bosses, longer days — head to our best Palworld server settings guide.' },
+      { type: 'p', text: 'Once your server is live, point your friends to it. If they are on the same platform they can add it as a community server or connect by IP and port; cross-platform play between Steam and Xbox/Game Pass has specific caveats covered in our guide on how to join a friend\'s Palworld server. To fine-tune the experience — faster leveling, harder bosses, longer days — head to our best Palworld server settings guide.', links: [
+        { text: 'how to join a friend\'s Palworld server', href: '/guides/join-server' },
+        { text: 'best Palworld server settings', href: '/guides/server-settings' },
+      ] },
     ],
     faq: [
       { question: 'How do I make a Palworld dedicated server?', answer: 'Either install the Palworld Dedicated Server tool (Steam app ID 2394010) with SteamCMD on your own machine and forward UDP port 8211, or rent a managed dedicated server that deploys in about 30 seconds with the ports and DDoS protection already configured.' },
@@ -185,7 +188,7 @@ export const pagesContent = {
         ['Ports', 'UDP 8211 (default, changeable)'],
         ['OS', 'Windows 64-bit, or Linux 64-bit (Ubuntu, AlmaLinux and similar)'],
       ] },
-      { type: 'p', text: 'Read the 8GB line carefully, because most hosting pages quote it as the requirement. Pocketpair\'s own words are that 8GB \u201cis also bootable, but increases the possibility of server crashes due to out of memory\u201d. The requirement is 16GB. The distinction matters more than it looks, because Palworld\'s memory use climbs steadily while a world is live — players build bases, capture Pals, and fill the map with objects — so a long-running 1.0 world sits far above where it started.' },
+      { type: 'p', text: 'Read the 8GB line carefully, because most hosting pages quote it as the requirement. Pocketpair\'s own words are that 8GB \u201cis also bootable, but increases the possibility of server crashes due to out of memory\u201d. The requirement is 16GB. The distinction matters more than it looks, because Palworld\'s memory use climbs steadily while a world is live — players build bases, capture Pals, and fill the map with objects — so a long-running 1.0 world sits far above where it started. If yours already dies after a few hours, the guide on why a Palworld server keeps crashing covers how to confirm it is the memory and what to change.', links: [{ text: 'why a Palworld server keeps crashing', href: '/guides/server-keeps-crashing' }] },
 
       { type: 'h2', text: 'How much RAM does a Palworld server need in practice?' },
       { type: 'p', text: 'Official minimums are written for a single spec that has to cover every case. Sizing by player count is more useful, so the table below is how we allocate memory across our own hosting plans — our operational sizing, not Pocketpair\'s specification:' },
@@ -212,7 +215,7 @@ export const pagesContent = {
       { type: 'p', text: 'The Palworld dedicated server files are a few gigabytes, and the save data grows with world size, base count, and player activity. Plan for enough headroom to hold the server build plus a growing world and a couple of backups. What matters more than capacity is the kind of disk: Pocketpair explicitly warns that low-performance storage can corrupt save data, which makes an SSD a correctness requirement here rather than a speed upgrade. Managed Flux plans include SSD/NVMe storage sized to the plan, and you can take on-demand backups and restore them with one click from the dashboard.' },
 
       { type: 'h2', text: 'Network and uptime' },
-      { type: 'p', text: 'A public server needs stable bandwidth and, ideally, DDoS protection — a real concern for any exposed game server. Self-hosting from a home connection exposes your IP and offers no protection. Every Palworld server on Flux includes DDoS protection at no extra cost and runs on a distributed network for 99.9% uptime, so the world stays online without tying up your own machine.' },
+      { type: 'p', text: 'A public server needs stable bandwidth and, ideally, DDoS protection — a real concern for any exposed game server. Self-hosting from a home connection exposes your IP and offers no protection. Every Palworld server on Flux includes DDoS protection at no extra cost and runs on a distributed network for 99.9% uptime — that is what decentralized Palworld hosting buys you over a single datacentre — so the world stays online without tying up your own machine.' , links: [{ text: 'decentralized Palworld hosting', href: '/decentralized-palworld-hosting' }] },
       { type: 'cta', text: 'See Palworld hosting plans and pricing →', href: '/pricing' },
     ],
     faq: [
@@ -264,11 +267,14 @@ export const pagesContent = {
         'Your time. Port forwarding, firewall rules, keeping the build updated after every patch, and restarting the process when it dies. None of that is difficult; all of it is recurring.',
         'The saves. There is no backup unless you build one, and Pocketpair warns that low-performance storage can corrupt Palworld save data outright.',
       ] },
-      { type: 'p', text: 'A rented VPS removes some of those problems and keeps others, since a general-purpose VPS still leaves you installing, patching, port-forwarding and monitoring the server yourself. Compare on the delivered thing rather than on the RAM figure: a game-specific plan arrives configured, exposed on the right ports, backed up, and behind DDoS protection.' },
+      { type: 'p', text: 'A rented VPS removes some of those problems and keeps others, since a general-purpose VPS still leaves you installing, patching, port-forwarding and monitoring the server yourself. Compare on the delivered thing rather than on the RAM figure: a game-specific plan arrives configured, exposed on the right ports, backed up, and behind DDoS protection. For a like-for-like against the big game hosts, we set out GPORTAL vs Flux and Nitrado vs Flux in full.', links: [
+        { text: 'GPORTAL vs Flux', href: '/gportal-alternative' },
+        { text: 'Nitrado vs Flux', href: '/nitrado-alternative' },
+      ] },
 
       { type: 'h2', text: 'Why the price depends on RAM rather than slots' },
       { type: 'p', text: 'Palworld is memory-hungry in a way most survival games are not, and it gets hungrier the longer a world is live. Every base, every captured Pal, and every object placed in the world adds to the footprint, so a server that started at 3GB can be well past 8GB after an evening of play. That is why hosting for this game is priced by memory: memory is the resource that actually runs out.' },
-      { type: 'p', text: 'It is also why a plan two tiers below your player count is a false economy. Pocketpair officially requires 16GB for a dedicated server and prefers more than 32GB for larger ones, and while managed plans run comfortably below that — dedicated memory, a server image that restarts itself when it stops responding, and a nightly restart you can schedule — the sizing still has to match the group. See the Palworld dedicated server requirements guide for the full breakdown.' },
+      { type: 'p', text: 'It is also why a plan two tiers below your player count is a false economy. Pocketpair officially requires 16GB for a dedicated server and prefers more than 32GB for larger ones, and while managed plans run comfortably below that — dedicated memory, a server image that restarts itself when it stops responding, and a nightly restart you can schedule — the sizing still has to match the group. See the Palworld dedicated server requirements guide for the full breakdown.', links: [{ text: 'Palworld dedicated server requirements', href: '/server-requirements' }] },
       { type: 'cta', text: 'Palworld dedicated server requirements →', href: '/server-requirements' },
 
       { type: 'h2', text: 'What you are not charged for' },
@@ -344,8 +350,12 @@ export const pagesContent = {
       { type: 'p', text: 'Pay however you prefer. Card payments (including Apple Pay and Google Pay) are handled through Stripe, and you can also pay in crypto with FLUX. Billing is month-to-month with no lock-in.' },
 
       { type: 'h2', text: 'Which plan should I choose?' },
-      { type: 'p', text: 'Choose Starter (5GB) for a small co-op group, Standard (8GB) or Advanced (12GB) for an active mid-size group that builds a lot, and Performance (16GB) for a full 32-player community server on the 1.0 update. You can start small and move up later — see the Palworld dedicated server requirements guide if you are unsure how much RAM your group needs.' },
-      { type: 'p', text: 'If you are still weighing whether to pay for hosting at all, the full cost breakdown — including what self-hosting works out to once electricity and a tied-up PC are counted — is on the Palworld server cost page.' },
+      { type: 'p', text: 'Choose Starter (5GB) for a small co-op group, Standard (8GB) or Advanced (12GB) for an active mid-size group that builds a lot, and Performance (16GB) for a full 32-player community server on the 1.0 update. You can start small and move up later — see the Palworld dedicated server requirements guide if you are unsure how much RAM your group needs.', links: [{ text: 'Palworld dedicated server requirements', href: '/server-requirements' }] },
+      { type: 'p', text: 'If you are still weighing whether to pay for hosting at all, the full cost breakdown — including what self-hosting works out to once electricity and a tied-up PC are counted — is on the Palworld server cost page. If you are comparing us against a traditional game host instead, we put the trade-offs side by side for GPORTAL vs Flux and for Nitrado vs Flux.', links: [
+        { text: 'Palworld server cost', href: '/palworld-server-cost' },
+        { text: 'GPORTAL vs Flux', href: '/gportal-alternative' },
+        { text: 'Nitrado vs Flux', href: '/nitrado-alternative' },
+      ] },
       { type: 'cta', text: 'How much does a Palworld server cost? →', href: '/palworld-server-cost' },
       { type: 'cta', text: 'Deploy your Palworld server — first month free →', href: '/#pricing' },
     ],
@@ -393,7 +403,7 @@ export const pagesContent = {
       { type: 'p', text: 'Palworld has two multiplayer modes. In-game co-op is hosted straight from a player\'s game, supports up to 4 players, and only runs while that host is online. A dedicated server is a separate always-on world that supports up to 32 players and stays up 24/7. The way you join differs slightly between them.' },
 
       { type: 'h2', text: 'Join by IP address and port' },
-      { type: 'p', text: 'The most reliable way to join a dedicated server is by its address. Ask the server owner for the IP and port — it looks like 203.0.113.10:8211, where 8211 is the default Palworld game port.' },
+      { type: 'p', text: 'The most reliable way to join a dedicated server is by its address. Ask the server owner for the IP and port — it looks like 203.0.113.10:8211, where 8211 is the default Palworld game port. If nobody in your group has one yet, you can rent a Palworld dedicated server and hand out the address in about 30 seconds.', links: [{ text: 'rent a Palworld dedicated server', href: '/rent-palworld-server' }] },
       { type: 'p', text: 'If you rented your server on Flux, you do not need a numeric IP: your server has a permanent address in the form yourserver.app.runonflux.io, and you connect using that address plus the game port — the same IP:Port field, just with a domain instead of raw numbers (for example palworld-yourname.app.runonflux.io:32871). You will find the full address, port included and ready to copy, on your dashboard.' },
       { type: 'ol', items: [
         'Launch Palworld and choose Join Multiplayer Game (Dedicated Server).',

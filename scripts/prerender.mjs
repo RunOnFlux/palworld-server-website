@@ -274,6 +274,30 @@ const contentRoutes = Object.entries(pagesContent).map(([key, page]) => ({
   jsonLd: [buildArticleSchema(page, BUILD_DATE)],
 }));
 
+/**
+ * Inline body links (see withLinks in src/pages/ArticlePage.jsx) are matched on a phrase
+ * that has to appear verbatim in the block's own text. A typo there renders nothing at
+ * all — the page still builds, still looks right, and quietly ships one internal link
+ * fewer than it claims. So the build refuses it instead.
+ */
+{
+  const broken = [];
+  for (const [key, page] of Object.entries(pagesContent)) {
+    for (const block of page.body || []) {
+      for (const link of block.links || []) {
+        const haystack = block.text ? [block.text] : (block.items || []);
+        if (!haystack.some((t) => t.includes(link.text))) {
+          broken.push(`${key}: "${link.text}" -> ${link.href}`);
+        }
+      }
+    }
+  }
+  if (broken.length) {
+    console.error(`[prerender] inline link phrase not found in its own text:\n  ${broken.join('\n  ')}`);
+    process.exit(1);
+  }
+}
+
 const allRoutes = [...utilityRoutes, ...contentRoutes];
 
 for (const route of allRoutes) {
