@@ -165,7 +165,7 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange, onO
 
       const missing = findPendingUpdates(compose);
       setMissingStandard(missing);
-      standardEnvCbRef.current?.(missing.length);
+      standardEnvCbRef.current?.(missing);
 
       // Free-update rate-limit status — non-fatal.
       try {
@@ -302,7 +302,7 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange, onO
       const savedEnv = parseEnvArray(mergedEnv);
       const stillMissing = findPendingUpdates(newCompose);
       setMissingStandard(stillMissing);
-      standardEnvCbRef.current?.(stillMissing.length);
+      standardEnvCbRef.current?.(stillMissing);
       const savedReboot = parseRebootEnv(savedEnv);
       setRebootSettings(savedReboot);
       setOriginalReboot(valuesKey(savedReboot));

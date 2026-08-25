@@ -28,8 +28,7 @@ import toast from 'react-hot-toast';
 import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore } from '../../utils/appPower';
 import { reconcilePalworldIni, externalGamePort, patchPublicPort, fetchIniText } from '../../utils/palworldIni';
 import { jobFailureMessage, pollOperation, readUploadResponse, readVolumeResponse, uploadFailureIn } from '../../utils/volumeOperations';
-import { parseEnvArray } from '../../utils/appSpecHelpers';
-import { findMissingStandardEnv } from '../../config/serverMaintenance';
+import { findPendingUpdates } from '../../config/serverMaintenance';
 import { diagnosePlacement, surfacePlacementIssue } from '../../utils/nodeCapacity';
 
 // Helper functions for expiration display
@@ -220,7 +219,20 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // them). Surfaced as a dot on the Deployment Settings tab so a customer who never opens
   // that tab still sees there is something to apply. EnvironmentTab refreshes the count
   // once it has the (possibly decrypted) spec in hand.
-  const [pendingEnvUpdates, setPendingEnvUpdates] = useState(0);
+  // The pending items themselves rather than a count, because the banner reads differently
+  // when the server image is one of them — and it used to be left out of this count
+  // altogether, so a server whose env was already complete advertised nothing to apply on
+  // the day we shipped a new image. findPendingUpdates is the same helper EnvironmentTab
+  // uses, so the badge and the tab can no longer disagree.
+  const [pendingUpdates, setPendingUpdates] = useState([]);
+  const pendingUpdateCount = pendingUpdates.length;
+  const pendingImageUpdate = pendingUpdates.some((i) => i.kind === 'image');
+  const pendingEnvCount = pendingUpdateCount - (pendingImageUpdate ? 1 : 0);
+  const pendingUpdateSummary = pendingImageUpdate
+    ? (pendingEnvCount > 0
+      ? `Your server runs an older build, and predates ${pendingEnvCount} recommended ${pendingEnvCount === 1 ? 'setting' : 'settings'}.`
+      : 'Your server runs an older build of the Palworld server.')
+    : `Your server predates ${pendingEnvCount} recommended ${pendingEnvCount === 1 ? 'setting' : 'settings'} that keep Palworld servers healthy.`;
   // Why the app is running on fewer nodes than it should — almost always a geolocation
   // narrow enough that the matching nodes are full. Null when locations aren't the problem.
   const [placementIssue, setPlacementIssue] = useState(null);
@@ -235,7 +247,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
         // opinion, not "everything is missing".
         const env = spec?.compose?.[0]?.environmentParameters;
         if (!cancelled && Array.isArray(env)) {
-          setPendingEnvUpdates(findMissingStandardEnv(parseEnvArray(env)).length);
+          setPendingUpdates(findPendingUpdates(spec?.compose));
         }
       } catch { /* non-fatal: the tab itself reports the real state */ }
 
@@ -1062,12 +1074,12 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
               >
                 <Icon className="w-4 h-4" />
                 {tab.label}
-                {tab.id === 'environment' && pendingEnvUpdates > 0 && (
+                {tab.id === 'environment' && pendingUpdateCount > 0 && (
                   <span
                     className="flex-shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-blue-500 text-white text-[10px] font-bold leading-none"
-                    title={`${pendingEnvUpdates} recommended ${pendingEnvUpdates === 1 ? 'setting' : 'settings'} available`}
+                    title={`${pendingUpdateCount} ${pendingUpdateCount === 1 ? 'update' : 'updates'} available`}
                   >
-                    {pendingEnvUpdates}
+                    {pendingUpdateCount}
                   </span>
                 )}
                 {tab.id === 'geolocation' && placementIssue && (
@@ -1195,7 +1207,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
               customers who happened to look at the tab strip, so the offer is made on every
               tab instead — except the one that already shows it in full, and Billing, where
               the customer is in the middle of paying for something. */}
-          {pendingEnvUpdates > 0 && activeTab !== 'environment' && activeTab !== 'billing' && (
+          {pendingUpdateCount > 0 && activeTab !== 'environment' && activeTab !== 'billing' && (
             <button
               type="button"
               onClick={() => setActiveTab('environment')}
@@ -1207,9 +1219,11 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-blue-200">Server update available</span>
                 <span className="block mt-0.5 text-xs text-blue-200/75">
-                  Your server predates {pendingEnvUpdates} recommended{' '}
-                  {pendingEnvUpdates === 1 ? 'setting' : 'settings'} that keep Palworld servers healthy. Applying
-                  them leaves your world and your own settings untouched.
+                  {pendingUpdateSummary}{' '}
+                  {pendingImageUpdate
+                    ? 'The current one notices when the server stops responding and restarts it — a failure the old build cannot see. '
+                    : ''}
+                  Applying leaves your world and your own settings untouched.
                 </span>
               </span>
               <span className="hidden sm:inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-100">
@@ -1273,7 +1287,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           {/* Tab Content - Only render active tab to prevent unnecessary API calls and memory leaks */}
           {activeTab === 'environment' && (
             <div key="environment" className="animate-fade-in">
-              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} onStandardEnvChange={setPendingEnvUpdates} onOpenBackup={() => setActiveTab('backup')} />
+              <EnvironmentTab server={server} onUpdate={onUpdate} onRedeploy={() => handleReinstall(false)} onStandardEnvChange={setPendingUpdates} onOpenBackup={() => setActiveTab('backup')} />
             </div>
           )}
           {activeTab === 'geolocation' && (
