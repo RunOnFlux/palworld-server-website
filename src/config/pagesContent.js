@@ -20,6 +20,12 @@ export const pagesContent = {
   'rent-palworld-server': {
     slug: '/rent-palworld-server',
     published: '2026-07-19',
+    // Reciprocal half of the hreflang pair with /de/palworld-server-mieten.
+    alternates: [
+      { hreflang: 'en', href: '/rent-palworld-server' },
+      { hreflang: 'de', href: '/de/palworld-server-mieten' },
+      { hreflang: 'x-default', href: '/rent-palworld-server' },
+    ],
     title: 'Rent a Palworld Server',
     metaTitle: 'Rent a Palworld Dedicated Server — from $2.61/mo',
     description:
@@ -89,6 +95,7 @@ export const pagesContent = {
       offerCount: '3',
     },
     related: ['palworld-server-cost', 'pricing', 'server-requirements', 'setup-guide', 'gportal-alternative', 'nitrado-alternative'],
+    footnote: { text: 'Auf Deutsch: Palworld Server mieten', href: '/de/palworld-server-mieten', lang: 'de' },
   },
 
   'setup-guide': {
@@ -226,6 +233,86 @@ export const pagesContent = {
       { question: 'How much disk space does a Palworld server use?', answer: 'The server build is a few gigabytes and the save grows with world size and base count. Allow headroom for the build plus a growing world and backups. Use an SSD: Pocketpair warns that low-performance storage can corrupt save data.' },
     ],
     related: ['palworld-server-cost', 'setup-guide', 'pricing', 'server-settings', 'join-server', 'rent-palworld-server', 'guides/server-keeps-crashing'],
+  },
+
+  // The one translated route on the site. German is the fourth country by clicks already,
+  // entirely on English pages, and "palworld 1.0 server mieten" sits at position 38 with no
+  // German page in existence to rank instead. Kept as a single landing page rather than an
+  // i18n layer: the header, footer and dashboard stay English, which is honest for a page
+  // whose job is to be found and to lead to a deploy, not to pretend the product is localised.
+  'de/palworld-server-mieten': {
+    slug: '/de/palworld-server-mieten',
+    published: '2026-08-25',
+    locale: 'de',
+    alternates: [
+      { hreflang: 'de', href: '/de/palworld-server-mieten' },
+      { hreflang: 'en', href: '/rent-palworld-server' },
+      { hreflang: 'x-default', href: '/rent-palworld-server' },
+    ],
+    title: 'Palworld Server mieten',
+    metaTitle: 'Palworld Dedicated Server mieten — ab 2,61 $/Monat',
+    description:
+      'Palworld Server mieten ab 2,61 $/Monat: bis zu 32 Spieler, Crossplay, DDoS-Schutz, Serverstandort Deutschland. In 30 Sekunden startklar, erster Monat gratis.',
+    h1: 'Palworld Server mieten',
+    lead:
+      'Einen Palworld Dedicated Server zu mieten kostet bei uns zwischen 2,61 $ und 8,55 $ im Monat — je nachdem, für wie viele Mitspieler die Welt ausgelegt sein soll. Sie wählen einen Tarif und einen Standort, nach rund 30 Sekunden läuft der Server, und Sie bekommen eine feste Adresse, die Sie an Ihre Freunde weitergeben. Kein SteamCMD, keine Portfreigabe im Router, keine eigene Hardware, die nachts durchlaufen muss.',
+    breadcrumbs: [
+      { name: 'Startseite', url: '/' },
+      { name: 'Palworld Server mieten', url: '/de/palworld-server-mieten' },
+    ],
+    body: [
+      { type: 'h2', text: 'Was kostet es, einen Palworld Server zu mieten?' },
+      { type: 'p', text: 'Der Preis richtet sich nach dem Arbeitsspeicher, und der Arbeitsspeicher richtet sich nach der Spielerzahl. Es gibt keine Einrichtungsgebühr, keine Slot-Aufschläge und keine Mindestlaufzeit:' },
+      { type: 'table', head: ['Tarif', 'Spieler', 'Ressourcen', 'Preis'], rows: [
+        ['5 GB', 'bis zu 4', '5 GB RAM, 2 vCores, 30 GB SSD/NVMe', '2,61 $ / Monat'],
+        ['8 GB', 'bis zu 8', '8 GB RAM, 3 vCores, 30 GB SSD/NVMe', '4,38 $ / Monat'],
+        ['12 GB', 'bis zu 16', '12 GB RAM, 4 vCores, 35 GB SSD/NVMe', '6,11 $ / Monat'],
+        ['16 GB', 'bis zu 32', '16 GB RAM, 6 vCores, 40 GB SSD/NVMe', '8,55 $ / Monat'],
+      ] },
+      { type: 'p', text: 'Alle Preise verstehen sich in US-Dollar und werden auch in US-Dollar abgerechnet — der Betrag in Euro hängt also vom Wechselkurs Ihrer Bank ab. Bezahlt wird per Karte, Apple Pay oder Google Pay über Stripe, wahlweise auch in FLUX. Neue Konten bekommen den ersten Monat geschenkt, Sie können die Welt also erst aufbauen und dann entscheiden.' },
+      { type: 'cta', text: 'Palworld Server mieten — erster Monat gratis →', href: '/#pricing' },
+
+      { type: 'h2', text: 'Serverstandort Deutschland' },
+      { type: 'p', text: 'Für deutsche Gruppen ist der Standort meist wichtiger als jede andere Angabe im Datenblatt, weil er der einzige Wert ist, den Sie im Spiel unmittelbar spüren. Flux ist ein verteiltes Netzwerk aus Knoten in über 50 Ländern, und die mit Abstand größte Ländergruppe steht in Deutschland — derzeit über 1.000 Knoten, mehr als in jedem anderen Land des Netzwerks.' },
+      { type: 'p', text: 'Den Standort wählen Sie beim Deployment selbst aus, er wird Ihnen nicht zugeteilt. Wer in Deutschland, Österreich oder der Schweiz spielt, nimmt einen deutschen Knoten und spart sich damit die Laufzeit, die ein Server in Übersee unvermeidlich kostet. Im Dashboard sehen Sie die tatsächliche Latenz zu Ihrem Server, gemessen aus Ihrem eigenen Browser. Spielt die Hälfte der Gruppe aus einem anderen Land, können Sie den Standort später im Dashboard ändern, ohne die Welt zu verlieren.' },
+
+      { type: 'h2', text: 'Welche Anforderungen hat ein Palworld Dedicated Server?' },
+      { type: 'p', text: 'Pocketpair gibt offiziell 16 GB RAM als Anforderung an und empfiehlt für größere Server mehr als 32 GB. Mit 8 GB startet der Server zwar, laut Pocketpair steigt damit aber die Wahrscheinlichkeit von Abstürzen wegen Speichermangels — die 8 GB, die auf vielen Hosting-Seiten als Anforderung stehen, sind also eine Fußnote und keine Vorgabe. Dazu kommen vier oder mehr CPU-Kerne, eine SSD und der UDP-Port 8211.' },
+      { type: 'p', text: 'Bei einem gemieteten Server müssen Sie sich um nichts davon kümmern: Ports sind offen, die SSD ist eingerichtet, und der Speicher gehört Ihrer Welt allein. Warum unsere Tarife trotzdem unterhalb der offiziellen 16 GB anfangen und ab wann Sie besser auf 16 GB gehen, steht ausführlich in unserem englischen Leitfaden zu den Palworld server requirements.', links: [{ text: 'Palworld server requirements', href: '/server-requirements' }] },
+
+      { type: 'h2', text: 'Was beim Mieten inklusive ist' },
+      { type: 'ul', items: [
+        'Bis zu 32 Spieler mit Crossplay zwischen Steam und Xbox — die volle Obergrenze des Spiels, ohne Aufpreis pro Slot.',
+        'DDoS-Schutz in jedem Tarif, ohne Zusatzkosten. Ihre private IP-Adresse taucht nirgends auf.',
+        'Unbegrenzter Datenverkehr, kein Traffic-Limit und keine Nachberechnung.',
+        'Voller Zugriff: Web-Konsole, Dateimanager, PalWorldSettings.ini direkt im Browser bearbeiten.',
+        'Backups auf Knopfdruck und Wiederherstellung mit einem Klick.',
+        'Ein eigenes Server-Image, das den Server jede Minute prüft und neu startet, wenn er nicht mehr erreichbar ist — auch dann, wenn der Prozess formal noch läuft.',
+      ] },
+
+      { type: 'h2', text: 'Warum ein eigener Server statt Koop im Spiel?' },
+      { type: 'p', text: 'Die Koop-Sitzung aus dem Spiel heraus ist auf vier Spieler begrenzt und existiert nur so lange, wie der Host online ist. Loggt er sich aus, ist die Welt für alle anderen weg. Ein Dedicated Server läuft unabhängig davon rund um die Uhr, hält bis zu 32 Spieler und behält den Fortschritt, auch wenn gerade niemand spielt. Genau das ist der Grund, warum die meisten Gruppen nach ein paar Abenden umsteigen.' },
+      { type: 'p', text: 'Ein gemieteter Server nimmt Ihnen zusätzlich das ab, was beim Selbsthosten übrig bleibt: Strom rund um die Uhr, ein PC, der dafür belegt ist, die eigene IP-Adresse im Netz, und niemand, der um drei Uhr nachts neu startet, wenn der Server hängt.' },
+      { type: 'cta', text: 'Jetzt Palworld Server mieten →', href: '/#pricing' },
+    ],
+    faq: [
+      { question: 'Was kostet ein Palworld Server pro Monat?', answer: 'Zwischen 2,61 $ und 8,55 $ im Monat, je nach Größe: 2,61 $ für 5 GB und bis zu 4 Spieler, 4,38 $ für 8 GB und bis zu 8 Spieler, 6,11 $ für 12 GB und bis zu 16 Spieler, 8,55 $ für 16 GB und die vollen 32 Spieler. DDoS-Schutz, Backups und unbegrenzter Datenverkehr sind enthalten, eine Einrichtungsgebühr gibt es nicht, und der erste Monat ist für neue Konten kostenlos. Abgerechnet wird in US-Dollar.' },
+      { question: 'Kann ich den Serverstandort Deutschland wählen?', answer: 'Ja. Den Standort wählen Sie beim Deployment selbst, er wird nicht zugeteilt. Deutschland stellt die größte Knotengruppe im gesamten Flux-Netzwerk, derzeit über 1.000 Knoten. Sie können den Standort später im Dashboard ändern, ohne die Welt zu verlieren.' },
+      { question: 'Wie lange dauert es, bis der Server läuft?', answer: 'Rund 30 Sekunden. Nach dem Deployment bekommen Sie eine feste Adresse in der Form ihrserver.app.runonflux.io, die Sie zusammen mit dem Spielport an Ihre Mitspieler weitergeben.' },
+      { question: 'Gibt es eine Mindestlaufzeit oder Kündigungsfrist?', answer: 'Nein. Die Abrechnung läuft monatlich, es gibt keine Mindestlaufzeit und keine Einrichtungsgebühr. Sie können jederzeit kündigen.' },
+      { question: 'Wie viel RAM braucht mein Palworld Server?', answer: 'Richten Sie sich nach der Spielerzahl: 5 GB für bis zu 4 Spieler, 8 GB für bis zu 8, 12 GB für bis zu 16 und 16 GB für einen vollen 32-Spieler-Server. Palworld belegt mit der Laufzeit einer Welt immer mehr Speicher, planen Sie bei langen Sessions und viel Basenbau also eine Stufe größer.' },
+      { question: 'Funktioniert Crossplay zwischen Steam und Xbox?', answer: 'Ja, ein Palworld Dedicated Server unterstützt Crossplay zwischen Steam- und Xbox/Game-Pass-Spielern. Beide verbinden sich über dieselbe Serveradresse.' },
+    ],
+    footnote: { text: 'This page in English: Rent a Palworld Dedicated Server', href: '/rent-palworld-server', lang: 'en' },
+    product: {
+      name: 'Palworld Dedicated Server mieten',
+      description: 'Palworld Dedicated Server auf der dezentralen Flux-Cloud mieten: bis zu 32 Spieler, DDoS-Schutz, Serverstandort frei wählbar, ab 2,61 $ pro Monat.',
+      image: '/games/palworld/logo.webp',
+      lowPrice: '2.61',
+      highPrice: '8.55',
+      offerCount: 4,
+    },
+    related: [],
   },
 
   'palworld-server-cost': {
@@ -866,6 +953,7 @@ export const pageAnchors = {
   'server-requirements': 'Palworld dedicated server requirements',
   pricing: 'Palworld server hosting pricing',
   'palworld-server-cost': 'How much does a Palworld dedicated server cost?',
+  'de/palworld-server-mieten': 'Palworld Server mieten (Deutsch)',
   'guides/join-server': "How to join a friend's Palworld server",
   'guides/server-settings': 'Best Palworld server settings',
   'join-server': "How to join a friend's Palworld server",

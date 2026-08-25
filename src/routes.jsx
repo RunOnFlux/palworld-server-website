@@ -38,6 +38,7 @@ export const ROUTE_PAGES = {
   '/server-requirements': lazyPage(() => import('./pages/ServerRequirements')),
   '/pricing': lazyPage(() => import('./pages/Pricing')),
   '/palworld-server-cost': lazyPage(() => import('./pages/ServerCost')),
+  '/de/palworld-server-mieten': lazyPage(() => import('./pages/ServerMietenDe')),
   '/guides/join-server': lazyPage(() => import('./pages/GuideJoinServer')),
   '/guides/server-settings': lazyPage(() => import('./pages/GuideServerSettings')),
   '/guides/server-keeps-crashing': lazyPage(() => import('./pages/GuideServerCrashing')),

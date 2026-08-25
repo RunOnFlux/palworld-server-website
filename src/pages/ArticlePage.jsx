@@ -118,6 +118,16 @@ const Block = ({ block }) => {
 
 Block.propTypes = { block: PropTypes.object.isRequired };
 
+/**
+ * The handful of strings ArticlePage renders itself rather than reading from the page.
+ * A translated route that still says "Frequently asked questions" over a German FAQ is a
+ * visible seam, and one Google reads too. Keyed by `page.locale`, defaulting to English.
+ */
+const CHROME = {
+  en: { faq: 'Frequently asked questions', related: 'Related guides' },
+  de: { faq: 'Häufige Fragen', related: 'Weiterführende Seiten' },
+};
+
 const ArticlePage = ({ pageKey }) => {
   const navigate = useNavigate();
   const page = pagesContent[pageKey];
@@ -129,6 +139,7 @@ const ArticlePage = ({ pageKey }) => {
 
   if (!page) return null;
 
+  const chrome = CHROME[page.locale] || CHROME.en;
   const related = (page.related || []).map(resolveRelated).filter(Boolean);
   const schemas = buildPageSchemas(page);
 
@@ -173,7 +184,7 @@ const ArticlePage = ({ pageKey }) => {
           {/* FAQ */}
           {page.faq && page.faq.length > 0 && (
             <section className="mt-12">
-              <h2 className="text-2xl sm:text-3xl font-bold text-text mb-6">Frequently asked questions</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold text-text mb-6">{chrome.faq}</h2>
               <div className="space-y-4">
                 {page.faq.map((f, i) => (
                   <div key={i} className="bg-surface border border-border rounded-lg p-5">
@@ -185,10 +196,24 @@ const ArticlePage = ({ pageKey }) => {
             </section>
           )}
 
+          {/* The same page in the other language. Small and near the end on purpose: it is
+              for the reader who landed on the wrong one, not a navigation feature. */}
+          {page.footnote && (
+            <p className="mt-10 text-sm text-text-muted">
+              <Link
+                to={page.footnote.href}
+                hrefLang={page.footnote.lang}
+                className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary transition-colors"
+              >
+                {page.footnote.text}
+              </Link>
+            </p>
+          )}
+
           {/* Related guides */}
           {related.length > 0 && (
             <section className="mt-12 pt-8 border-t border-border/40">
-              <h2 className="text-xl font-bold text-text mb-4">Related guides</h2>
+              <h2 className="text-xl font-bold text-text mb-4">{chrome.related}</h2>
               <ul className="space-y-2">
                 {related.map((r) => (
                   <li key={r.key}>

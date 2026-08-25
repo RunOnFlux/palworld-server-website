@@ -1,28 +1,16 @@
 {
   "clusters": [
     {
-      "lat": 48.0262,
-      "lon": -0.7734,
-      "count": 654,
-      "country": "France"
-    },
-    {
-      "lat": 50.4777,
-      "lon": 12.3649,
+      "lat": 50.1109,
+      "lon": 8.68213,
       "count": 1564,
       "country": "Germany"
     },
     {
-      "lat": 55.9495,
-      "lon": -3.1983,
-      "count": 101,
-      "country": "United Kingdom"
-    },
-    {
-      "lat": 47.2987,
-      "lon": 21.3613,
-      "count": 16,
-      "country": "Hungary"
+      "lat": 48.8009,
+      "lon": 2.42232,
+      "count": 671,
+      "country": "France"
     },
     {
       "lat": 60.1719,
@@ -31,52 +19,28 @@
       "country": "Finland"
     },
     {
-      "lat": 40.7523,
-      "lon": -74.2172,
-      "count": 1002,
+      "lat": 47.2189,
+      "lon": 38.9168,
+      "count": 209,
+      "country": "Russia"
+    },
+    {
+      "lat": 27.8171,
+      "lon": -82.6268,
+      "count": 1008,
       "country": "United States"
     },
     {
-      "lat": 55.7056,
-      "lon": 12.5683,
-      "count": 495,
+      "lat": 55.8237,
+      "lon": 11.4967,
+      "count": 494,
       "country": "Denmark"
     },
     {
-      "lat": 45.3147,
-      "lon": -73.8785,
+      "lat": 48.4204,
+      "lon": -71.0657,
       "count": 351,
       "country": "Canada"
-    },
-    {
-      "lat": 25.0693,
-      "lon": 121.4626,
-      "count": 14,
-      "country": "Taiwan"
-    },
-    {
-      "lat": 56.9486,
-      "lon": 24.1182,
-      "count": 44,
-      "country": "Latvia"
-    },
-    {
-      "lat": 51.7586,
-      "lon": 5.1364,
-      "count": 64,
-      "country": "The Netherlands"
-    },
-    {
-      "lat": 57.3496,
-      "lon": 12.897,
-      "count": 36,
-      "country": "Sweden"
-    },
-    {
-      "lat": 47.2189,
-      "lon": 38.9168,
-      "count": 212,
-      "country": "Russia"
     },
     {
       "lat": 38.3692,
@@ -97,16 +61,34 @@
       "country": "United Arab Emirates"
     },
     {
+      "lat": -23.5475,
+      "lon": -46.6361,
+      "count": 7,
+      "country": "Brazil"
+    },
+    {
+      "lat": 51.9435,
+      "lon": 4.40994,
+      "count": 68,
+      "country": "The Netherlands"
+    },
+    {
       "lat": 47.3091,
       "lon": 8.5263,
       "count": 58,
       "country": "Switzerland"
     },
     {
-      "lat": -23.5475,
-      "lon": -46.6361,
-      "count": 7,
-      "country": "Brazil"
+      "lat": 56.8294,
+      "lon": 13.9402,
+      "count": 36,
+      "country": "Sweden"
+    },
+    {
+      "lat": 55.4754,
+      "lon": -4.6062,
+      "count": 101,
+      "country": "United Kingdom"
     },
     {
       "lat": 54.6876,
@@ -119,6 +101,12 @@
       "lon": -70.506,
       "count": 27,
       "country": "Chile"
+    },
+    {
+      "lat": 56.9486,
+      "lon": 24.1182,
+      "count": 44,
+      "country": "Latvia"
     },
     {
       "lat": 42.6826,
@@ -139,10 +127,22 @@
       "country": "Norway"
     },
     {
+      "lat": 47.2987,
+      "lon": 21.3613,
+      "count": 16,
+      "country": "Hungary"
+    },
+    {
       "lat": 50.458,
       "lon": 30.5303,
-      "count": 66,
+      "count": 65,
       "country": "Ukraine"
+    },
+    {
+      "lat": 25.0693,
+      "lon": 121.4626,
+      "count": 13,
+      "country": "Taiwan"
     },
     {
       "lat": 26.2235,
@@ -187,16 +187,16 @@
       "country": "Slovakia"
     },
     {
-      "lat": -34.6142,
-      "lon": -58.3811,
-      "count": 13,
-      "country": "Argentina"
-    },
-    {
       "lat": 22.3702,
       "lon": 114.13,
       "count": 11,
       "country": "Hong Kong"
+    },
+    {
+      "lat": -34.6142,
+      "lon": -58.3811,
+      "count": 13,
+      "country": "Argentina"
     },
     {
       "lat": 1.32414,
@@ -217,12 +217,6 @@
       "country": "Greece"
     },
     {
-      "lat": 50.0948,
-      "lon": 14.4785,
-      "count": 6,
-      "country": "Czechia"
-    },
-    {
       "lat": 49.6111,
       "lon": 6.05,
       "count": 3,
@@ -241,6 +235,12 @@
       "country": "Romania"
     },
     {
+      "lat": 50.0766,
+      "lon": 14.4464,
+      "count": 6,
+      "country": "Czechia"
+    },
+    {
       "lat": -26.2309,
       "lon": 28.0583,
       "count": 12,
@@ -253,16 +253,16 @@
       "country": "Ireland"
     },
     {
-      "lat": 46.8631,
-      "lon": 29.4608,
-      "count": 4,
-      "country": "Moldova"
-    },
-    {
       "lat": 3.1408,
       "lon": 101.6852,
       "count": 10,
       "country": "Malaysia"
+    },
+    {
+      "lat": 46.8631,
+      "lon": 29.4608,
+      "count": 4,
+      "country": "Moldova"
     },
     {
       "lat": 31.8781,
@@ -279,11 +279,11 @@
     {
       "lat": 0,
       "lon": 0,
-      "count": 117,
+      "count": 112,
       "country": "Unknown"
     }
   ],
   "cityClusters": [],
-  "total": 6471,
+  "total": 6487,
   "countryCount": 58
 }

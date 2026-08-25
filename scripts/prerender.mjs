@@ -182,11 +182,36 @@ const stripServiceSchema = (html) =>
     '',
   );
 
+/**
+ * hreflang for a page that has a translation.
+ *
+ * Emitted on BOTH pages of a pair and pointing at each other, because Google drops a
+ * one-way annotation entirely — the German page claiming an English alternate is worth
+ * nothing unless the English page claims the German one back. x-default goes to the
+ * English page: it is what someone with no matching language should land on.
+ */
+function alternatesFor(page) {
+  if (!page?.alternates?.length) return '';
+  const rows = page.alternates.map(
+    (a) => `    <link rel="alternate" hreflang="${esc(a.hreflang)}" href="${esc(SITE_URL + a.href)}" />`,
+  );
+  return `\n${rows.join('\n')}`;
+}
+
 function buildHtml({
   path, ssrPath, title, description, canonical, robots, rootBody,
-  ogType = 'website', jsonLd, service = true,
+  ogType = 'website', jsonLd, service = true, locale = 'en', alternates = '',
 }) {
   let html = baseHtml;
+  if (locale !== 'en') {
+    // The shell is authored in English; a translated route has to say so in the tag
+    // crawlers and screen readers actually read.
+    html = html.replace(/<html lang="[^"]*"/i, `<html lang="${esc(locale)}"`);
+    html = html.replace(
+      /<meta property="og:locale"[^>]*>/i,
+      `<meta property="og:locale" content="${esc(locale === 'de' ? 'de_DE' : locale)}" />`,
+    );
+  }
   if (!service) html = stripServiceSchema(html);
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`);
   html = html.replace(/<meta name="title"[^>]*>/i, `<meta name="title" content="${esc(title)}" />`);
@@ -206,7 +231,7 @@ function buildHtml({
   html = html.replace(/<meta name="twitter:description"[^>]*>/i, `<meta name="twitter:description" content="${esc(description)}" />`);
   html = html.replace(/<meta name="twitter:url"[^>]*>/i, `<meta name="twitter:url" content="${esc(canonical)}" />`);
   html = html.replace(/<meta name="robots"[^>]*>/i, `<meta name="robots" content="${esc(robots)}" />`);
-  html = html.replace(/<link rel="canonical"[^>]*>/i, `<link rel="canonical" href="${esc(canonical)}" />`);
+  html = html.replace(/<link rel="canonical"[^>]*>/i, `<link rel="canonical" href="${esc(canonical)}" />${alternates}`);
   html = injectJsonLd(html, jsonLd);
   return rootBody ? withRoot(html, ssrPath || path, rootBody) : html;
 }
@@ -270,6 +295,8 @@ const contentRoutes = Object.entries(pagesContent).map(([key, page]) => ({
   published: page.published,
   robots: INDEXABLE_ROBOTS,
   ogType: 'article',
+  locale: page.locale || 'en',
+  alternates: alternatesFor(page),
   // The only schema React does not emit for these pages. See buildArticleSchema().
   jsonLd: [buildArticleSchema(page, BUILD_DATE)],
 }));
