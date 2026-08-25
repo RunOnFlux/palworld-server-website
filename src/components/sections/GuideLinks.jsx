@@ -4,8 +4,8 @@ import { BookOpen, Server, Users, Settings, Tag, GitCompare, LifeBuoy, ArrowRigh
 
 const guides = [
   { to: '/rent-palworld-server', icon: Tag, label: 'Rent a Palworld dedicated server', desc: 'What you get, how much it costs, and how to deploy in 30 seconds — first month free.' },
-  { to: '/nitrado-alternative', icon: GitCompare, label: 'Nitrado alternative', desc: 'Decentralized Nitrado alternative for Palworld — 32 players, dedicated resources, from $2.61/mo.' },
-  { to: '/gportal-alternative', icon: GitCompare, label: 'GPORTAL alternative', desc: 'Decentralized GPORTAL alternative for Palworld — no single point of failure, no egress fees.' },
+  { to: '/nitrado-alternative', icon: GitCompare, label: 'Nitrado vs Flux for Palworld', desc: 'Decentralized Nitrado alternative for Palworld — 32 players, dedicated resources, from $2.61/mo.' },
+  { to: '/gportal-alternative', icon: GitCompare, label: 'GPORTAL vs Flux for Palworld', desc: 'Decentralized GPORTAL alternative for Palworld — no single point of failure, no egress fees.' },
   { to: '/setup-guide', icon: BookOpen, label: 'How to make a Palworld dedicated server', desc: 'Full 2026 setup walkthrough — SteamCMD vs one-click deploy.' },
   { to: '/server-requirements', icon: Server, label: 'Palworld dedicated server requirements', desc: 'How much RAM and CPU you need, plus ports 8211 and 8212.' },
   { to: '/guides/join-server', icon: Users, label: "How to join a friend's Palworld server", desc: 'Connect by IP, use the browser, and understand crossplay.' },

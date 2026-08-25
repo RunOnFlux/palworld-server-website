@@ -165,7 +165,7 @@ export const pagesContent = {
     slug: '/server-requirements',
     published: '2026-07-04',
     title: 'Palworld Dedicated Server Requirements (CPU, RAM, Ports)',
-    metaTitle: 'Palworld 1.0 Dedicated Server Requirements (CPU, RAM, Ports)',
+    metaTitle: 'Palworld Dedicated Server Requirements: 16GB RAM, 4 Cores',
     description:
       'Palworld server requirements: Pocketpair officially requires 16GB RAM and 4+ cores, and prefers 32GB+. Real sizing by player count, ports 8211 UDP / 8212 TCP.',
     h1: 'Palworld Dedicated Server Requirements',
@@ -304,9 +304,9 @@ export const pagesContent = {
     slug: '/pricing',
     published: '2026-07-04',
     title: 'Palworld Server Hosting Pricing & Plans',
-    metaTitle: 'Palworld 1.0 Server Hosting Pricing — Plans from $2.61/mo',
+    metaTitle: 'Palworld Server Hosting Pricing — Plans from $2.61/mo',
     description:
-      'Palworld server hosting plans from $2.61/mo: 5GB, 8GB, 12GB & 16GB RAM tiers for up to 32 players. First month free, DDoS protection included. Deploy in 30 seconds.',
+      'Palworld server hosting from $2.61/mo: 5GB, 8GB, 12GB and 16GB tiers for up to 32 players. DDoS protection included, first month free, deploy in 30 seconds.',
     h1: 'Palworld Server Hosting Pricing',
     lead:
       'Simple, transparent Palworld dedicated server pricing. Plans start at $2.61/month, every plan includes DDoS protection and full admin access, and new users get their first month free. Pick a tier by how many players you expect.',
@@ -379,7 +379,7 @@ export const pagesContent = {
     title: "How to Join a Friend's Palworld Server (incl. Crossplay)",
     metaTitle: "How to Join a Friend's Palworld Server (Crossplay Guide)",
     description:
-      "Join a friend's Palworld server by IP and port or via the community list, plus Steam vs Xbox crossplay limits. Host your own 32-player server from $2.61/mo.",
+      "Enter your friend's address as IP:8211 in Palworld's IP:Port field. Full steps for Steam and Xbox, plus why a server hides from the community list.",
     h1: "How to Join a Friend's Palworld Server",
     lead:
       "Joining a friend's Palworld dedicated server takes just the server address and, sometimes, a password. This guide covers every way to connect, how crossplay works between Steam and Xbox/Game Pass, and what to do when a server will not show up.",
@@ -560,16 +560,16 @@ export const pagesContent = {
   'nitrado-alternative': {
     slug: '/nitrado-alternative',
     published: '2026-07-08',
-    title: 'Nitrado Alternative for Palworld',
-    metaTitle: 'Nitrado Alternative for Palworld — Deploy from $2.61/mo',
+    title: 'Nitrado vs Flux for Palworld',
+    metaTitle: 'Nitrado vs Flux for Palworld: Which Should You Pick?',
     description:
-      'Looking for a Nitrado alternative for Palworld? Host on the Flux decentralized cloud: dedicated resources, no single point of failure, DDoS included, up to 32 players, from $2.61/mo, first month free.',
-    h1: 'Looking for a Nitrado Alternative for Palworld?',
+      'Nitrado vs Flux for a Palworld server: dedicated resources instead of shared slots, the full 32-player cap, DDoS included. From $2.61/mo, first month free.',
+    h1: 'Nitrado vs Flux for a Palworld Server',
     lead:
       'Nitrado is one of the best-known Palworld hosts, and it is a capable provider. But like most traditional hosts it runs your server in a fixed set of company-owned data centers with a single point of failure, and its slot-based plans tie pricing to player count. Palworld on Flux takes a different approach — a decentralized cloud of independent nodes across 50+ countries, dedicated resources, and pay-as-you-go pricing.',
     breadcrumbs: [
       { name: 'Home', url: '/' },
-      { name: 'Nitrado Alternative', url: '/nitrado-alternative' },
+      { name: 'Nitrado vs Flux', url: '/nitrado-alternative' },
     ],
     body: [
       { type: 'h2', text: 'Why look for a Nitrado alternative' },
@@ -618,16 +618,16 @@ export const pagesContent = {
     // sits, what holds the save, and how far the player is from it. The Nitrado page is about
     // ownership and portability. House rules unchanged: no competitor prices, no claims about
     // their features, the comparison is between hosting models.
-    title: 'GPORTAL Alternative for Palworld',
-    metaTitle: 'GPORTAL Alternative for Palworld — Deploy from $2.61/mo',
+    title: 'GPORTAL vs Flux for Palworld',
+    metaTitle: 'GPORTAL vs Flux for Palworld: Which Should You Pick?',
     description:
-      'A decentralized GPORTAL alternative for Palworld: choose the region at deploy across 50+ countries, dedicated resources and the full 32-player cap, from $2.61/mo.',
-    h1: 'A GPORTAL Alternative for Palworld',
+      'GPORTAL vs Flux for a Palworld server: what each does well, how region choice and dedicated resources differ, and when GPORTAL is the better pick. $2.61/mo.',
+    h1: 'GPORTAL vs Flux for a Palworld Server',
     lead:
       'GPORTAL is a capable host and a common first stop for a Palworld world. People who go looking for an alternative are usually not unhappy with the panel. They are asking an infrastructure question: where does the server actually run, and what happens to the save if that machine has a bad day.',
     breadcrumbs: [
       { name: 'Home', url: '/' },
-      { name: 'GPORTAL Alternative', url: '/gportal-alternative' },
+      { name: 'GPORTAL vs Flux', url: '/gportal-alternative' },
     ],
     body: [
       { type: 'h2', text: 'What GPORTAL does well' },
@@ -861,8 +861,8 @@ export const pageAnchors = {
   'join-server': "How to join a friend's Palworld server",
   'server-settings': 'Best Palworld server settings',
   'decentralized-palworld-hosting': 'Why host on the Flux decentralized cloud',
-  'nitrado-alternative': 'Nitrado alternative for Palworld',
-  'gportal-alternative': 'GPORTAL alternative for Palworld',
+  'nitrado-alternative': 'Nitrado vs Flux for Palworld',
+  'gportal-alternative': 'GPORTAL vs Flux for Palworld',
   'guides/server-keeps-crashing': 'Palworld server keeps crashing: memory leak fix',
   'server-keeps-crashing': 'Palworld server keeps crashing: memory leak fix',
 };
