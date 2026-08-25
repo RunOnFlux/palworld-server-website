@@ -1624,6 +1624,14 @@ const OverviewTab = ({ server, masterLocation, masterLive, onMasterError: _onMas
               </div>
             </div>
             <InfoRow label="Connect Address" value={`${server.name.toLowerCase()}.app.runonflux.io:${server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211}`} copyText={`${server.name.toLowerCase()}.app.runonflux.io:${server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211}`} />
+            {/* The REST admin port is not the address players use — the hint keeps it from
+                being pasted into the game's Join via IP field. */}
+            <InfoRow
+              label="Admin API"
+              value={`${server.name.toLowerCase()}.app.runonflux.io:${restApiPort(server)}`}
+              copyText={`${server.name.toLowerCase()}.app.runonflux.io:${restApiPort(server)}`}
+              hint="Palworld REST API. Needs your AdminPassword, and is not the address players connect to."
+            />
           </div>
         </div>
       </div>
@@ -1834,7 +1842,14 @@ async function loadAdminPasswordFromConfig(server, masterLocation, component) {
 
 /** External REST port (index 2 = the 8212 slot); randomized deploys expose a high port. */
 function restApiPort(server) {
-  return server?.ports?.[2] || server?.compose?.[0]?.ports?.[2] || 8212;
+  // The admin port is whichever external port sits opposite container 8212. That is ports[2]
+  // for every spec we deploy, but one legacy server also publishes RCON in the middle, and
+  // reading position 2 blindly hands it the RCON port instead.
+  const ports = server?.ports?.length ? server.ports : server?.compose?.[0]?.ports;
+  const containerPorts = server?.containerPorts?.length ? server.containerPorts : server?.compose?.[0]?.containerPorts;
+  const i = (containerPorts || []).indexOf(8212);
+  if (i >= 0 && ports?.[i]) return ports[i];
+  return ports?.[2] || 8212;
 }
 
 function buildIniContent(settings, originalContent) {
@@ -8930,7 +8945,7 @@ Price
 };
 
 // Helper component for info rows
-const InfoRow = ({ label, value, copyText }) => {
+const InfoRow = ({ label, value, copyText, hint }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText(copyText);
@@ -8953,6 +8968,7 @@ const InfoRow = ({ label, value, copyText }) => {
           </button>
         )}
       </div>
+      {hint && <div className="text-[10px] text-slate-500 mt-1 leading-snug">{hint}</div>}
     </div>
   );
 };
