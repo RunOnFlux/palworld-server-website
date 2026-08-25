@@ -48,6 +48,47 @@
 
 import { parseEnvArray } from '../utils/appSpecHelpers';
 
+/**
+ * ── The image ────────────────────────────────────────────────────────────────
+ * Our own build of the Palworld server (github.com/RunOnFlux/palworld-server-flux):
+ * upstream's image plus a health probe that restarts a server which has stopped
+ * serving, and a scheduled restart that cannot silently skip. The two failures it
+ * exists for both leave the container, the process and every platform health signal
+ * looking fine while nobody can play, so no amount of env tuning reaches them.
+ *
+ * It also resolves the admin password from PalWorldSettings.ini by itself, which is
+ * what makes REBOOT_ADMIN_PASSWORD below unnecessary on a server running it.
+ */
+export const STANDARD_IMAGE = 'runonflux/palworld-server-flux:latest';
+
+/** Images STANDARD_IMAGE replaces, matched on the repository, ignoring the tag. */
+const REPLACED_IMAGES = ['thijsvanloef/palworld-server-docker'];
+
+const repoOf = (repotag) => String(repotag || '').split(':')[0];
+
+/** True for a component still running an image we have moved on from. */
+export function componentNeedsImageUpdate(component) {
+  return REPLACED_IMAGES.includes(repoOf(component?.repotag));
+}
+
+/** True when any component of this compose is on a replaced image. */
+export function imageNeedsUpdate(compose) {
+  return (compose || []).some(componentNeedsImageUpdate);
+}
+
+/** True once the server runs an image that authenticates itself against the ini. */
+export function imageIsSelfAuthenticating(compose) {
+  const first = (compose || [])[0];
+  return !!first && !componentNeedsImageUpdate(first);
+}
+
+/** The compose with every replaced image swapped for the current one. */
+export function standardImagePatch(compose) {
+  return (compose || []).map((c) => (
+    componentNeedsImageUpdate(c) ? { ...c, repotag: STANDARD_IMAGE } : c
+  ));
+}
+
 export const REBOOT_ENV_KEYS = {
   enabled: 'AUTO_REBOOT_ENABLED',
   cron: 'AUTO_REBOOT_CRON_EXPRESSION',
@@ -131,9 +172,19 @@ const REBOOT_SETTINGS_INI = '/palworld/Pal/Saved/Config/LinuxServer/PalWorldSett
  */
 const REBOOT_ADMIN_PASSWORD = `ADMIN_PASSWORD=$(sed -n 's/.*AdminPassword="\\([^"]*\\)".*/\\1/p' ${REBOOT_SETTINGS_INI})`;
 
-export function cronForHour(hour) {
+/**
+ * The schedule to write for a server on a given image.
+ *
+ * `selfAuthenticating` (our image) gets a plain cron line, because the container
+ * reads AdminPassword out of the ini itself. Upstream's image does not, so its
+ * line still has to carry the password prefix or the job dies on a 401 seconds
+ * after it starts, silently, every night. Getting this backwards on a server that
+ * is still on the old image turns its nightly restart off without telling anyone,
+ * so the caller has to say which image the server will be running.
+ */
+export function cronForHour(hour, { selfAuthenticating = false } = {}) {
   const h = Math.min(23, Math.max(0, Math.round(Number(hour) || 0)));
-  return `0 ${h} * * * ${REBOOT_ADMIN_PASSWORD}`;
+  return selfAuthenticating ? `0 ${h} * * *` : `0 ${h} * * * ${REBOOT_ADMIN_PASSWORD}`;
 }
 
 /**
@@ -154,6 +205,15 @@ export function cronNeedsAdminPassword(cron) {
   return hourFromCron(cron) !== null && !String(cron).includes('ADMIN_PASSWORD=');
 }
 
+/**
+ * True when a stored cron still carries the password prefix. On the current image
+ * that prefix is dead weight: harmless, but it is the one thing that would leave a
+ * long-standing customer holding a different spec from someone who buys today.
+ */
+export function cronCarriesAdminPassword(cron) {
+  return hourFromCron(cron) !== null && String(cron).includes('ADMIN_PASSWORD=');
+}
+
 /** Settings object used by the UI. */
 export function defaultRebootSettings() {
   return {
@@ -164,12 +224,18 @@ export function defaultRebootSettings() {
   };
 }
 
-/** UI settings → env vars (as a plain object, ready to merge into a spec). */
-export function buildRebootEnv(settings) {
+/**
+ * UI settings → env vars (as a plain object, ready to merge into a spec).
+ *
+ * `selfAuthenticating` describes the image the server will be running when this
+ * lands, not the one it runs now: the update that swaps the image and the one that
+ * rewrites the schedule are the same spec write.
+ */
+export function buildRebootEnv(settings, { selfAuthenticating = false } = {}) {
   const s = { ...defaultRebootSettings(), ...(settings || {}) };
   return {
     [REBOOT_ENV_KEYS.enabled]: s.enabled ? 'true' : 'false',
-    [REBOOT_ENV_KEYS.cron]: cronForHour(s.hour),
+    [REBOOT_ENV_KEYS.cron]: cronForHour(s.hour, { selfAuthenticating }),
     [REBOOT_ENV_KEYS.warnMinutes]: String(REBOOT_WARN_MINUTES),
     [REBOOT_ENV_KEYS.force]: s.force ? 'true' : 'false',
     [REBOOT_ENV_KEYS.timeZone]: s.timeZone || 'UTC',
@@ -282,14 +348,19 @@ export const STANDARD_ENV = [
     description: 'Restarts the server on a schedule, which is what clears the memory leak that makes a running server stop accepting players.',
   },
   {
+    // The value written here is always the plain line, because this patch is only
+    // ever applied together with the image update below, and on that image the
+    // container resolves the password itself. A server that has the old prefix is
+    // reported as needing an update purely so that nobody is left holding a spec
+    // that differs from what a customer buying today receives.
     key: REBOOT_ENV_KEYS.cron,
-    value: cronForHour(DEFAULT_REBOOT_HOUR),
+    value: cronForHour(DEFAULT_REBOOT_HOUR, { selfAuthenticating: true }),
     enforce: false,
-    needsUpdate: cronNeedsAdminPassword,
-    upgrade: (current) => cronForHour(hourFromCron(current) ?? DEFAULT_REBOOT_HOUR),
+    needsUpdate: cronCarriesAdminPassword,
+    upgrade: (current) => cronForHour(hourFromCron(current) ?? DEFAULT_REBOOT_HOUR, { selfAuthenticating: true }),
     label: 'Restart schedule',
     description: 'When the daily restart runs.',
-    updateDescription: 'Your daily restart is scheduled but never actually runs: it cannot authenticate with your server. This repairs it and keeps the time you chose.',
+    updateDescription: 'Simplifies the schedule your server was given as a workaround for an old bug. The new server image no longer needs it, and your chosen time is kept.',
   },
   {
     key: REBOOT_ENV_KEYS.warnMinutes,
@@ -376,5 +447,47 @@ export function pendingStandardUpdates(server) {
   if (server.status && server.status !== 'running') return 0;
   const env = server.compose?.[0]?.environmentParameters;
   if (!Array.isArray(env)) return 0;
-  return findMissingStandardEnv(parseEnvArray(env)).length;
+  return findPendingUpdates(server.compose).length;
+}
+
+/**
+ * ── Everything an existing server is behind on ───────────────────────────────
+ * The env baseline above plus the image, in one list, because they are applied in
+ * one spec write and the customer should read them as one thing: "make my server
+ * the server someone buying today would get".
+ *
+ * The ordering matters for how it reads: the image is the reason the rest is safe,
+ * so it goes first.
+ */
+export function findPendingUpdates(compose) {
+  const env = parseEnvArray(compose?.[0]?.environmentParameters);
+  const items = findMissingStandardEnv(env);
+  if (imageNeedsUpdate(compose)) {
+    items.unshift({
+      key: '__image__',
+      kind: 'image',
+      reason: 'outdated',
+      label: 'Server software',
+      description: 'Moves your server onto our own build, which watches for the two ways a Palworld server can go on running while nobody can play, warns anyone still connected, and restarts it by itself. Your world, your settings and your server address are untouched.',
+      updateDescription: 'Moves your server onto our own build, which watches for the two ways a Palworld server can go on running while nobody can play, warns anyone still connected, and restarts it by itself. Your world, your settings and your server address are untouched.',
+    });
+  }
+  return items;
+}
+
+/**
+ * The single patch behind the "Update my server" button: the env keys that are
+ * missing or stale, and the compose with the image swapped. Both or neither — the
+ * plain cron line the env patch writes only works on the new image, so they must
+ * reach the chain in the same update.
+ *
+ * `compose` is null when the image is already current, so the caller can leave the
+ * existing compose alone.
+ */
+export function standardUpdatePatch(compose) {
+  const env = parseEnvArray(compose?.[0]?.environmentParameters);
+  return {
+    env: standardEnvPatch(env),
+    compose: imageNeedsUpdate(compose) ? standardImagePatch(compose) : null,
+  };
 }

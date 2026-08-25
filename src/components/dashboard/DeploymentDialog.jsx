@@ -9,7 +9,7 @@ import storageService from '../../services/storageService';
 import { payWithSSP, payWithZelcore, isSSPAvailable } from '../../services/walletService';
 import marketplaceService from '../../services/marketplaceService';
 import { withModsMount } from '../../config/modsConfig';
-import { defaultRebootSettings, buildRebootEnv } from '../../config/serverMaintenance';
+import { defaultRebootSettings, buildRebootEnv, imageIsSelfAuthenticating } from '../../config/serverMaintenance';
 import { capacityForGeolocation, confirmFreeIpCount, fetchFluxNodes, nodeFitsApp, nodeHasRoom, LIVE_CHECK_MARGIN } from '../../utils/nodeCapacity';
 import { applyRandomExternalPorts, registerAppSpecWithPortRetry, palworldGamePort } from '../../utils/appSpecHelpers';
 import geolocationData from '../../utils/geolocation';
@@ -762,9 +762,17 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
   // Everything the deploy writes into environmentParameters: the wizard's fields plus
   // the scheduled-restart settings. Kept together so all three deploy paths (fiat,
   // crypto, free first month) send an identical env.
+  // The schedule is written for the image this deploy is about to run, read off the
+  // marketplace app rather than assumed: our own image resolves the admin password
+  // from the ini, upstream's needs it handed over in the cron line itself.
   const deployEnvParams = useMemo(
-    () => ({ ...environmentParams, ...buildRebootEnv(rebootSettings) }),
-    [environmentParams, rebootSettings],
+    () => ({
+      ...environmentParams,
+      ...buildRebootEnv(rebootSettings, {
+        selfAuthenticating: imageIsSelfAuthenticating(selectedPlan?._app?.compose),
+      }),
+    }),
+    [environmentParams, rebootSettings, selectedPlan],
   );
 
   // Memoized step navigation handlers to prevent child re-renders

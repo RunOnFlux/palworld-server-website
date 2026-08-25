@@ -7,7 +7,15 @@ import CustomSelect from '../common/CustomSelect';
 import AutoRestartFields from './AutoRestartFields';
 import { fetchDecryptedEnterpriseSpec } from '../../utils/enterpriseCrypto';
 import { encryptAppSpec, mergeInlineEnv, parseEnvArray, computeRemainingExpire, fetchLatestAppSpec } from '../../utils/appSpecHelpers';
-import { parseRebootEnv, buildRebootEnv, findMissingStandardEnv, standardEnvPatch } from '../../config/serverMaintenance';
+import {
+  parseRebootEnv,
+  buildRebootEnv,
+  findPendingUpdates,
+  standardUpdatePatch,
+  standardImagePatch,
+  imageNeedsUpdate,
+  imageIsSelfAuthenticating,
+} from '../../config/serverMaintenance';
 
 // Flux free-update rate limits — mirror of backend checkFreeAppUpdate. Windows are in
 // blocks; post-PON-fork the target block time is 30s.
@@ -155,7 +163,7 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
       setRebootSettings(reboot);
       setOriginalReboot(valuesKey(reboot));
 
-      const missing = findMissingStandardEnv(currentEnv);
+      const missing = findPendingUpdates(compose);
       setMissingStandard(missing);
       standardEnvCbRef.current?.(missing.length);
 
@@ -228,7 +236,7 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
    * actually touched (or patched), so saving an unrelated field never quietly adds
    * settings to a server the customer never configured.
    */
-  const handleSave = async (extraEnv = null) => {
+  const handleSave = async (extraEnv = null, { imageUpdate = false } = {}) => {
     setSaving(true);
     setError(null);
     setSavedOk(false);
@@ -243,17 +251,27 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
       contactsRef.current = contacts;
       isEnterpriseRef.current = isEnterprise;
 
+      // The image and the env travel together: the plain cron line the standard patch
+      // writes only authenticates on the new image, so a spec write that moved one
+      // without the other would turn a customer's nightly restart off silently.
+      const wantsImage = imageUpdate && imageNeedsUpdate(compose);
+      const targetCompose = wantsImage ? standardImagePatch(compose) : compose;
+
       // Merge edits over the existing env (preserves fixed params like PORT/SERVERNAME).
       const currentEnvArray = compose[0].environmentParameters || [];
       // Restart edits come last: if the customer tweaked the schedule and then accepted
       // the update banner in the same visit, their hour must win over the patch default.
+      // The schedule is written for the image the server will be running once this
+      // lands, not the one it is running now.
       const edits = {
         ...values,
         ...(extraEnv || {}),
-        ...(rebootDirty && rebootSettings ? buildRebootEnv(rebootSettings) : {}),
+        ...(rebootDirty && rebootSettings
+          ? buildRebootEnv(rebootSettings, { selfAuthenticating: imageIsSelfAuthenticating(targetCompose) })
+          : {}),
       };
       const mergedEnv = mergeInlineEnv(currentEnvArray, edits);
-      const newCompose = compose.map((c, i) => (i === 0 ? { ...c, environmentParameters: mergedEnv } : c));
+      const newCompose = targetCompose.map((c, i) => (i === 0 ? { ...c, environmentParameters: mergedEnv } : c));
 
       // Recompute expire = remaining blocks so this change doesn't extend (and thus charge for)
       // the subscription — keeps an otherwise-free env update free.
@@ -282,7 +300,7 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
       // just wrote, and the "update available" banner must reflect it without a reload.
       composeRef.current = newCompose;
       const savedEnv = parseEnvArray(mergedEnv);
-      const stillMissing = findMissingStandardEnv(savedEnv);
+      const stillMissing = findPendingUpdates(newCompose);
       setMissingStandard(stillMissing);
       standardEnvCbRef.current?.(stillMissing.length);
       const savedReboot = parseRebootEnv(savedEnv);
@@ -303,16 +321,16 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
   };
 
   /**
-   * One-click "bring this server up to date": writes only the standard settings this
-   * server is missing (or has at a stale value) and leaves everything else alone.
+   * One-click "bring this server up to date": the image, plus only the standard
+   * settings this server is missing or has at a stale value. Everything else is left
+   * alone, and both halves go on chain in the same update.
    */
   const handleApplyUpdate = async () => {
-    const currentEnv = parseEnvArray(composeRef.current?.[0]?.environmentParameters);
-    const patch = standardEnvPatch(currentEnv);
-    if (!Object.keys(patch).length) return;
+    const patch = standardUpdatePatch(composeRef.current);
+    if (!Object.keys(patch.env).length && !patch.compose) return;
     setApplyingUpdate(true);
     try {
-      await handleSave(patch);
+      await handleSave(patch.env, { imageUpdate: !!patch.compose });
     } finally {
       setApplyingUpdate(false);
     }
@@ -447,9 +465,11 @@ const EnvironmentTab = ({ server, onUpdate, onRedeploy, onStandardEnvChange }) =
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-blue-200">Server update available</p>
               <p className="text-xs text-gray-400 mt-1">
-                Your server was created before we added {missingStandard.length}{' '}
-                {missingStandard.length === 1 ? 'setting' : 'settings'} that keep Palworld servers
-                healthy. Applying them changes nothing about your world or your own settings.
+                Your server predates {missingStandard.length}{' '}
+                {missingStandard.length === 1 ? 'improvement' : 'improvements'} we now ship with every
+                Palworld server. Applying {missingStandard.length === 1 ? 'it' : 'them'} leaves it exactly
+                as a server bought today, and changes nothing about your world, your settings or your
+                server address.
               </p>
               <ul className="mt-3 space-y-1.5">
                 {missingStandard.map((item) => (
