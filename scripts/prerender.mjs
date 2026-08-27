@@ -353,6 +353,21 @@ for (const route of allRoutes) {
   console.log(`[prerender] wrote index.html (homepage, SSR body + FAQPage with ${gameConfig.faq.length} questions)`);
 }
 
+// ---------------------------------------------------------------------------
+// Route manifest. server.js used to carry a hand-written copy of this map, and it
+// drifted: /palworld-server-cost and /de/palworld-server-mieten shipped in the
+// sitemap, were prerendered into dist, and still answered 404 in production because
+// nobody remembered to add the two lines. The map is derived here instead, so a new
+// entry in pagesContent.js is served the moment it is built. The 404 shell is left
+// out on purpose: it is the fallback, not a route anyone can request.
+// Dot-prefixed so express.static (dotfiles: 'ignore' by default) will not serve it.
+// ---------------------------------------------------------------------------
+const routeManifest = Object.fromEntries(
+  allRoutes.filter((r) => r.slug !== '404.html').map((r) => [r.path, r.slug]),
+);
+await writeFile(join(distDir, '.prerendered-routes.json'), JSON.stringify(routeManifest, null, 2), 'utf8');
+console.log(`[prerender] wrote .prerendered-routes.json (${Object.keys(routeManifest).length} routes)`);
+
 console.log(`[prerender] done - ${allRoutes.length + 1} routes server-rendered`);
 
 // ---------------------------------------------------------------------------
