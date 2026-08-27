@@ -99,8 +99,11 @@ class StripeService {
    * @param {number} price - Calculated price
    * @param {string} productName - Product name for Stripe
    * @param {number} period - Subscription period in months (1, 3, 6, 12)
+   * @param {boolean} freeFirstPeriod - Offer the first period free. The bridge derives how many
+   *   days that is from the plan's on-chain grant, so the trial always ends far enough before
+   *   the app expires for a declined card to be retried.
    */
-  async createSubscriptionSession(planId, successUrl, cancelUrl, paymentHash = null, price = 0, productName = '', period = 1, description = '', trialDays = 0) {
+  async createSubscriptionSession(planId, successUrl, cancelUrl, paymentHash = null, price = 0, productName = '', period = 1, description = '', freeFirstPeriod = false) {
     try {
       const auth = await apiService.getStoredAuth();
       if (!auth) {
@@ -129,7 +132,7 @@ class StripeService {
             marketplace: true,
             registration: true,
           },
-          ...(trialDays > 0 ? { trialDays } : {}),
+          ...(freeFirstPeriod ? { freeFirstPeriod: true } : {}),
         }
       };
 

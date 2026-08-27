@@ -1419,7 +1419,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
 
       // If auto-renewal, create Stripe subscription with trial
       if (autoRenewal) {
-        console.log('💳 Creating Stripe subscription with 30-day trial...');
+        console.log('💳 Creating Stripe subscription with a free first period...');
         const gamePort = palworldGamePort(appSpec) || 8211;
         const successUrl = `${window.location.origin}/success?deployment=true&hash=${hash}&server=${appName.toLowerCase()}&port=${gamePort}`;
         const cancelUrl = `${window.location.origin}/cancel?deployment=true`;
@@ -1434,7 +1434,7 @@ const DeploymentDialog = ({ isOpen, onClose, onSuccess, preSelectedPlan }) => {
           appName.toLowerCase(),
           1,
           appDescription,
-          30 // 30-day free trial
+          true // first period free — the bridge derives its length from the plan
         );
 
         // Open Stripe for card setup (no charge now)
