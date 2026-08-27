@@ -9,12 +9,38 @@ import ClientLatencyValue from './ClientLatency';
 import apiService, { parseAddress } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
 import secureStorage from '../../utils/secureStorage';
-import { recoverPendingRestores } from '../../utils/appPower';
+import { recoverPendingRestores, nodeApiBase } from '../../utils/appPower';
 import { diagnosePlacement, surfacePlacementIssue } from '../../utils/nodeCapacity';
 import { LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import { pendingStandardUpdates } from '../../config/serverMaintenance';
 import { reconcilePalworldIni } from '../../utils/palworldIni';
+import { fetchReadiness, parseHealth, isPreparing, READINESS, readinessLabel } from '../../utils/serverReadiness';
 import toast from 'react-hot-toast';
+
+/**
+ * One reading of "is this server ready for players", shared by every place on the card
+ * that used to answer it differently. The container's own health check wins; the UDP
+ * probe is the fallback for servers on an image that predates it.
+ */
+const serverIsReady = (server) =>
+  server.readiness ? server.readiness.state === READINESS.READY : server.palworldOnline === true;
+
+/** What the Status tile prints. `-` only when we genuinely do not know. */
+const statusFor = (server) => {
+  if (server.status !== 'running') return <span className="text-gray-600">-</span>;
+
+  const state = server.readiness?.state;
+  if (state && state !== READINESS.UNKNOWN) {
+    const label = readinessLabel(state, server.readiness.percent);
+    if (state === READINESS.READY) return <span className="text-emerald-400">{label}</span>;
+    if (isPreparing(state)) return <span className="text-blue-300">{label}</span>;
+    return <span className="text-amber-400">{label}</span>;
+  }
+
+  if (server.palworldOnline === true) return <span className="text-emerald-400">Online</span>;
+  if (server.palworldOnline === false) return <span className="text-red-400">Offline</span>;
+  return <span className="text-gray-600">-</span>;
+};
 
 // How often a stuck server is re-diagnosed for a placement problem. Node capacity moves
 // on the scale of hours, and the check costs one request per candidate node.
@@ -988,6 +1014,30 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
     return null;
   };
 
+  // What the container itself says about being ready for players. The UDP probe above
+  // only knows whether a datagram came back; this knows the difference between a nine
+  // minute SteamCMD install, a world still loading, and a server that is actually up.
+  // One request for a healthy server, two while it is coming up.
+  const refreshReadiness = async (server, udpOnline) => {
+    const masterLoc = server.locations?.find(loc => parseAddress(loc.ip).host === server.fdmMasterIp)
+      || server.locations?.[0];
+    if (!masterLoc) return;
+    try {
+      const containerName = server.version >= 4 && server.compose?.length > 0
+        ? `${server.compose[0].name}_${server.name}`
+        : server.name;
+      const zelidauth = await secureStorage.getItem('zelidauth').catch(() => null);
+      const readiness = await fetchReadiness({
+        base: nodeApiBase(masterLoc.ip),
+        appName: server.name,
+        containerName,
+        zelidauth,
+        udpOnline,
+      });
+      if (readiness.state !== READINESS.UNKNOWN) updateServerInList(server.name, { readiness });
+    } catch { /* leave whatever we had — never downgrade a server on a failed read */ }
+  };
+
   const checkPalworldStatus = async (server) => {
     try {
       // Palworld uses UDP (Steam A2S) — must query node IP directly, not domain proxy
@@ -1033,9 +1083,14 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
             if (stateData.status === 'success' && stateData.data) {
               const container = stateData.data.find(c => c.Names?.[0]?.includes(server.name));
               if (container?.State === 'paused' || container?.State === 'restarting') skip = true;
-              // Recently restarted container — Palworld needs time to boot
-              // Docker Status: "Up X seconds", "Up About a minute", "Up Less than a second"
-              if (container?.Status && /^Up (\d+ seconds?|About a minute|Less than a second)$/.test(container.Status)) skip = true;
+              // Recently restarted container — Palworld needs time to boot.
+              // Docker Status: "Up X seconds", "Up About a minute", "Up Less than a second",
+              // and on an image with a HEALTHCHECK a " (healthy)" / " (health: starting)"
+              // suffix after it. That suffix is why this used to be anchored with `$` and
+              // never matched a single one of our containers.
+              if (container?.Status && /^Up (\d+ seconds?|About a minute|Less than a second)\b/.test(container.Status)) skip = true;
+              // Better than guessing from an uptime string: the container says so itself.
+              if (parseHealth(container?.Status) === 'starting') skip = true;
             }
           }
         } catch { /* fall through */ }
@@ -1050,6 +1105,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
             palworldLastCheck: new Date().toISOString(),
             palworldError: null,
           });
+          await refreshReadiness(server, undefined);
           return;
         }
       }
@@ -1065,6 +1121,7 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
 
       console.log(`✅ Updating ${server.name} with:`, palworldData);
       updateServerInList(server.name, palworldData);
+      await refreshReadiness(server, palworldData.palworldOnline);
     } catch (error) {
       console.error(`❌ Failed to check Palworld status for ${server.name}:`, error);
       updateServerInList(server.name, {
@@ -1475,16 +1532,51 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                     </div>
                   </div>
                 ) : server.domainReady === true ? (
-                  <div className="px-4 py-2.5 bg-gradient-to-r from-emerald-500/20 to-green-500/20 border-y border-emerald-500/30">
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-2 flex-1">
-                        <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                        <span className="text-xs font-medium text-emerald-300">
-                          Running
+                  // The domain resolves — but that says nothing about whether the game is
+                  // up. A container rebuilt an hour ago spends nine minutes pulling 5.15 GB
+                  // with its domain pointing perfectly at it the whole time, which is
+                  // exactly the window customers were told they were "Running".
+                  isPreparing(server.readiness?.state) ? (
+                    <div className="px-4 py-2.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-y border-blue-500/30">
+                      <div className="flex items-center gap-2">
+                        <div className="relative w-2 h-2 flex-shrink-0">
+                          <div className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-75" />
+                          <div className="relative w-2 h-2 rounded-full bg-blue-400" />
+                        </div>
+                        <span className="text-xs font-medium text-blue-300">
+                          {server.readiness.label} — not accepting players yet
+                        </span>
+                      </div>
+                      {server.readiness.percent !== null && server.readiness.percent !== undefined && (
+                        <div className="mt-2 h-1 rounded-full overflow-hidden bg-gray-900/60">
+                          <div
+                            className="h-full rounded-full bg-blue-400 transition-[width] duration-1000 ease-linear"
+                            style={{ width: `${Math.round(server.readiness.percent)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : server.readiness?.state === READINESS.RECOVERING ? (
+                    <div className="px-4 py-2.5 bg-amber-500/10 border-y border-amber-500/30">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                        <span className="text-xs font-medium text-amber-300">
+                          Recovering — restarting your server automatically
                         </span>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="px-4 py-2.5 bg-gradient-to-r from-emerald-500/20 to-green-500/20 border-y border-emerald-500/30">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-1">
+                          <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                          <span className="text-xs font-medium text-emerald-300">
+                            Running
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
                 ) : null
               )}
 
@@ -1558,21 +1650,13 @@ const GameServersDashboard = ({ refreshTrigger = 0 }) => {
                   {/* Status - Primary Metric */}
                   <div className="bg-gray-800/90 rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className={`p-1.5 rounded-lg ${server.status === 'running' && server.palworldOnline ? 'bg-emerald-500/20' : 'bg-blue-500/20'}`}>
-                        <Activity className={`w-4 h-4 ${server.status === 'running' && server.palworldOnline ? 'text-emerald-400' : 'text-blue-400'}`} />
+                      <div className={`p-1.5 rounded-lg ${server.status === 'running' && serverIsReady(server) ? 'bg-emerald-500/20' : 'bg-blue-500/20'}`}>
+                        <Activity className={`w-4 h-4 ${server.status === 'running' && serverIsReady(server) ? 'text-emerald-400' : 'text-blue-400'}`} />
                       </div>
                       <div className="text-xs font-medium text-gray-500">Status</div>
                     </div>
-                    <div className="text-base font-bold">
-                      {server.status === 'running' && server.palworldOnline !== undefined && server.palworldOnline !== null ? (
-                        server.palworldOnline ? (
-                          <span className="text-emerald-400">Online</span>
-                        ) : (
-                          <span className="text-red-400">Offline</span>
-                        )
-                      ) : (
-                        <span className="text-gray-600">-</span>
-                      )}
+                    <div className="text-sm font-bold leading-snug">
+                      {statusFor(server)}
                     </div>
                   </div>
 

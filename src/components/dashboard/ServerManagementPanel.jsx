@@ -30,6 +30,7 @@ import { reconcilePalworldIni, externalGamePort, patchPublicPort, fetchIniText }
 import { jobFailureMessage, pollOperation, readUploadResponse, readVolumeResponse, uploadFailureIn } from '../../utils/volumeOperations';
 import { findPendingUpdates } from '../../config/serverMaintenance';
 import { diagnosePlacement, surfacePlacementIssue } from '../../utils/nodeCapacity';
+import { fetchReadiness, isPreparing, READINESS } from '../../utils/serverReadiness';
 
 // Helper functions for expiration display
 const formatExpiration = (expiresAt) => {
@@ -1533,6 +1534,36 @@ const OverviewTab = ({ server, masterLocation, masterLive, onMasterError: _onMas
   const containerName = server?.version >= 4 && server?.compose?.length > 0
     ? `${server.compose[0].name}_${server.name}`
     : server?.name;
+
+  // Is the server ready for players, and if not, what is it doing? A rebuilt
+  // container spends about nine minutes pulling the game before it opens the game
+  // port, and every other signal on this page reads "running" throughout. Polled
+  // faster while it is coming up, because that is the only time it changes.
+  const [readiness, setReadiness] = useState(null);
+  useEffect(() => {
+    if (!masterLocation || !server?.name) { setReadiness(null); return undefined; }
+    const base = nodeApiBase(masterLocation.ip);
+    let cancelled = false;
+    let timer = null;
+
+    const tick = async () => {
+      const zelidauth = await secureStorage.getItem('zelidauth').catch(() => null);
+      const r = await fetchReadiness({
+        base,
+        appName: server.name,
+        containerName,
+        zelidauth,
+        udpOnline: livePalworld ? livePalworld.online : server?.palworldOnline,
+      });
+      if (cancelled) return;
+      setReadiness(r);
+      timer = setTimeout(tick, isPreparing(r.state) ? 5000 : 30000);
+    };
+    tick();
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [masterLocation?.ip, server?.name, containerName]);
   const componentName = server?.version >= 4 && server?.compose?.length > 0
     ? server.compose[0].name
     : 'null';
@@ -1661,8 +1692,21 @@ const OverviewTab = ({ server, masterLocation, masterLive, onMasterError: _onMas
       )}
 
       {/* Palworld Server Status */}
-      {server.status === 'running' && (server.palworldOnline !== undefined || livePalworld) && (() => {
-        const mcOnline = livePalworld ? livePalworld.online : server.palworldOnline;
+      {server.status === 'running' && (server.palworldOnline !== undefined || livePalworld || readiness) && (() => {
+        // The readiness model wins when it has an opinion: it is computed inside
+        // the container by our own health check, so it knows the difference
+        // between "the world is loaded" and "the port answered a datagram".
+        const preparing = readiness ? isPreparing(readiness.state) : false;
+        const recovering = readiness?.state === READINESS.RECOVERING;
+        const stopped = readiness?.state === READINESS.STOPPED;
+        const mcOnline = readiness && readiness.state !== READINESS.UNKNOWN
+          ? readiness.state === READINESS.READY
+          : (livePalworld ? livePalworld.online : server.palworldOnline);
+        const statusText = readiness?.label && readiness.state !== READINESS.UNKNOWN
+          ? readiness.label
+          : (mcOnline ? 'Online' : 'Offline');
+        const statusColor = mcOnline ? 'text-emerald-400' : preparing ? 'text-blue-300' : 'text-red-400';
+        const dotColor = mcOnline ? 'bg-emerald-400' : preparing ? 'bg-blue-400' : 'bg-red-400';
         return (
           <div className="rounded-xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.9))', border: '1px solid rgba(51,65,85,0.5)' }}>
             <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(51,65,85,0.3)' }}>
@@ -1674,9 +1718,9 @@ const OverviewTab = ({ server, masterLocation, masterLive, onMasterError: _onMas
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
               <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }}>
                 <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Status</div>
-                <div className={`text-sm font-bold flex items-center justify-center gap-1.5 ${mcOnline ? 'text-emerald-400' : 'text-red-400'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${mcOnline ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
-                  {mcOnline ? 'Online' : 'Offline'}
+                <div className={`text-sm font-bold flex items-center justify-center gap-1.5 ${statusColor}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${dotColor} ${(mcOnline || preparing) ? 'animate-pulse' : ''}`} />
+                  <span className="truncate">{statusText}</span>
                 </div>
               </div>
               <div className="rounded-lg px-3 py-2.5 text-center" style={{ background: 'rgba(15,23,42,0.5)' }} title={LATENCY_TOOLTIP}>
@@ -1702,6 +1746,31 @@ const OverviewTab = ({ server, masterLocation, masterLive, onMasterError: _onMas
                 <div className="text-sm font-bold text-slate-400">Latest</div>
               </div>
             </div>
+
+            {/* Why it is not ready. Only shown when there is something to say —
+                a healthy server gets no banner at all. */}
+            {(preparing || recovering || stopped) && readiness?.detail && (
+              <div
+                className="px-4 py-3 space-y-2"
+                style={{
+                  borderTop: '1px solid rgba(51,65,85,0.3)',
+                  background: recovering || stopped ? 'rgba(251,146,60,0.06)' : 'rgba(59,130,246,0.06)',
+                }}
+              >
+                <div className={`text-xs ${recovering || stopped ? 'text-orange-200/90' : 'text-blue-200/90'}`}>
+                  {readiness.detail}
+                </div>
+                {readiness.percent !== null && readiness.percent !== undefined && (
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(15,23,42,0.6)' }}>
+                    <div
+                      className="h-full rounded-full transition-[width] duration-1000 ease-linear"
+                      style={{ width: `${Math.round(readiness.percent)}%`, background: 'rgb(96,165,250)' }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="px-4 py-2 text-xs text-slate-600 space-y-1" style={{ borderTop: '1px solid rgba(51,65,85,0.2)' }}>
               <div>
                 Your latency is measured from this browser to the node hosting your server, so it
