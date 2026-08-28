@@ -15,6 +15,7 @@ import { LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import { pendingStandardUpdates } from '../../config/serverMaintenance';
 import { reconcilePalworldIni } from '../../utils/palworldIni';
 import { fetchReadiness, parseHealth, isPreparing, READINESS, readinessLabel } from '../../utils/serverReadiness';
+import { checkDomainReady, gamePortOf } from '../../utils/domainStatus';
 import toast from 'react-hot-toast';
 
 /**
@@ -56,47 +57,8 @@ const BLOCK_TIME_POST_FORK = 0.5; // minutes per block after fork
 const DEFAULT_EXPIRE_PRE_FORK = 22_000; // blocks
 const DEFAULT_EXPIRE_POST_FORK = 88_000; // blocks
 
-// External game port (index 0) from the app spec — a randomized deploy exposes a
-// high port (35000–65535); legacy servers fall back to the default 8211.
-const gamePortOf = (server) => server?.ports?.[0] || server?.compose?.[0]?.ports?.[0] || 8211;
-// The address players enter in Palworld's "Join via IP" field: domain:port.
-// The domain is synced when FDM's healthy instances and the domain's A records OVERLAP.
-// Both sides are sets: FDM lists every healthy instance (22 for `explorer` today) and these
-// domains hand out rotating A records — 1.1.1.1 and 8.8.8.8 answer with different IPs for the
-// same name. Comparing the first of each turns a working domain into a coin flip.
-const domainMatchesFdm = (fdmIps, dnsData) => {
-  const dns = new Set([...(dnsData?.ips || []), dnsData?.ip].filter(Boolean));
-  return (fdmIps || []).some((ip) => dns.has(ip));
-};
-
-// Whether players can reach a server through its domain.
-//
-// Comparing the DNS record to FDM's master looks obvious but is not reliable on its own:
-// sampling one server every 9s for three minutes gave 4 mismatches out of 20 (twice in a
-// row) while FDM never moved and the domain kept answering the game port in ~160ms. The
-// record legitimately rotates. So a mismatch is not a verdict — it is a reason to ask the
-// domain directly, which is the thing we actually care about.
-//
-// Returns null when nothing can be concluded, and the caller then leaves the flag alone.
-const checkDomainReady = async (server, gamePort) => {
-  const domain = `${server.name.toLowerCase()}.app.runonflux.io`;
-  try {
-    const fdmData = await (await fetch(`/api/fdm/appips/${server.name}`)).json();
-    if (fdmData.status !== 'success' || !fdmData.data?.ips?.length) return null;
-
-    const dnsData = await (await fetch(`/api/dns-resolve/${domain}`)).json();
-    if (dnsData.status !== 'success') return null;
-    if (domainMatchesFdm(fdmData.data.ips, dnsData.data)) return true;
-
-    // Mismatch — only now spend a probe, and let the answer decide.
-    const probe = await fetch(`/api/palworld-status/${domain}?port=${gamePort}`);
-    if (!probe.ok) return null;
-    const data = await probe.json();
-    return data.online === true ? true : false;
-  } catch {
-    return null;
-  }
-};
+// gamePortOf, domainMatchesFdm and checkDomainReady live in utils/domainStatus.js — the
+// management panel asks the same questions and must not answer them differently.
 
 // Deploys randomize the external ports, and a queued deployment has no on-chain spec yet — so
 // its port is genuinely unknown. Showing the 8211 fallback there hands the player an address

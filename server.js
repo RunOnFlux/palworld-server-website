@@ -172,6 +172,14 @@ app.get('/api/fdm/appips/{:appName}', async (req, res) => {
     `http://fdm-sg-1-${fdmIndex}.runonflux.io:16130`,
   ];
 
+  // Why a balancer could not answer matters as much as that it could not. A restarting
+  // balancer serves 503 while it rebuilds — for the o-u subset every `palworld*` app lives in,
+  // that is up to ~25 minutes — and throughout it DNS still points at the live master and the
+  // game port still answers. Collapsing that into the same "no FDM responded" as a genuine 404
+  // is what let the dashboard tell customers players could not get in while they happily
+  // could, next to the Restart and Stop buttons (incident 2026-08-24).
+  let reason = 'unreachable';
+
   for (const baseUrl of fdmRegions) {
     try {
       const controller = new AbortController();
@@ -182,12 +190,29 @@ app.get('/api/fdm/appips/{:appName}', async (req, res) => {
       if (data.status === 'success' && data.data?.ips?.length > 0) {
         return res.json(data);
       }
+      // Keep the most informative answer any region gave. A 404 from a balancer that is up
+      // outranks silence from one that is not; a 503 says the fleet is mid-restart.
+      if (response.status === 503 || /starting up/i.test(data?.data?.message || '')) {
+        reason = 'starting';
+      } else if (response.status === 404 || data?.data?.code === 404) {
+        if (reason !== 'starting') reason = 'not-routed';
+      }
     } catch {
       // Try next region
     }
   }
 
-  res.json({ status: 'error', data: { message: 'No FDM responded' } });
+  res.json({
+    status: 'error',
+    data: {
+      reason,
+      message: reason === 'starting'
+        ? 'Routing service is restarting'
+        : reason === 'not-routed'
+          ? 'App is not in the load balancer configuration'
+          : 'No FDM responded',
+    },
+  });
 });
 
 /**
@@ -196,11 +221,24 @@ app.get('/api/fdm/appips/{:appName}', async (req, res) => {
 app.get('/api/dns-resolve/{:domain}', async (req, res) => {
   try {
     const addresses = await dnsResolve(req.params.domain, 'A');
+
+    // Whether the name has an ADDRESS OF ITS OWN, which an A lookup alone cannot tell you: a
+    // resolver follows a CNAME silently and hands back the target's address, so a name still
+    // being stood in for looks like an ordinary answer that happens to disagree with FDM.
+    // Asking directly turns that into a fact, and costs one query only when it matters.
+    let cname = null;
+    try {
+      const targets = await dnsResolve(req.params.domain, 'CNAME');
+      cname = targets?.[0] || null;
+    } catch {
+      // ENODATA is the normal, healthy case: the name has its own A record.
+    }
+
     // ALL A records, not just the first: an app with several healthy instances gets several
     // records, and resolvers rotate their order between queries. Comparing one arbitrary
     // record against one arbitrary FDM IP turns "is the domain synced" into a coin flip.
     // `ip` stays for callers that only need one.
-    res.json({ status: 'success', data: { ip: addresses[0], ips: addresses } });
+    res.json({ status: 'success', data: { ip: addresses[0], ips: addresses, cname } });
   } catch (e) {
     res.json({ status: 'error', data: { message: e.message } });
   }
