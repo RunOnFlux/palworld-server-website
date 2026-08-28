@@ -77,7 +77,7 @@
     "path-to-regexp": "^8.3.1",
     "picomatch": "^4.0.4",
     "socket.io-parser": "^4.2.6",
-    "brace-expansion": "^2.0.3",
+    "brace-expansion": "^2.1.2",
     "react-simple-maps": {
       "react": "$react",
       "react-dom": "$react-dom",
