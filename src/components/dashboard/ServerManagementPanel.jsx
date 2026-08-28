@@ -429,7 +429,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       // 'routed', which draws nothing, so a verdict only ever adds a banner.
       if (resolved) {
         const token = ++routingAssessRef.current;
-        assessRouting(srv, fdmReason)
+        assessRouting(srv, fdmReason, signal)
           .then((verdict) => {
             // Panel closed, or a later resolve already asked the same question: its answer wins.
             if (signal?.aborted || token !== routingAssessRef.current) return;

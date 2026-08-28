@@ -180,23 +180,31 @@ app.get('/api/fdm/appips/{:appName}', async (req, res) => {
   // could, next to the Restart and Stop buttons (incident 2026-08-24).
   let reason = 'unreachable';
 
+  // Keep the most informative answer any region gave. A 404 from a balancer that is up
+  // outranks silence from one that is not; a 503 says the fleet is mid-restart and outranks
+  // both, because a balancer that is rebuilding explains every other region's silence.
+  const classify = (current, status, body) => {
+    if (current === 'starting') return current;
+    if (status === 503 || /starting up/i.test(body?.data?.message || '')) return 'starting';
+    if (status === 404 || body?.data?.code === 404) return 'not-routed';
+    return current;
+  };
+
   for (const baseUrl of fdmRegions) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
       const response = await fetch(`${baseUrl}/appips/${appName}`, { signal: controller.signal });
       clearTimeout(timeout);
-      const data = await response.json();
-      if (data.status === 'success' && data.data?.ips?.length > 0) {
+      // Status first, body second, and never let the body cost us the status: a balancer that
+      // is restarting can be answered for by whatever sits in front of it, whose 503 is a page,
+      // not JSON. Parsing before looking threw that away and downgraded the one case this
+      // endpoint exists to name back to an indistinguishable silence.
+      const data = await response.json().catch(() => null);
+      if (data?.status === 'success' && data.data?.ips?.length > 0) {
         return res.json(data);
       }
-      // Keep the most informative answer any region gave. A 404 from a balancer that is up
-      // outranks silence from one that is not; a 503 says the fleet is mid-restart.
-      if (response.status === 503 || /starting up/i.test(data?.data?.message || '')) {
-        reason = 'starting';
-      } else if (response.status === 404 || data?.data?.code === 404) {
-        if (reason !== 'starting') reason = 'not-routed';
-      }
+      reason = classify(reason, response.status, data);
     } catch {
       // Try next region
     }
@@ -225,7 +233,12 @@ app.get('/api/dns-resolve/{:domain}', async (req, res) => {
     // Whether the name has an ADDRESS OF ITS OWN, which an A lookup alone cannot tell you: a
     // resolver follows a CNAME silently and hands back the target's address, so a name still
     // being stood in for looks like an ordinary answer that happens to disagree with FDM.
-    // Asking directly turns that into a fact, and costs one query only when it matters.
+    // Asking directly turns that into a fact.
+    //
+    // Asked on every lookup, including the two pollers that ignore the answer. Making it
+    // opt-in would save a second cached query and hand every caller that forgot the flag a
+    // `cname` of `undefined`, which reads as "has its own address" — the exact wrong answer,
+    // silently, in the code that decides whether to alarm a customer.
     let cname = null;
     try {
       const targets = await dnsResolve(req.params.domain, 'CNAME');

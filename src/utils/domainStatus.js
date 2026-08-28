@@ -45,11 +45,13 @@ export const FDM_UNREACHABLE = 'unreachable';
 
 /**
  * Ask the domain what it resolves to.
+ * @param {string} domain
+ * @param {AbortSignal} [signal] abandons the lookup when the caller stops caring
  * @returns {Promise<{ips: string[], cname: string|null}|null>} null if the lookup failed
  */
-export const resolveDomain = async (domain) => {
+export const resolveDomain = async (domain, signal) => {
   try {
-    const res = await fetch(`/api/dns-resolve/${domain}`);
+    const res = await fetch(`/api/dns-resolve/${domain}`, { signal });
     const body = await res.json();
     if (body.status !== 'success') return null;
     return { ips: body.data?.ips || [], cname: body.data?.cname || null };
@@ -60,11 +62,19 @@ export const resolveDomain = async (domain) => {
 
 /**
  * Ask the game itself. This is the only thing that actually proves a player can get in.
+ *
+ * The slowest thing in this file by a wide margin: a domain that does not answer costs the
+ * server two 5s UDP timeouts, which is why callers hand it a signal and why nothing renders
+ * behind it.
+ *
+ * @param {string} domain
+ * @param {number} port
+ * @param {AbortSignal} [signal]
  * @returns {Promise<boolean|null>} null when the probe could not be run
  */
-export const probeGamePort = async (domain, port) => {
+export const probeGamePort = async (domain, port, signal) => {
   try {
-    const res = await fetch(`/api/palworld-status/${domain}?port=${port}`);
+    const res = await fetch(`/api/palworld-status/${domain}?port=${port}`, { signal });
     if (!res.ok) return null;
     const body = await res.json();
     return body.online === true;
@@ -86,13 +96,13 @@ export const probeGamePort = async (domain, port) => {
  * @returns {Promise<boolean|null>} null when nothing can be concluded — the caller keeps
  *   whatever it had rather than guessing.
  */
-export const checkDomainReady = async (server, gamePort) => {
+export const checkDomainReady = async (server, gamePort, signal) => {
   const domain = domainOf(server);
   try {
-    const fdmData = await (await fetch(`/api/fdm/appips/${server.name}`)).json();
+    const fdmData = await (await fetch(`/api/fdm/appips/${server.name}`, { signal })).json();
     if (fdmData.status !== 'success' || !fdmData.data?.ips?.length) return null;
 
-    const dns = await resolveDomain(domain);
+    const dns = await resolveDomain(domain, signal);
     if (!dns) return null;
 
     // Standing in: no address of its own yet.
@@ -101,7 +111,7 @@ export const checkDomainReady = async (server, gamePort) => {
     if (domainMatchesFdm(fdmData.data.ips, dns)) return true;
 
     // Mismatch — only now spend a probe, and let the answer decide.
-    return await probeGamePort(domain, gamePort);
+    return await probeGamePort(domain, gamePort, signal);
   } catch {
     return null;
   }
@@ -113,14 +123,16 @@ export const checkDomainReady = async (server, gamePort) => {
  *
  * @param {Object} server
  * @param {string} fdmReason one of FDM_STARTING / FDM_NOT_ROUTED / FDM_UNREACHABLE
+ * @param {AbortSignal} [signal] the panel that asked has closed; an aborted lookup reads as
+ *   "could not tell", which is already the calm answer
  * @returns {Promise<'routed'|'refreshing'|'unreachable'>}
  *   routed      — the game answered on the domain; say nothing, players are fine
  *   refreshing  — the routing service is rebuilding and we have no evidence of harm
  *   unreachable — verified: the domain does not reach the game
  */
-export const assessRouting = async (server, fdmReason) => {
+export const assessRouting = async (server, fdmReason, signal) => {
   const domain = domainOf(server);
-  const dns = await resolveDomain(domain);
+  const dns = await resolveDomain(domain, signal);
 
   // No address of its own, or no answer at all: nothing to probe. A balancer that is merely
   // restarting is still not evidence of harm.
@@ -128,7 +140,7 @@ export const assessRouting = async (server, fdmReason) => {
     return fdmReason === FDM_NOT_ROUTED ? 'unreachable' : 'refreshing';
   }
 
-  const online = await probeGamePort(domain, gamePortOf(server));
+  const online = await probeGamePort(domain, gamePortOf(server), signal);
   if (online === true) return 'routed';
   if (online === null) return 'refreshing'; // could not ask; do not alarm on a failed probe
 
