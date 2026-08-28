@@ -291,6 +291,10 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   }, []);
   const [masterLoading, setMasterLoading] = useState(true);
   const masterResolvingRef = useRef(false);
+  // Serialises the routing verdict, which now outlives the resolve that asked for it: the
+  // 15s retry can start a second question while the first is still waiting on a 5s probe,
+  // and the older answer must not overwrite the newer one.
+  const routingAssessRef = useRef(0);
 
   const masterAbortRef = useRef(null);
   const serverRef = useRef(server);
@@ -407,19 +411,32 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       if (resolved) {
         console.log('📍 [Master] FDM unavailable — using node', resolved.ip, running ? '(container running)' : '(installed, not running)');
         setFdmVouched(false);
-
-        // The alarm needs positive evidence, not FDM's silence: resolve the domain and ask the
-        // game whether it answers there. A restarting balancer stops vouching for a route it is
-        // still serving, and telling a customer players cannot get in - beside the Restart and
-        // Stop buttons - is how a routing refresh became a real outage on 2026-08-24.
-        const verdict = await assessRouting(srv, fdmReason);
-        if (signal?.aborted) { masterResolvingRef.current = false; return; }
-        setRoutingState(verdict);
       }
       setMasterLive(!!running);
       setMasterLocationStable(resolved || null);
       masterResolvingRef.current = false;
       setMasterLoading(false);
+
+      // The alarm needs positive evidence, not FDM's silence: resolve the domain and ask the
+      // game whether it answers there. A restarting balancer stops vouching for a route it is
+      // still serving, and telling a customer players cannot get in - beside the Restart and
+      // Stop buttons - is how a routing refresh became a real outage on 2026-08-24.
+      //
+      // Asked AFTER the panel has its node, never before: a domain that does not answer costs
+      // two 5s UDP timeouts, and the retry above re-runs this every 15s, so awaiting it would
+      // pin the panel in its loading state for the whole probe — on exactly the broken server
+      // the banner exists to explain. Nothing here gates the panel; the state starts at
+      // 'routed', which draws nothing, so a verdict only ever adds a banner.
+      if (resolved) {
+        const token = ++routingAssessRef.current;
+        assessRouting(srv, fdmReason)
+          .then((verdict) => {
+            // Panel closed, or a later resolve already asked the same question: its answer wins.
+            if (signal?.aborted || token !== routingAssessRef.current) return;
+            setRoutingState(verdict);
+          })
+          .catch(() => { /* assessRouting swallows its own failures; never alarm on a throw */ });
+      }
     } catch (error) {
       if (error.name === 'AbortError') {
         masterResolvingRef.current = false;
