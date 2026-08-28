@@ -23,6 +23,9 @@ import ServerTerminal from './ServerTerminal';
 import ServerStats from './ServerStats';
 import { useClientLatency, latencyClass, LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import secureStorage from '../../utils/secureStorage';
+import {
+  assessRouting, domainMatchesFdm, domainOf, FDM_UNREACHABLE,
+} from '../../utils/domainStatus';
 import VirtualizedFileList from './VirtualizedFileList';
 import toast from 'react-hot-toast';
 import { nodeApiBase, withAppStopped, restartApp, isAppPowerBusy, clearPendingRestore } from '../../utils/appPower';
@@ -288,6 +291,10 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   }, []);
   const [masterLoading, setMasterLoading] = useState(true);
   const masterResolvingRef = useRef(false);
+  // Serialises the routing verdict, which now outlives the resolve that asked for it: the
+  // 15s retry can start a second question while the first is still waiting on a 5s probe,
+  // and the older answer must not overwrite the newer one.
+  const routingAssessRef = useRef(0);
 
   const masterAbortRef = useRef(null);
   const serverRef = useRef(server);
@@ -295,7 +302,13 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 
   // false = the node was found by probing locations, not by FDM: management works, but the
   // player-facing domain is not routing to it yet.
-  const [domainRouted, setDomainRouted] = useState(true);
+  // Whether FDM itself named an instance. Kept apart from `domainRouted` because they answer
+  // different questions: FDM going quiet is a reason to keep retrying, but it is not evidence
+  // that players cannot get in - and conflating the two is what put a false outage banner in
+  // front of customers during a balancer restart (incident 2026-08-24).
+  const [fdmVouched, setFdmVouched] = useState(true);
+  // 'routed' | 'refreshing' | 'unreachable' - only ever set from a check of the domain itself.
+  const [routingState, setRoutingState] = useState('routed');
 
   // Whether the resolved node is running the container. The panel deliberately falls back to
   // an instance that is only INSTALLED so that a crashed server can still be managed — but
@@ -336,7 +349,8 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           const { host: locHost } = parseAddress(srv.locations[i].ip);
           if (locHost === masterIp) {
             console.log(`✅ [Master] Found at location ${i}:`, locHost);
-            setDomainRouted(true);
+            setFdmVouched(true);
+            setRoutingState('routed');
             // FDM only lists instances that answer the game port, so a master from FDM is by
             // definition the live one.
             setMasterLive(true);
@@ -348,8 +362,9 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
         }
         console.log('⚠️ [Master] FDM IP not in locations list');
       } else {
-        console.log('⚠️ [Master] FDM returned no IPs — domain access not yet configured');
+        console.log('⚠️ [Master] FDM could not name an instance:', fdmData.data?.reason || 'unknown');
       }
+      const fdmReason = fdmData.data?.reason || FDM_UNREACHABLE;
 
       // FDM answers "where do PLAYERS go", which is not the same question as "where can this
       // app be MANAGED from". FDM drops an instance the moment the game stops answering, so
@@ -395,12 +410,33 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       const resolved = running || installed;
       if (resolved) {
         console.log('📍 [Master] FDM unavailable — using node', resolved.ip, running ? '(container running)' : '(installed, not running)');
-        setDomainRouted(false);
+        setFdmVouched(false);
       }
       setMasterLive(!!running);
       setMasterLocationStable(resolved || null);
       masterResolvingRef.current = false;
       setMasterLoading(false);
+
+      // The alarm needs positive evidence, not FDM's silence: resolve the domain and ask the
+      // game whether it answers there. A restarting balancer stops vouching for a route it is
+      // still serving, and telling a customer players cannot get in - beside the Restart and
+      // Stop buttons - is how a routing refresh became a real outage on 2026-08-24.
+      //
+      // Asked AFTER the panel has its node, never before: a domain that does not answer costs
+      // two 5s UDP timeouts, and the retry above re-runs this every 15s, so awaiting it would
+      // pin the panel in its loading state for the whole probe — on exactly the broken server
+      // the banner exists to explain. Nothing here gates the panel; the state starts at
+      // 'routed', which draws nothing, so a verdict only ever adds a banner.
+      if (resolved) {
+        const token = ++routingAssessRef.current;
+        assessRouting(srv, fdmReason, signal)
+          .then((verdict) => {
+            // Panel closed, or a later resolve already asked the same question: its answer wins.
+            if (signal?.aborted || token !== routingAssessRef.current) return;
+            setRoutingState(verdict);
+          })
+          .catch(() => { /* assessRouting swallows its own failures; never alarm on a throw */ });
+      }
     } catch (error) {
       if (error.name === 'AbortError') {
         masterResolvingRef.current = false;
@@ -463,16 +499,19 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // Poll every 30s when domain is not ready — compare DNS vs FDM master IP (same as dashboard check)
   useEffect(() => {
     if (!isOpen || !masterLocation || server?.domainReady !== false) return;
-    const domainName = `${server.name.toLowerCase()}.app.runonflux.io`;
+    const domainName = domainOf(server?.name); // name form: this effect deps on the name
     const id = setInterval(async () => {
       try {
         const fdmRes = await fetch(`/api/fdm/appips/${server.name}`);
         const fdmData = await fdmRes.json();
         if (fdmData.status !== 'success' || !fdmData.data?.ips?.length) return;
-        const masterIp = fdmData.data.ips[0];
         const dnsRes = await fetch(`/api/dns-resolve/${domainName}`);
         const dnsData = await dnsRes.json();
-        const synced = dnsData.status === 'success' && dnsData.data?.ip === masterIp;
+        // Overlap of two sets, which is the comparison that stays correct once an app is
+        // elected on more than one instance. On today's servers (one FDM instance, one A
+        // record) it is the same test as before, and this poller has no probe to fall back
+        // on — so if it ever does report a working domain as unsynced, the cause is not here.
+        const synced = dnsData.status === 'success' && domainMatchesFdm(fdmData.data.ips, dnsData.data);
         if (synced && onUpdate) onUpdate();
       } catch { /* ignore */ }
     }, 30_000);
@@ -500,7 +539,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // raised it for as long as the panel stays open.
   useEffect(() => {
     if (!isOpen) return;
-    const staleRouting = !!masterLocation && !domainRouted;
+    const staleRouting = !!masterLocation && !fdmVouched;
     // Nothing resolved at all — deploying, relocating, or every location is down. Retry
     // regardless of postReinstall/domainReady: those only narrowed which outages recovered
     // on their own, and the panel is unusable until one does.
@@ -513,7 +552,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
       retryResolveMaster();
     }, 15000);
     return () => clearInterval(id);
-  }, [masterLocation, domainRouted, isOpen, retryResolveMaster]);
+  }, [masterLocation, fdmVouched, isOpen, retryResolveMaster]);
 
   // Clear postReinstall when panel closes
   useEffect(() => {
@@ -915,7 +954,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
 
     // Poll FDM master IP + domain DNS with increasing delays
     // 30s, 60s, 90s, 120s, 150s, 180s = ~10.5 min total
-    const domainName = `${server.name.toLowerCase()}.app.runonflux.io`;
+    const domainName = domainOf(server);
     const checkDelays = [30000, 60000, 120000, 180000, 240000, 300000];
     checkDelays.forEach((delay, i) => {
       const timerId = setTimeout(async () => {
@@ -932,11 +971,10 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           const fdmData = await fdmRes.json();
           const dnsData = await dnsRes.json();
           const masterIp = fdmData.data?.ips?.[0];
-          const dnsIp = dnsData.data?.ip;
-          // appendLog(`FDM: ${masterIp || 'waiting'} | DNS: ${dnsIp || 'waiting'}`, 'info');
           // Re-resolve master each tick — FDM may assign new master after reinstall
           if (masterIp) retryResolveMaster();
-          const synced = masterIp && dnsData.status === 'success' && dnsIp === masterIp;
+          const synced = masterIp && dnsData.status === 'success'
+            && domainMatchesFdm(fdmData.data.ips, dnsData.data);
           if (synced) {
             reinstallWaitingRef.current = false;
             appendLog('Domain synced — players can connect', 'success');
@@ -1249,8 +1287,36 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           )}
           {/* Managing works (we reached the node directly), but the load balancer is not
               routing the domain here — normally because the game itself stopped answering.
-              Said plainly, because players are affected even though this panel is not. */}
-          {masterLocation && !domainRouted && activeTab !== 'billing' && (
+              Said plainly, because players are affected even though this panel is not.
+
+              Both banners below stand down while `domainReady === false`: that is a domain
+              still being set up, the blue banner above already says so in the right words, and
+              two notices about the same domain giving different advice is worse than one. */}
+          {/* Routing is refreshing: FDM cannot vouch for the route and nothing contradicts it.
+              A note, not an alarm — and only while the container is actually running, because
+              everything it says is about a server that is up. */}
+          {masterLocation && masterLive && routingState === 'refreshing'
+            && server?.domainReady !== false && activeTab !== 'billing' && (
+            <div className="mx-1 mt-0.5 mb-3 flex items-center gap-3 rounded-xl border border-blue-500/25 bg-blue-500/[0.06] px-4 py-3">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-blue-500/25 bg-blue-500/10">
+                <Globe className="h-4 w-4 text-blue-400" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-blue-300">Routing service is refreshing</p>
+                {/* Says only what was checked: the container is running (masterLive), and the
+                    route could not be confirmed either way. It does not promise players are
+                    getting in, because nothing here established that. */}
+                <p className="mt-0.5 text-xs text-blue-200/80">
+                  Your server is running. We can&apos;t confirm the domain while the routing
+                  service rebuilds, and this clears on its own.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Verified: the domain resolved and the game did not answer there. */}
+          {masterLocation && routingState === 'unreachable'
+            && server?.domainReady !== false && activeTab !== 'billing' && (
             <div className="mx-1 mt-0.5 mb-3 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3">
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/15">
                 <Globe className="h-4 w-4 text-amber-400" />
@@ -1258,8 +1324,17 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-amber-300">Players can&apos;t reach this server</p>
                 <p className="mt-0.5 truncate text-xs text-amber-200/80">
-                  The load balancer isn&apos;t routing{' '}
-                  <span className="font-mono">{server.name?.toLowerCase()}.app.runonflux.io</span> here.
+                  <span className="font-mono">{domainOf(server)}</span> isn&apos;t reaching your server.
+                </p>
+                {/* The advice splits on the one thing that changes it. The panel resolves to
+                    an installed-but-stopped node on purpose, so it can be open on a server
+                    whose container is down — and there, "restarting won't help" is precisely
+                    backwards: restarting is the fix, and there is nobody left to disconnect.
+                    masterLive is exactly that distinction, and it is already known here. */}
+                <p className="mt-1 text-xs text-amber-200/70">
+                  {masterLive
+                    ? 'This re-points automatically. Restarting or stopping won\'t help, and will disconnect anyone still playing.'
+                    : 'Your server isn\'t running, which is why the domain has nowhere to reach. Restart brings it back.'}
                 </p>
               </div>
               <span className="hidden flex-shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200/90 sm:block">

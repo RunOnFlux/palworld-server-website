@@ -172,22 +172,55 @@ app.get('/api/fdm/appips/{:appName}', async (req, res) => {
     `http://fdm-sg-1-${fdmIndex}.runonflux.io:16130`,
   ];
 
+  // Why a balancer could not answer matters as much as that it could not. A restarting
+  // balancer serves 503 while it rebuilds — for the o-u subset every `palworld*` app lives in,
+  // that is up to ~25 minutes — and throughout it DNS still points at the live master and the
+  // game port still answers. Collapsing that into the same "no FDM responded" as a genuine 404
+  // is what let the dashboard tell customers players could not get in while they happily
+  // could, next to the Restart and Stop buttons (incident 2026-08-24).
+  let reason = 'unreachable';
+
+  // Keep the most informative answer any region gave. A 404 from a balancer that is up
+  // outranks silence from one that is not; a 503 says the fleet is mid-restart and outranks
+  // both, because a balancer that is rebuilding explains every other region's silence.
+  const classify = (current, status, body) => {
+    if (current === 'starting') return current;
+    if (status === 503 || /starting up/i.test(body?.data?.message || '')) return 'starting';
+    if (status === 404 || body?.data?.code === 404) return 'not-routed';
+    return current;
+  };
+
   for (const baseUrl of fdmRegions) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
       const response = await fetch(`${baseUrl}/appips/${appName}`, { signal: controller.signal });
       clearTimeout(timeout);
-      const data = await response.json();
-      if (data.status === 'success' && data.data?.ips?.length > 0) {
+      // Status first, body second, and never let the body cost us the status: a balancer that
+      // is restarting can be answered for by whatever sits in front of it, whose 503 is a page,
+      // not JSON. Parsing before looking threw that away and downgraded the one case this
+      // endpoint exists to name back to an indistinguishable silence.
+      const data = await response.json().catch(() => null);
+      if (data?.status === 'success' && data.data?.ips?.length > 0) {
         return res.json(data);
       }
+      reason = classify(reason, response.status, data);
     } catch {
       // Try next region
     }
   }
 
-  res.json({ status: 'error', data: { message: 'No FDM responded' } });
+  res.json({
+    status: 'error',
+    data: {
+      reason,
+      message: reason === 'starting'
+        ? 'Routing service is restarting'
+        : reason === 'not-routed'
+          ? 'App is not in the load balancer configuration'
+          : 'No FDM responded',
+    },
+  });
 });
 
 /**
@@ -196,11 +229,29 @@ app.get('/api/fdm/appips/{:appName}', async (req, res) => {
 app.get('/api/dns-resolve/{:domain}', async (req, res) => {
   try {
     const addresses = await dnsResolve(req.params.domain, 'A');
-    // ALL A records, not just the first: an app with several healthy instances gets several
-    // records, and resolvers rotate their order between queries. Comparing one arbitrary
-    // record against one arbitrary FDM IP turns "is the domain synced" into a coin flip.
-    // `ip` stays for callers that only need one.
-    res.json({ status: 'success', data: { ip: addresses[0], ips: addresses } });
+
+    // Whether the name has an ADDRESS OF ITS OWN, which an A lookup alone cannot tell you: a
+    // resolver follows a CNAME silently and hands back the target's address, so a name still
+    // being stood in for looks like an ordinary answer that happens to disagree with FDM.
+    // Asking directly turns that into a fact.
+    //
+    // Asked on every lookup, including the two pollers that ignore the answer. Making it
+    // opt-in would save a second cached query and hand every caller that forgot the flag a
+    // `cname` of `undefined`, which reads as "has its own address" — the exact wrong answer,
+    // silently, in the code that decides whether to alarm a customer.
+    let cname = null;
+    try {
+      const targets = await dnsResolve(req.params.domain, 'CNAME');
+      cname = targets?.[0] || null;
+    } catch {
+      // ENODATA is the normal, healthy case: the name has its own A record.
+    }
+
+    // ALL A records, not just the first, so a caller can compare sets rather than pick one
+    // arbitrary record. Every palworld app sampled on 2026-08-28 returned exactly one stable
+    // address, so today this is a list of one; it stops being one the day an app is elected on
+    // more than one instance. `ip` stays for callers that only need one.
+    res.json({ status: 'success', data: { ip: addresses[0], ips: addresses, cname } });
   } catch (e) {
     res.json({ status: 'error', data: { message: e.message } });
   }
