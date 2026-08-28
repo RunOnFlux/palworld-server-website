@@ -247,10 +247,10 @@ app.get('/api/dns-resolve/{:domain}', async (req, res) => {
       // ENODATA is the normal, healthy case: the name has its own A record.
     }
 
-    // ALL A records, not just the first: an app with several healthy instances gets several
-    // records, and resolvers rotate their order between queries. Comparing one arbitrary
-    // record against one arbitrary FDM IP turns "is the domain synced" into a coin flip.
-    // `ip` stays for callers that only need one.
+    // ALL A records, not just the first, so a caller can compare sets rather than pick one
+    // arbitrary record. Every palworld app sampled on 2026-08-28 returned exactly one stable
+    // address, so today this is a list of one; it stops being one the day an app is elected on
+    // more than one instance. `ip` stays for callers that only need one.
     res.json({ status: 'success', data: { ip: addresses[0], ips: addresses, cname } });
   } catch (e) {
     res.json({ status: 'error', data: { message: e.message } });

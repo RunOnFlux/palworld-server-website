@@ -15,7 +15,7 @@ import { LATENCY_TOOLTIP } from '../../utils/clientLatency';
 import { pendingStandardUpdates } from '../../config/serverMaintenance';
 import { reconcilePalworldIni } from '../../utils/palworldIni';
 import { fetchReadiness, parseHealth, isPreparing, READINESS, readinessLabel } from '../../utils/serverReadiness';
-import { checkDomainReady, gamePortOf } from '../../utils/domainStatus';
+import { checkDomainReady, domainOf, gamePortOf } from '../../utils/domainStatus';
 import toast from 'react-hot-toast';
 
 /**
@@ -57,15 +57,15 @@ const BLOCK_TIME_POST_FORK = 0.5; // minutes per block after fork
 const DEFAULT_EXPIRE_PRE_FORK = 22_000; // blocks
 const DEFAULT_EXPIRE_POST_FORK = 88_000; // blocks
 
-// gamePortOf, domainMatchesFdm and checkDomainReady live in utils/domainStatus.js — the
-// management panel asks the same questions and must not answer them differently.
+// domainOf, gamePortOf, domainMatchesFdm and checkDomainReady live in utils/domainStatus.js —
+// the management panel asks the same questions and must not answer them differently.
 
 // Deploys randomize the external ports, and a queued deployment has no on-chain spec yet — so
 // its port is genuinely unknown. Showing the 8211 fallback there hands the player an address
 // that is wrong for almost every server.
 const gamePortKnown = (server) => Boolean(server?.ports?.[0] || server?.compose?.[0]?.ports?.[0]);
 
-const gameAddressOf = (server) => `${server.name.toLowerCase()}.app.runonflux.io:${gamePortOf(server)}`;
+const gameAddressOf = (server) => `${domainOf(server)}:${gamePortOf(server)}`;
 
 /**
  * "Server update available", for a server that predates settings we now ship by default.

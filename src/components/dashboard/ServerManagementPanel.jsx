@@ -499,7 +499,7 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
   // Poll every 30s when domain is not ready — compare DNS vs FDM master IP (same as dashboard check)
   useEffect(() => {
     if (!isOpen || !masterLocation || server?.domainReady !== false) return;
-    const domainName = domainOf(server?.name);
+    const domainName = domainOf(server?.name); // name form: this effect deps on the name
     const id = setInterval(async () => {
       try {
         const fdmRes = await fetch(`/api/fdm/appips/${server.name}`);
@@ -507,8 +507,10 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
         if (fdmData.status !== 'success' || !fdmData.data?.ips?.length) return;
         const dnsRes = await fetch(`/api/dns-resolve/${domainName}`);
         const dnsData = await dnsRes.json();
-        // Overlap of two sets. These domains hand out rotating A records, so comparing the
-        // first of each reports a working domain as broken about a fifth of the time.
+        // Overlap of two sets, which is the comparison that stays correct once an app is
+        // elected on more than one instance. On today's servers (one FDM instance, one A
+        // record) it is the same test as before, and this poller has no probe to fall back
+        // on — so if it ever does report a working domain as unsynced, the cause is not here.
         const synced = dnsData.status === 'success' && domainMatchesFdm(fdmData.data.ips, dnsData.data);
         if (synced && onUpdate) onUpdate();
       } catch { /* ignore */ }
@@ -1285,25 +1287,36 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
           )}
           {/* Managing works (we reached the node directly), but the load balancer is not
               routing the domain here — normally because the game itself stopped answering.
-              Said plainly, because players are affected even though this panel is not. */}
-          {/* Routing is refreshing: FDM cannot vouch for the route, but the domain still
-              answers the game. Players are fine, so this is a note, not an alarm. */}
-          {masterLocation && routingState === 'refreshing' && activeTab !== 'billing' && (
+              Said plainly, because players are affected even though this panel is not.
+
+              Both banners below stand down while `domainReady === false`: that is a domain
+              still being set up, the blue banner above already says so in the right words, and
+              two notices about the same domain giving different advice is worse than one. */}
+          {/* Routing is refreshing: FDM cannot vouch for the route and nothing contradicts it.
+              A note, not an alarm — and only while the container is actually running, because
+              everything it says is about a server that is up. */}
+          {masterLocation && masterLive && routingState === 'refreshing'
+            && server?.domainReady !== false && activeTab !== 'billing' && (
             <div className="mx-1 mt-0.5 mb-3 flex items-center gap-3 rounded-xl border border-blue-500/25 bg-blue-500/[0.06] px-4 py-3">
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-blue-500/25 bg-blue-500/10">
                 <Globe className="h-4 w-4 text-blue-400" />
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-blue-300">Routing service is refreshing</p>
+                {/* Says only what was checked: the container is running (masterLive), and the
+                    route could not be confirmed either way. It does not promise players are
+                    getting in, because nothing here established that. */}
                 <p className="mt-0.5 text-xs text-blue-200/80">
-                  Your server is running and players can still connect. This clears on its own.
+                  Your server is running. We can&apos;t confirm the domain while the routing
+                  service rebuilds, and this clears on its own.
                 </p>
               </div>
             </div>
           )}
 
           {/* Verified: the domain resolved and the game did not answer there. */}
-          {masterLocation && routingState === 'unreachable' && activeTab !== 'billing' && (
+          {masterLocation && routingState === 'unreachable'
+            && server?.domainReady !== false && activeTab !== 'billing' && (
             <div className="mx-1 mt-0.5 mb-3 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3">
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/15">
                 <Globe className="h-4 w-4 text-amber-400" />
@@ -1313,11 +1326,15 @@ const ServerManagementPanel = ({ server, isOpen, onClose, onUpdate, initialTab =
                 <p className="mt-0.5 truncate text-xs text-amber-200/80">
                   <span className="font-mono">{domainOf(server)}</span> isn&apos;t reaching your server.
                 </p>
-                {/* Every path here has the same correct customer action: none. Saying so is the
-                    point - the buttons beside this banner are the ones that cause real harm. */}
+                {/* The advice splits on the one thing that changes it. The panel resolves to
+                    an installed-but-stopped node on purpose, so it can be open on a server
+                    whose container is down — and there, "restarting won't help" is precisely
+                    backwards: restarting is the fix, and there is nobody left to disconnect.
+                    masterLive is exactly that distinction, and it is already known here. */}
                 <p className="mt-1 text-xs text-amber-200/70">
-                  This re-points automatically. Restarting or stopping won&apos;t help, and will
-                  disconnect anyone still playing.
+                  {masterLive
+                    ? 'This re-points automatically. Restarting or stopping won\'t help, and will disconnect anyone still playing.'
+                    : 'Your server isn\'t running, which is why the domain has nowhere to reach. Restart brings it back.'}
                 </p>
               </div>
               <span className="hidden flex-shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200/90 sm:block">

@@ -22,9 +22,16 @@ export const domainOf = (serverOrName) => {
 
 /**
  * The domain is synced when FDM's healthy instances and the domain's A records OVERLAP.
- * Both sides are sets: FDM lists every healthy instance, and these domains hand out rotating
- * A records — 1.1.1.1 and 8.8.8.8 answer with different IPs for the same name. Comparing the
- * first of each turns a working domain into a coin flip.
+ *
+ * Both sides are sets, and the comparison is written for the case where they have more than
+ * one member each. Measured on this fleet on 2026-08-28, that case does not currently arise
+ * here: 30 sampled `palworld*` apps each had exactly one FDM instance and one A record, and
+ * 60 lookups across three of them (alternating 1.1.1.1 and 8.8.8.8, over 20s each) returned
+ * one stable address, equal to FDM's, with zero mismatches. So on today's servers this is
+ * arithmetically the same as comparing one against one, and it is NOT what stops a healthy
+ * domain being reported as broken — the game-port probe is. It is kept because it is the
+ * correct comparison the day an app is elected on more than one instance, and it costs
+ * nothing. Do not cite it as the fix for a mismatch you have measured; find that cause.
  */
 export const domainMatchesFdm = (fdmIps, dnsData) => {
   const dns = new Set([...(dnsData?.ips || []), dnsData?.ip].filter(Boolean));
@@ -86,12 +93,21 @@ export const probeGamePort = async (domain, port, signal) => {
 /**
  * Whether players can reach a server through its domain.
  *
- * A name that is still a CNAME has no address of its own — it is being stood in for while the
- * platform decides where the app lives — so it is definitively not ready, and there is no
- * point spending a probe to discover that. A name with its own address that merely disagrees
- * with FDM is a different matter: the records rotate legitimately (sampling one server every
- * 9s for three minutes gave 4 mismatches out of 20 while the domain answered fine), so a
- * mismatch is not a verdict, it is a reason to ask the game directly.
+ * A CNAME means the name has no address of its own, and what that implies depends entirely on
+ * how many instances FDM elected — which this function, unlike assessRouting, always knows,
+ * because it is only reached when FDM listed some:
+ *
+ *   one instance    — the domain should be holding that instance's address. A CNAME says the
+ *                     platform is still standing the name in, so it is not ready, and a probe
+ *                     would only spend two 5s timeouts confirming it.
+ *   more than one   — a CNAME to the balancer is the NORMAL, healthy shape. `explorer` has 25
+ *                     healthy FDM instances and resolves through `fdm-lb-1-1.runonflux.io` to
+ *                     an address that appears in no FDM list at all (measured 2026-08-28).
+ *                     Reading that as "not ready" would condemn a working app forever, so it
+ *                     falls through and the game gets the last word.
+ *
+ * A mismatch between FDM and an address of its own is never a verdict either way: it is a
+ * reason to ask the game directly, which is the only thing that proves a player can get in.
  *
  * @returns {Promise<boolean|null>} null when nothing can be concluded — the caller keeps
  *   whatever it had rather than guessing.
@@ -105,8 +121,8 @@ export const checkDomainReady = async (server, gamePort, signal) => {
     const dns = await resolveDomain(domain, signal);
     if (!dns) return null;
 
-    // Standing in: no address of its own yet.
-    if (dns.cname) return false;
+    // Standing in: one elected instance, and the domain is not holding its address yet.
+    if (dns.cname && fdmData.data.ips.length === 1) return false;
 
     if (domainMatchesFdm(fdmData.data.ips, dns)) return true;
 
@@ -134,15 +150,28 @@ export const assessRouting = async (server, fdmReason, signal) => {
   const domain = domainOf(server);
   const dns = await resolveDomain(domain, signal);
 
-  // No address of its own, or no answer at all: nothing to probe. A balancer that is merely
-  // restarting is still not evidence of harm.
-  if (!dns || dns.cname || dns.ips.length === 0) {
+  // Nothing resolved at all: there is no address to ask, so there is nothing to verify and
+  // nothing to claim. Only a balancer that is up and says it has never heard of this app is
+  // worth an alarm on its own.
+  if (!dns || dns.ips.length === 0) {
     return fdmReason === FDM_NOT_ROUTED ? 'unreachable' : 'refreshing';
   }
 
+  // A CNAME is deliberately NOT short-circuited here, unlike in checkDomainReady: this path
+  // runs precisely when FDM named nothing, so there is no instance count to read it against,
+  // and on a multi-instance app the CNAME is the healthy shape. This is the loud path. It can
+  // afford the probe, and it is the one place that must not guess.
   const online = await probeGamePort(domain, gamePortOf(server), signal);
   if (online === true) return 'routed';
   if (online === null) return 'refreshing'; // could not ask; do not alarm on a failed probe
+
+  // The game did not answer. That is evidence about the player's path only if our own way out
+  // is intact — and when not one of three balancers in three regions answered, the likeliest
+  // thing that broke is this server's egress, not the customer's server. The probe leaves
+  // here from the same machine, so it would fail for the same reason. Alarming on that would
+  // be this whole incident again in a new place: reporting what WE cannot reach as what a
+  // PLAYER cannot reach.
+  if (fdmReason === FDM_UNREACHABLE) return 'refreshing';
 
   return 'unreachable';
 };

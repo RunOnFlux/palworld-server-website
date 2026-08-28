@@ -48,10 +48,15 @@ const SERVER = { name: 'Explorer', ports: [41234] };
 const ok = (data) => ({ status: 'success', data });
 
 describe('domainMatchesFdm', () => {
-  test('overlap, not first-against-first: these domains rotate their A records', () => {
-    // The bug this replaced: comparing ips[0] to ip reported a healthy domain as broken
-    // roughly a fifth of the time.
+  test('overlap, not first-against-first, once either side has more than one member', () => {
+    // Not reachable on today's fleet — every sampled palworld app has one FDM instance and
+    // one A record — but this is the comparison that stays correct when one does not.
     assert.equal(domainMatchesFdm(['1.1.1.1', '2.2.2.2'], { ips: ['2.2.2.2', '3.3.3.3'] }), true);
+  });
+
+  test('one against one, which is every server today: plain equality', () => {
+    assert.equal(domainMatchesFdm(['1.1.1.1'], { ips: ['1.1.1.1'] }), true);
+    assert.equal(domainMatchesFdm(['1.1.1.1'], { ips: ['1.1.1.2'] }), false);
   });
 
   test('a legacy caller that only carries one record still counts', () => {
@@ -94,9 +99,9 @@ describe('assessRouting', () => {
     assert.equal(await assessRouting(SERVER, FDM_STARTING), 'routed');
   });
 
-  test('resolved but silent on the game port is the one verified alarm', async () => {
+  test('resolved but silent on the game port, with a balancer up to say so: verified alarm', async () => {
     stubFetch({ dns: ok({ ips: ['1.1.1.1'], cname: null }), probe: false });
-    assert.equal(await assessRouting(SERVER, FDM_UNREACHABLE), 'unreachable');
+    assert.equal(await assessRouting(SERVER, FDM_STARTING), 'unreachable');
   });
 
   test('a probe that could not be run does not alarm', async () => {
@@ -104,20 +109,34 @@ describe('assessRouting', () => {
     assert.equal(await assessRouting(SERVER, FDM_UNREACHABLE), 'refreshing');
   });
 
-  test('still standing in, and the balancer says it has no such app: alarm', async () => {
-    stubFetch({ dns: ok({ ips: ['1.1.1.1'], cname: 'fdm-lb-1-1.runonflux.io' }) });
-    assert.equal(await assessRouting(SERVER, FDM_NOT_ROUTED), 'unreachable');
-    assert.equal(probed(), false, 'a name with no address of its own is not worth a probe');
+  test('a CNAME is not a verdict here: FDM named nothing, so the game decides', async () => {
+    // The multi-instance shape, which is healthy: `explorer` resolves through the balancer to
+    // an address in no FDM list. Reading the CNAME as broken would condemn it forever.
+    stubFetch({ dns: ok({ ips: ['5.39.57.42'], cname: 'fdm-lb-1-1.runonflux.io' }), probe: true });
+    assert.equal(await assessRouting(SERVER, FDM_NOT_ROUTED), 'routed');
+    assert.equal(probed(), true);
   });
 
-  test('still standing in while the balancer restarts: no verdict, no alarm', async () => {
-    stubFetch({ dns: ok({ ips: ['1.1.1.1'], cname: 'fdm-lb-1-1.runonflux.io' }) });
-    assert.equal(await assessRouting(SERVER, FDM_STARTING), 'refreshing');
+  test('a CNAME the game does not answer on, and a balancer that disowns it: alarm', async () => {
+    stubFetch({ dns: ok({ ips: ['5.39.57.42'], cname: 'fdm-lb-1-1.runonflux.io' }), probe: false });
+    assert.equal(await assessRouting(SERVER, FDM_NOT_ROUTED), 'unreachable');
   });
 
   test('no balancer answered and DNS gave nothing: we know nothing, so say nothing', async () => {
     stubFetch({ dns: { status: 'error', data: { message: 'ENOTFOUND' } } });
     assert.equal(await assessRouting(SERVER, FDM_UNREACHABLE), 'refreshing');
+  });
+
+  test('not one balancer answered: a silent game is our egress, not the customer, so no alarm', async () => {
+    // The probe leaves from the same machine that could not reach three balancers in three
+    // regions. It would fail for the same reason, and that is not evidence about a player.
+    stubFetch({ dns: ok({ ips: ['1.1.1.1'], cname: null }), probe: false });
+    assert.equal(await assessRouting(SERVER, FDM_UNREACHABLE), 'refreshing');
+  });
+
+  test('a balancer that IS up and disowns the app still alarms on a silent game', async () => {
+    stubFetch({ dns: ok({ ips: ['1.1.1.1'], cname: null }), probe: false });
+    assert.equal(await assessRouting(SERVER, FDM_NOT_ROUTED), 'unreachable');
   });
 
   test('an empty answer is treated like no answer, not like a match', async () => {
@@ -149,8 +168,21 @@ describe('checkDomainReady', () => {
     assert.equal(await checkDomainReady(SERVER, 41234), false);
   });
 
-  test('a name still being stood in for is not ready, whatever FDM lists', async () => {
+  test('one elected instance and a CNAME: still being stood in, not ready, no probe spent', async () => {
     stubFetch({ fdm: ok({ ips: ['1.1.1.1'] }), dns: ok({ ips: ['1.1.1.1'], cname: 'fdm-lb-1-1.runonflux.io' }) });
     assert.equal(await checkDomainReady(SERVER, 41234), false);
+    assert.equal(probed(), false);
+  });
+
+  test('several elected instances and a CNAME: the healthy shape, so ask the game', async () => {
+    // 25 instances behind fdm-lb-1-1, whose address is in no FDM list. The old rule called
+    // this broken; it is what a working multi-instance app looks like.
+    stubFetch({
+      fdm: ok({ ips: ['1.1.1.1', '2.2.2.2'] }),
+      dns: ok({ ips: ['5.39.57.42'], cname: 'fdm-lb-1-1.runonflux.io' }),
+      probe: true,
+    });
+    assert.equal(await checkDomainReady(SERVER, 41234), true);
+    assert.equal(probed(), true);
   });
 });
