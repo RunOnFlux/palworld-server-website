@@ -149,7 +149,11 @@ const ServerLogsPanel = ({ server, masterLocation, selectedComponent, splitDirec
         rolledOver = rolledOver || Boolean(data.rolledOver);
         logCursorRef.current = data.cursor;
 
-        if (!data.truncated) break;
+        // What lies AHEAD of the position just stored, which is the only
+        // thing another pass can fetch. `truncated` is the log holding more than
+        // the line count asked for - behind this panel, unreachable with a
+        // cursor, and true on nearly every first page.
+        if (!data.hasMore) break;
       }
 
       console.log('[LogPoll] collected=%d positions=%s rolledOver=%s', collected.length, supportsPositions, rolledOver);
