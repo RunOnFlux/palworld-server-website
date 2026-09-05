@@ -39,9 +39,18 @@ import { AnsiUp } from 'ansi_up';
 const ansiUp = new AnsiUp();
 ansiUp.use_classes = false;
 
+const ROLLED_OVER_NOTICE = '\u2014 earlier logs rolled over on this node and are no longer available \u2014';
+const SKIPPED_NOTICE = '\u2014 the server logged faster than this panel could receive, and some lines were not delivered \u2014';
+
 /**
  * ServerLogsPanel Component
- * Polls Flux applogpolling API and displays server logs in a scrollable panel
+ * Polls Flux applogpolling API and displays server logs in a scrollable panel.
+ *
+ * The node is asked for everything since the position it last handed back, so no
+ * line written between two polls is missed. Before positions existed this asked
+ * for the last 100 lines each time and replaced the view with them, so a server
+ * writing more than 100 lines in the ten seconds between polls lost the rest with
+ * nothing to show it had happened.
  */
 const ServerLogsPanel = ({ server, masterLocation, selectedComponent, splitDirection, onToggleDirection, isMobile, commandTrigger, isVisible }) => {
   const [logs, setLogs] = useState([]);
@@ -51,6 +60,11 @@ const ServerLogsPanel = ({ server, masterLocation, selectedComponent, splitDirec
   const logContainerRef = useRef(null);
   const intervalRef = useRef(null);
   const hiddenLinesRef = useRef(new Set());
+  // Where this panel has read up to, as the node described it. Opaque on purpose:
+  // nodes and this site upgrade independently, so reading it here would make its
+  // shape a contract. Null means "start from the most recent lines", which is
+  // also all a node that predates positions can answer.
+  const logCursorRef = useRef(null);
   const isProgrammaticScrollRef = useRef(false);
   const scrollPersistTimerRef = useRef(null);
 
@@ -67,6 +81,15 @@ const ServerLogsPanel = ({ server, masterLocation, selectedComponent, splitDirec
   // Extract primitive string to prevent object reference churn causing fetch aborts
   const masterIp = masterLocation?.ip ?? null;
 
+  // A position belongs to ONE node's container. The same server on another node
+  // has its own log with its own timestamps, so a position carried across would
+  // name a moment that means nothing there and skip lines to match a count taken
+  // somewhere else.
+  useEffect(() => {
+    logCursorRef.current = null;
+    setLogs([]);
+  }, [masterIp, containerName]);
+
   const fetchLogs = useCallback(async (signal) => {
     if (!masterIp || !containerName) {
       console.log('[LogPoll] skipped: masterIp=%s containerName=%s', masterIp, containerName);
@@ -78,10 +101,26 @@ const ServerLogsPanel = ({ server, masterLocation, selectedComponent, splitDirec
       if (!mountedRef.current) { console.log('[LogPoll] component unmounted, aborting'); return; }
 
       const [h, p = 16127] = masterIp.split(':');
-      const logUrl = `https://${h.replace(/\./g, '-')}-${p}.node.api.runonflux.io/apps/applogpolling/${containerName}/100`;
-      console.log('[LogPoll] fetching %s', logUrl);
+      const baseUrl = `https://${h.replace(/\./g, '-')}-${p}.node.api.runonflux.io/apps/applogpolling/${containerName}/100`;
 
-      const resp = await fetch(logUrl, {
+      const hadPosition = logCursorRef.current !== null;
+      let supportsPositions = false;
+      let rolledOver = false;
+      let skipped = false;
+      const collected = [];
+
+      // One request. A node answers a position with everything waiting for it,
+      // so there is never a second page to come straight back for - a panel
+      // further behind than one answer holds is moved to the end of the log and
+      // told, and no number of extra passes would reach the lines it went past.
+      //
+      // A query parameter, not a path segment: the route takes three optional
+      // segments and a fourth would not match, so a node that predates positions
+      // would answer a 404 instead of logs.
+      const query = logCursorRef.current ? `?cursor=${encodeURIComponent(logCursorRef.current)}` : '';
+
+      console.log('[LogPoll] fetching %s%s', baseUrl, query);
+      const resp = await fetch(baseUrl + query, {
         headers: { zelidauth: JSON.stringify(zelidauth) },
         signal,
       });
@@ -92,16 +131,43 @@ const ServerLogsPanel = ({ server, masterLocation, selectedComponent, splitDirec
 
       if (!mountedRef.current) return;
 
-      if (data.status === 'success' && Array.isArray(data.logs)) {
-        const lines = data.logs.map(line =>
-          typeof line === 'string' ? line : (line.message || line.log || JSON.stringify(line))
-        );
-        const visible = lines.filter(line => !hiddenLinesRef.current.has(line));
-        console.log('[LogPoll] total=%d visible=%d hidden=%d', lines.length, visible.length, hiddenLinesRef.current.size);
-        setLogs(visible);
-      } else {
+      if (!(data.status === 'success' && Array.isArray(data.logs))) {
         console.warn('[LogPoll] unexpected response:', JSON.stringify(data).slice(0, 500));
+        return;
       }
+
+      const lines = data.logs.map(line =>
+        typeof line === 'string' ? line : (line.message || line.log || JSON.stringify(line))
+      );
+      collected.push(...lines.filter(line => !hiddenLinesRef.current.has(line)));
+
+      // A node that answers positions returns one. A node that predates them
+      // returns the most recent lines and nothing else, which is what this panel
+      // has always shown - so against that node it keeps showing exactly that,
+      // with no version check anywhere.
+      if (typeof data.cursor === 'string') {
+        supportsPositions = true;
+        rolledOver = Boolean(data.rolledOver);
+        skipped = Boolean(data.skipped);
+        logCursorRef.current = data.cursor;
+      }
+
+      console.log('[LogPoll] collected=%d positions=%s rolledOver=%s skipped=%s', collected.length, supportsPositions, rolledOver, skipped);
+
+      setLogs(prev => {
+        if (!supportsPositions || !hadPosition) return collected;
+
+        // The line this panel had read up to no longer exists on the node: docker
+        // discarded the file holding it. What sat between it and the oldest line
+        // below is gone for everyone, so it is said rather than skipped over.
+        const marker = [];
+        if (rolledOver && prev.length) marker.push(ROLLED_OVER_NOTICE);
+        // The node declined to read back as far as this panel had got. Those
+        // lines still exist, unlike rolledOver's, but reaching them costs a read
+        // of the whole retained log on every poll.
+        if (skipped && prev.length) marker.push(SKIPPED_NOTICE);
+        return [...prev, ...marker, ...collected];
+      });
     } catch (err) {
       if (err?.name === 'AbortError') return;
       console.error('[LogPoll] fetch error:', err?.message || err);
@@ -118,9 +184,72 @@ const ServerLogsPanel = ({ server, masterLocation, selectedComponent, splitDirec
     const controller = new AbortController();
     fetchLogs(controller.signal);
     intervalRef.current = setInterval(() => fetchLogs(controller.signal), 10000);
+
+    // The node pushes lines as the server writes them, so there is no interval
+    // and no position arithmetic - a stream has no gap between polls to lose
+    // lines in. A node that predates it refuses the namespace and the poll above
+    // simply carries on, which is permanent rather than a migration step: the
+    // network runs several FluxOS versions at once and always will.
+    let logSocket = null;
+    (async () => {
+      const zelidauth = await secureStorage.getItem('zelidauth');
+      if (!zelidauth || !mountedRef.current) return;
+
+      const [h, p = 16127] = masterIp.split(':');
+      const socket = io(`https://${h.replace(/\./g, '-')}-${p}.node.api.runonflux.io/applogs`, {
+        transports: ['websocket'],
+        reconnection: false,
+      });
+      logSocket = socket;
+
+      socket.on('connect', () => socket.emit('subscribe', qs.stringify(zelidauth), containerName));
+
+      // The poll stands down only once the node has actually answered, so a
+      // node without the namespace never stops being polled.
+      socket.on('subscribed', () => {
+        console.log('[LogStream] subscribed, standing the poll down');
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      });
+
+      socket.on('logs', payload => {
+        if (!mountedRef.current) return;
+        const received = Array.isArray(payload?.lines) ? payload.lines : [];
+        const lines = received
+          .map(line => (typeof line === 'string' ? line : (line.message || line.log || JSON.stringify(line))))
+          .filter(line => !hiddenLinesRef.current.has(line));
+        if (lines.length) setLogs(prev => [...prev, ...lines]);
+      });
+
+      // The server wrote faster than this connection drained. The node dropped
+      // the excess rather than buffering it - a silent gap is the failure this
+      // whole design exists to prevent.
+      socket.on('skipped', () => {
+        if (mountedRef.current) setLogs(prev => [...prev, SKIPPED_NOTICE]);
+      });
+
+      // Either the container stopped or the connection failed. Both mean the
+      // poll has to take the panel back.
+      const resumePolling = () => {
+        if (!mountedRef.current || intervalRef.current) return;
+        console.log('[LogStream] stream gone, resuming the poll');
+        intervalRef.current = setInterval(() => fetchLogs(controller.signal), 10000);
+      };
+      socket.on('ended', resumePolling);
+      socket.on('error', resumePolling);
+      socket.on('connect_error', resumePolling);
+      socket.on('disconnect', resumePolling);
+    })();
+
     return () => {
       console.log('[LogPoll] polling STOPPED (cleanup)');
       controller.abort();
+      if (logSocket) {
+        logSocket.removeAllListeners();
+        logSocket.close();
+      }
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (scrollPersistTimerRef.current) clearTimeout(scrollPersistTimerRef.current);
     };
