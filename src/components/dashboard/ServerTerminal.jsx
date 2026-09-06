@@ -231,8 +231,15 @@ const ServerLogsPanel = ({ server, masterLocation, selectedComponent, splitDirec
       });
 
       // Either the container stopped or the connection failed. Both mean the
-      // poll has to take the panel back.
+      // poll has to take the panel back - and that this socket is finished.
+      //
+      // Closed rather than left open. The node closes the feed when the server
+      // stops but it cannot close the connection, so one held here is a
+      // connection per stopped server for as long as the panel stays mounted -
+      // and it stays in that container's room, where a feed someone else opens
+      // after a restart is delivered into a panel that is already polling.
       const resumePolling = () => {
+        socket.close();
         if (!mountedRef.current || intervalRef.current) return;
         console.log('[LogStream] stream gone, resuming the poll');
         intervalRef.current = setInterval(() => fetchLogs(controller.signal), 10000);
