@@ -14,7 +14,7 @@
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAtMsozWwJhhPIOd9BGkZxk5D6Wr8jVGVM',
-  authDomain: 'fluxcore-prod.firebaseapp.com',
+  authDomain: 'signon.runonflux.io',
   projectId: 'fluxcore-prod',
   storageBucket: 'fluxcore-prod.appspot.com',
   messagingSenderId: '468366888401',
